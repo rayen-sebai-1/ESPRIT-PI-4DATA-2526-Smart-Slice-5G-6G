@@ -25,15 +25,22 @@ The evolution of mobile communication from 5G to 6G demands dynamic resource man
 * We generated other dataset using the initial datasets and simpy
 
 ## Contributors
+* Ahmed Bouhlel
+* Rayen Sebai
+* Mouhamed Dhia Chaouachi
+* Fourat Hamdi
+* Mouhamed Aziz Weslati
+* Mouhamed Aziz Boughanmi
 
-| Name | Role |
-|---|---|
-| Ahmed Bouhlel | ML Engineering |
-| Rayen Sebai | MLOps / DevOps |
-| Mouhamed Dhia Chaouachi | Data Engineering |
-| Fourat Hamdi | API Development |
-| Mouhamed Aziz Weslati | Monitoring |
-| Mouhamed Aziz Boughanmi | Data Science |
 
-**Academic context:** Esprit School of Engineering · Projet Intégré 4ème année DATA · Azerty67 · 2025/2026  
-**Mentors:** Rahma Bouraoui · Safa Cherif · Ameni Mejri
+## Academic Context
+Developed at **Esprit School of Engineering - Tunisia** 
+* **Module:** Projet Intégré (4ème année DATA)
+* **Group:** Azerty67
+* **Academic Year:** 2025/2026
+
+## Getting Started
+`git clone https://github.com/rayen-sebai-1/ESPRIT-PI-4DATA-2526-Smart-Slice-5G-6G.git`
+
+## Acknowledgments
+We would like to express our gratitude to our mentors Rahma Bouraoui, Safa Cherif, and Ameni Mejri for their guidance and support throughout this project.
