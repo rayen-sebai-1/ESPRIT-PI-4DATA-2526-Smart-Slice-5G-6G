@@ -1,0 +1,55 @@
+name: Smart Slice 5G/6G MLOps Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  mlops-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Python
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 4. Lint with flake8
+      - name: Lint (flake8)
+        run: flake8 src/ tests/ --max-line-length=120
+
+      # 5. Security scan with bandit
+      - name: Security scan (bandit)
+        run: bandit -r src/ -ll
+
+      # 6. Data validation
+      - name: Preprocess & validate data
+        run: |
+          python src/data/preprocess_6g.py
+          python src/data/validate.py
+
+      # 7. Unit & functional tests
+      - name: Run pytest
+        run: pytest tests/ -v --ignore=tests/test_model_quality.py
+
+      # 8. Train congestion model + quality gate
+      - name: Train congestion LSTM
+        run: python src/models/train_congestion_6g.py
+
+      - name: Quality gate (val_mae < 5.0)
+        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_congestion_lstm_val_mae -v
+
+      # 9. Build Docker image
+      - name: Build Docker image
+        run: docker build -t smart-slice-api .

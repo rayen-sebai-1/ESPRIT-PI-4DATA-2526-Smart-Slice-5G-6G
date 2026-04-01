@@ -1,0 +1,35 @@
+name: smart-slice-5g-6g
+conda_env: conda.yaml
+
+entry_points:
+  train_slice_5g:
+    parameters:
+      n_estimators: {type: int, default: 100}
+      max_depth: {type: int, default: 6}
+    command: "python src/models/train_slice_5g.py --n_estimators {n_estimators} --max_depth {max_depth}"
+
+  train_slice_6g:
+    parameters:
+      n_estimators: {type: int, default: 100}
+      max_depth: {type: int, default: 6}
+    command: "python src/models/train_slice_6g.py --n_estimators {n_estimators} --max_depth {max_depth}"
+
+  train_sla:
+    parameters:
+      n_estimators: {type: int, default: 200}
+      learning_rate: {type: float, default: 0.05}
+    command: "python src/models/train_sla.py --n_estimators {n_estimators} --learning_rate {learning_rate}"
+
+  train_congestion:
+    parameters:
+      seq_length: {type: int, default: 24}
+      lstm_units: {type: int, default: 128}
+      epochs: {type: int, default: 50}
+      learning_rate: {type: float, default: 0.001}
+    command: "python src/models/train_congestion_6g.py"
+
+  train_anomaly:
+    parameters:
+      n_estimators: {type: int, default: 100}
+      contamination: {type: float, default: 0.1}
+    command: "python src/models/train_anomaly.py --n_estimators {n_estimators} --contamination {contamination}"
