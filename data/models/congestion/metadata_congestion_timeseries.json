@@ -1,0 +1,43 @@
+{
+  "model_name": "model_congestion_timeseries_boosting",
+  "model_type": "HistGradientBoostingClassifier",
+  "source_notebook": "network_slicing_congestion_LSTM.ipynb",
+  "source_dataset": "data/raw/network_slicing_dataset_enriched_timeseries.csv",
+  "created_at": "2026-04-08T11:32:49.692786+00:00",
+  "features": [
+    "cpu_util_pct",
+    "mem_util_pct",
+    "bw_util_pct",
+    "active_users",
+    "queue_len",
+    "hour",
+    "slice_type_encoded"
+  ],
+  "target": "congestion_flag",
+  "slice_mapping": {
+    "ERLLC": 0,
+    "MBRLLC": 1,
+    "feMBB": 2,
+    "mURLLC": 3,
+    "umMTC": 4
+  },
+  "slice_aliases": {
+    "eMBB": "feMBB",
+    "URLLC": "mURLLC",
+    "mMTC": "umMTC"
+  },
+  "class_distribution": {
+    "0": 16550,
+    "1": 5050
+  },
+  "train_rows": 17280,
+  "test_rows": 4320,
+  "metrics": {
+    "accuracy": 0.9977,
+    "roc_auc": 1.0
+  },
+  "notes": [
+    "Operational congestion adapter trained on the provided time-series telemetry dataset.",
+    "This is dataset-aligned and docker-friendly; it is not a direct PyTorch LSTM export."
+  ]
+}

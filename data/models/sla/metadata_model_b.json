@@ -1,0 +1,29 @@
+{
+  "model_name": "model_b_sla_5g_boosting",
+  "model_type": "HistGradientBoostingClassifier",
+  "source_notebook": "SLA_5G_Modeling.ipynb",
+  "source_dataset": "data/raw/train_dataset.csv",
+  "created_at": "2026-04-08T11:32:44.906677+00:00",
+  "features": [
+    "Packet Loss Rate",
+    "Packet delay",
+    "Smart City & Home",
+    "IoT Devices",
+    "Public Safety"
+  ],
+  "target": "sla_met",
+  "class_distribution": {
+    "1": 19330,
+    "0": 12253
+  },
+  "train_rows": 25266,
+  "test_rows": 6317,
+  "metrics": {
+    "accuracy": 1.0,
+    "roc_auc": 1.0
+  },
+  "notes": [
+    "Target sla_met generated from deterministic telecom-oriented SLA rules.",
+    "Provider expects packet loss as a rate. If the runtime session stores a percent-like value, it is normalized."
+  ]
+}

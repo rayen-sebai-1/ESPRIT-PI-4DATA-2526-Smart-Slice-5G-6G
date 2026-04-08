@@ -1,0 +1,130 @@
+{
+  "assets": [
+    {
+      "key": "sla_training",
+      "description": "Primary SLA and slice classification dataset.",
+      "asset_type": "csv",
+      "source_path": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G\\train_dataset.csv",
+      "target_path": "data\\raw\\train_dataset.csv",
+      "exists": true,
+      "size_bytes": 1274909,
+      "delimiter": ",",
+      "columns_count": 17,
+      "rows_count": 31583,
+      "columns": [
+        "LTE/5g Category",
+        "Time",
+        "Packet Loss Rate",
+        "Packet delay",
+        "IoT",
+        "LTE/5G",
+        "GBR",
+        "Non-GBR",
+        "AR/VR/Gaming",
+        "Healthcare",
+        "Industry 4.0",
+        "IoT Devices",
+        "Public Safety",
+        "Smart City & Home",
+        "Smart Transportation",
+        "Smartphone",
+        "slice Type"
+      ]
+    },
+    {
+      "key": "anomaly_misrouting",
+      "description": "Reference dataset for anomaly and misrouting detection.",
+      "asset_type": "csv",
+      "source_path": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G\\network_slicing_dataset - v3.csv",
+      "target_path": "data\\raw\\network_slicing_dataset_v3.csv",
+      "exists": true,
+      "size_bytes": 1257439,
+      "delimiter": ";",
+      "columns_count": 13,
+      "rows_count": 10000,
+      "columns": [
+        "Use Case Type",
+        "Packet Loss Budget",
+        "Latency Budget (ns)",
+        "Jitter Budget (ns)",
+        "Data Rate Budget (Gbps)",
+        "Required Mobility",
+        "Required Connectivity",
+        "Slice Available Transfer Rate (Gbps)",
+        "Slice Latency (ns)",
+        "Slice Packet Loss",
+        "Slice Jitter (ns)",
+        "Slice Type",
+        "Slice Handover"
+      ]
+    },
+    {
+      "key": "congestion_timeseries",
+      "description": "Reference time-series telemetry dataset for congestion forecasting.",
+      "asset_type": "csv",
+      "source_path": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G\\network_slicing_dataset_enriched_timeseries.csv",
+      "target_path": "data\\raw\\network_slicing_dataset_enriched_timeseries.csv",
+      "exists": true,
+      "size_bytes": 3864615,
+      "delimiter": ",",
+      "columns_count": 21,
+      "rows_count": 21600,
+      "columns": [
+        "timestamp",
+        "slice_type",
+        "slice_id",
+        "cpu_util_pct",
+        "mem_util_pct",
+        "bw_util_pct",
+        "active_users",
+        "queue_len",
+        "congestion_flag",
+        "Use Case Type",
+        "Packet Loss Budget",
+        "Latency Budget (ns)",
+        "Jitter Budget (ns)",
+        "Data Rate Budget (Gbps)",
+        "Required Mobility",
+        "Required Connectivity",
+        "Slice Available Transfer Rate (Gbps)",
+        "Slice Latency (ns)",
+        "Slice Packet Loss",
+        "Slice Jitter (ns)",
+        "Slice Handover"
+      ]
+    },
+    {
+      "key": "project_pdf",
+      "description": "Project explanatory PDF supplied by the user.",
+      "asset_type": "pdf",
+      "source_path": "C:\\Users\\DELL\\Downloads\\Projet 1 Network slicing\\Projet 1 Network slicing\\Project 1.pdf",
+      "target_path": "data\\reference\\Project_1_Network_Slicing.pdf",
+      "exists": true,
+      "size_bytes": 847802
+    }
+  ],
+  "dataset_root": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G",
+  "pdf_source": "C:\\Users\\DELL\\Downloads\\Projet 1 Network slicing\\Projet 1 Network slicing\\Project 1.pdf",
+  "copied": [
+    {
+      "key": "sla_training",
+      "source_path": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G\\train_dataset.csv",
+      "target_path": "data\\raw\\train_dataset.csv"
+    },
+    {
+      "key": "anomaly_misrouting",
+      "source_path": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G\\network_slicing_dataset - v3.csv",
+      "target_path": "data\\raw\\network_slicing_dataset_v3.csv"
+    },
+    {
+      "key": "congestion_timeseries",
+      "source_path": "C:\\Users\\DELL\\Downloads\\PI Data-20260406T215523Z-3-001\\PI Data\\dataset 5G et 6G\\network_slicing_dataset_enriched_timeseries.csv",
+      "target_path": "data\\raw\\network_slicing_dataset_enriched_timeseries.csv"
+    },
+    {
+      "key": "project_pdf",
+      "source_path": "C:\\Users\\DELL\\Downloads\\Projet 1 Network slicing\\Projet 1 Network slicing\\Project 1.pdf",
+      "target_path": "data\\reference\\Project_1_Network_Slicing.pdf"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "model_name": "model_anomaly_misrouting_isolation_forest",
+  "model_type": "IsolationForest",
+  "source_notebook": "slice_misrouting_anomaly_pipeline.ipynb",
+  "source_dataset": "data/raw/network_slicing_dataset_v3.csv",
+  "created_at": "2026-04-08T11:32:54.983545+00:00",
+  "features": [
+    "latency_gap_ns",
+    "jitter_gap_ns",
+    "packet_loss_gap",
+    "data_rate_gap_gbps",
+    "latency_ratio",
+    "jitter_ratio",
+    "packet_loss_ratio",
+    "data_rate_ratio",
+    "violation_count",
+    "weighted_violation_score",
+    "severity_score",
+    "required_mobility_flag",
+    "required_connectivity_flag",
+    "slice_handover_flag",
+    "slice_mismatch"
+  ],
+  "expected_slice_map": {
+    "Motion control": "ERLLC",
+    "Smart City": "umMTC",
+    "Delivery drones": "MBRLLC",
+    "Remote health monitoring": "mURLLC",
+    "Smart Home": "umMTC",
+    "Servo motors": "ERLLC",
+    "VR/AR": "feMBB",
+    "3D/UHD Video": "feMBB",
+    "V2X": "MBRLLC"
+  },
+  "decision_score_min": -0.16159022243129884,
+  "decision_score_max": 0.13665530618608657,
+  "estimated_anomaly_rate": 0.08,
+  "rows_count": 10000,
+  "notes": [
+    "Operational anomaly adapter trained on engineered gap and mismatch features from the V3 dataset.",
+    "The provider combines IsolationForest output with runtime severity and misrouting checks."
+  ]
+}

@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+alembic/__pycache__
+services/**/__pycache__
+packages/**/__pycache__
