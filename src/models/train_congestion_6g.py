@@ -80,7 +80,7 @@ def build_sequences(df: pd.DataFrame, seq_length: int = SEQ_LENGTH):
 
     X, y = [], []
     for i in range(len(values) - seq_length):
-        X.append(values[i : i + seq_length])
+        X.append(values[i : i + seq_length])  # noqa: E203
         y.append(targets[i + seq_length])
     return np.array(X), np.array(y)
 

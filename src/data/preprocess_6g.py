@@ -33,7 +33,7 @@ def create_sequences(data: np.ndarray, seq_length: int = SEQ_LENGTH):
     """
     X, y = [], []
     for i in range(len(data) - seq_length):
-        X.append(data[i : i + seq_length, :2])  # cpu + bandwidth features
+        X.append(data[i : i + seq_length, :2])  # noqa: E203; cpu + bandwidth features
         y.append(data[i + seq_length, 0])  # predict next cpu_utilization
     return np.array(X), np.array(y)
 
