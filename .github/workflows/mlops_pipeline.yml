@@ -47,9 +47,22 @@ jobs:
       - name: Train congestion LSTM
         run: python src/models/train_congestion_6g.py
 
-      - name: Quality gate (val_mae < 5.0)
-        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_congestion_lstm_val_mae -v
+      - name: Quality gate – congestion (val_mae < 5.0)
+        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_congestion_6g_lstm_val_mae -v
 
-      # 9. Build Docker image
+      # 9. SLA model pipeline
+      - name: Preprocess SLA data
+        run: python src/data/preprocess_sla_5g.py
+
+      - name: Validate SLA data
+        run: python src/data/validate_sla_5g.py
+
+      - name: Train SLA XGBoost
+        run: python src/models/train_sla_5g.py
+
+      - name: Quality gate – SLA (val_roc_auc >= 0.75)
+        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_sla_roc_auc -v
+
+      # 10. Build Docker image
       - name: Build Docker image
         run: docker build -t smart-slice-api .

@@ -1,17 +1,16 @@
 """Unit tests for src/models/train_congestion_6g.py."""
 
 import torch
-import pytest
 
 
-class TestCongestionLSTM:
-    """Tests for the CongestionLSTM model."""
+class TestCongestion6GLSTM:
+    """Tests for the Congestion6GLSTM model."""
 
     def test_forward_output_shape(self):
         """The model should accept (batch, 24, 2) and return (batch, 1)."""
-        from src.models.train_congestion_6g import CongestionLSTM
+        from src.models.train_congestion_6g import Congestion6GLSTM
 
-        model = CongestionLSTM(input_size=2, hidden_size=64)
+        model = Congestion6GLSTM(input_size=2, hidden_size=64)
         model.eval()
 
         batch_size = 8
@@ -23,9 +22,9 @@ class TestCongestionLSTM:
 
     def test_forward_output_dtype_is_float(self):
         """Output tensor dtype must be float32."""
-        from src.models.train_congestion_6g import CongestionLSTM
+        from src.models.train_congestion_6g import Congestion6GLSTM
 
-        model = CongestionLSTM(input_size=2, hidden_size=64)
+        model = Congestion6GLSTM(input_size=2, hidden_size=64)
         model.eval()
 
         x = torch.randn(4, 24, 2)

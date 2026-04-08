@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 # =============================================================================
 # Congestion (6G LSTM)
 # =============================================================================
-class CongestionInput(BaseModel):
+class Congestion6GInput(BaseModel):
     """Input payload for the congestion forecasting endpoint."""
 
     cpu_sequence: List[float] = Field(
@@ -25,14 +25,14 @@ class CongestionInput(BaseModel):
     )
 
 
-class CongestionOutput(BaseModel):
+class Congestion6GOutput(BaseModel):
     """Output payload for the congestion forecasting endpoint."""
 
     forecast_cpu_next_5min: float = Field(
         ...,
         description="Predicted normalised CPU utilisation for the next 5-minute window.",
     )
-    congestion_alert: bool = Field(
+    congestion_6g_alert: bool = Field(
         ...,
         description="True when the forecast exceeds the 0.75 normalised-CPU threshold.",
     )
@@ -57,6 +57,28 @@ class SliceOutput(BaseModel):
 
     recommended_slice: str = Field(..., description="One of: eMBB, URLLC, mMTC")
     confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+# =============================================================================
+# SLA adherence (5G XGBoost – Model B)
+# =============================================================================
+class SLA5GInput(BaseModel):
+    """Input features for the SLA adherence model."""
+
+    packet_loss_rate: float = Field(..., ge=0.0, description="Packet loss rate measured via E2 interface.")
+    packet_delay: float = Field(..., ge=0.0, description="Packet delay in ms measured via E2 interface.")
+    smart_city_home: int = Field(..., ge=0, le=1, description="1 if Smart City & Home service, else 0.")
+    iot_devices: int = Field(..., ge=0, le=1, description="1 if IoT device, else 0.")
+    public_safety: int = Field(..., ge=0, le=1, description="1 if Public Safety service, else 0.")
+
+
+class SLA5GOutput(BaseModel):
+    """Output of the SLA adherence model."""
+
+    sla_prediction: int = Field(..., description="0 = SLA not met, 1 = SLA met.")
+    sla_probability: float = Field(..., ge=0.0, le=1.0, description="P(sla_met=1) — confidence score.")
+    risk_level: str = Field(..., description="Risk level: LOW, MEDIUM, or HIGH.")
+    recommended_action: str = Field(..., description="Recommended action based on risk level.")
 
 
 # =============================================================================

@@ -7,6 +7,7 @@ pandas>=2.2.2
 numpy>=2.1.0
 scikit-learn>=1.5.0
 xgboost>=2.1.0
+imbalanced-learn>=0.12.0
 
 # Deep learning – keep whatever torch is already installed in the venv;
 # pinning loosely so CPU or CUDA builds both work.

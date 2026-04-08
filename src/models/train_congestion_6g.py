@@ -6,7 +6,6 @@ Primary metrics  : val_mae, val_rmse
 Quality gate     : val_mae < 5.0
 """
 
-import os
 import warnings
 
 import matplotlib.pyplot as plt
@@ -41,7 +40,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ---------------------------------------------------------------------------
 # Dataset
 # ---------------------------------------------------------------------------
-class CongestionDataset(Dataset):
+class Congestion6GDataset(Dataset):
     """Sliding-window dataset for the LSTM model."""
 
     def __init__(self, sequences: np.ndarray, targets: np.ndarray):
@@ -58,7 +57,7 @@ class CongestionDataset(Dataset):
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
-class CongestionLSTM(nn.Module):
+class Congestion6GLSTM(nn.Module):
     """Single-layer LSTM that predicts the next CPU-utilisation value."""
 
     def __init__(self, input_size: int = 2, hidden_size: int = LSTM_UNITS, num_layers: int = 1):
@@ -135,15 +134,15 @@ def train(
     y_train, y_val = y[:split_idx], y[split_idx:]
     print(f"[INFO] Train: {len(X_train)}, Val: {len(X_val)} sequences.")
 
-    train_ds = CongestionDataset(X_train, y_train)
-    val_ds = CongestionDataset(X_val, y_val)
+    train_ds = Congestion6GDataset(X_train, y_train)
+    val_ds = Congestion6GDataset(X_val, y_val)
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 
     # -----------------------------------------------------------------------
     # 2. Build model
     # -----------------------------------------------------------------------
-    model = CongestionLSTM(input_size=2, hidden_size=lstm_units).to(DEVICE)
+    model = Congestion6GLSTM(input_size=2, hidden_size=lstm_units).to(DEVICE)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 

@@ -7,8 +7,8 @@ PIP := pip
 MLFLOW_PORT := 5000
 API_PORT := 8000
 
-.PHONY: setup lint format security quality data validate-data \
-        train-slice-5g train-slice-6g train-sla train-congestion train-anomaly \
+.PHONY: setup lint format security quality data data-sla-5g validate-data validate-data-sla-5g \
+        train-slice-5g train-slice-6g train-sla-5g train-congestion-6g train-anomaly \
         train-all test mlflow-ui serve docker-build docker-run \
         docker-compose-up notebook pipeline clean
 
@@ -38,8 +38,14 @@ quality: lint security
 data:
 	$(PYTHON) src/data/preprocess_6g.py
 
+data-sla-5g:
+	$(PYTHON) src/data/preprocess_sla_5g.py
+
 validate-data:
 	$(PYTHON) src/data/validate.py
+
+validate-data-sla-5g:
+	$(PYTHON) src/data/validate_sla_5g.py
 
 # ------------------------------------------------------------------------------
 # Training
@@ -50,16 +56,16 @@ train-slice-5g:
 train-slice-6g:
 	$(PYTHON) src/models/train_slice_6g.py
 
-train-sla:
-	$(PYTHON) src/models/train_sla.py
+train-sla-5g:
+	$(PYTHON) src/models/train_sla_5g.py
 
-train-congestion:
+train-congestion-6g:
 	$(PYTHON) src/models/train_congestion_6g.py
 
 train-anomaly:
 	$(PYTHON) src/models/train_anomaly.py
 
-train-all: train-slice-5g train-slice-6g train-sla train-congestion train-anomaly
+train-all: train-slice-5g train-slice-6g train-sla-5g train-congestion-6g train-anomaly
 
 # ------------------------------------------------------------------------------
 # Testing
@@ -95,7 +101,7 @@ docker-compose-up:
 # ------------------------------------------------------------------------------
 # Full Pipeline
 # ------------------------------------------------------------------------------
-pipeline: setup lint security validate-data train-congestion test
+pipeline: setup lint security validate-data data-sla-5g validate-data-sla-5g train-congestion-6g train-sla-5g test
 
 # ------------------------------------------------------------------------------
 # Cleanup

@@ -7,7 +7,7 @@ THRESHOLDS = {
     "congestion-forecast-6g": {"val_mae": 5.0},  # LSTM – primary gate
     "slice-selection-5g": {"val_accuracy": 0.80},
     "slice-selection-6g": {"val_accuracy": 0.80},
-    "sla-adherence": {"val_roc_auc": 0.75},
+    "sla-adherence-5g": {"val_roc_auc": 0.75},
     "anomaly-detection": {"val_f1": 0.70},
 }
 
@@ -15,7 +15,6 @@ THRESHOLDS = {
 def _get_latest_run(experiment_name: str):
     """Return the latest MLflow run for a given experiment name, or None."""
     try:
-        import mlflow
         from mlflow.tracking import MlflowClient
 
         client = MlflowClient()
@@ -36,7 +35,7 @@ def _get_latest_run(experiment_name: str):
 class TestModelQualityGates:
     """Assert that the latest run metrics pass the minimum bar."""
 
-    def test_congestion_lstm_val_mae(self):
+    def test_congestion_6g_lstm_val_mae(self):
         """val_mae for the congestion LSTM must be < 5.0."""
         exp = "congestion-forecast-6g"
         run = _get_latest_run(exp)
@@ -70,7 +69,7 @@ class TestModelQualityGates:
         assert val_acc >= THRESHOLDS[exp]["val_accuracy"]
 
     def test_sla_roc_auc(self):
-        exp = "sla-adherence"
+        exp = "sla-adherence-5g"
         run = _get_latest_run(exp)
         if run is None:
             pytest.skip(f"No MLflow run found for experiment '{exp}'.")
