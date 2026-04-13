@@ -36,7 +36,7 @@ def validate() -> bool:
     X_train = data["X_train"]
     y_train = data["y_train"]
     X_val = data["X_val"]
-    
+
     # Check shapes
     if len(X_train.shape) != 3 or X_train.shape[1] != SEQ_LENGTH or X_train.shape[2] != EXPECTED_FEATURES:
         errors.append(f"Expected train sequence shape (*, {SEQ_LENGTH}, {EXPECTED_FEATURES}), got {X_train.shape}.")

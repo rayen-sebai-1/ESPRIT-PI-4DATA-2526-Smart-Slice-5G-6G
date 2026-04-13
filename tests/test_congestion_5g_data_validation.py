@@ -1,6 +1,5 @@
 """Unit tests for the 5G Congestion data validation script."""
 
-import os
 from unittest import mock
 
 import numpy as np
@@ -27,7 +26,7 @@ def dummy_processed_npz(tmp_path):
         X_train=X_train,
         y_train=y_train,
         X_val=X_val,
-        y_val=y_val,        
+        y_val=y_val,
         X_test=X_test,
         y_test=y_test,
         feature_names=feature_names,
@@ -56,7 +55,7 @@ def test_validate_invalid_shapes(tmp_path):
     y_val = np.random.randint(0, 2, size=(20,))
     X_test = np.random.rand(50, SEQ_LENGTH, EXPECTED_FEATURES - 1)
     y_test = np.random.randint(0, 2, size=(50,))
-    
+
     np.savez(
         invalid_path,
         X_train=X_train,

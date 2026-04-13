@@ -79,7 +79,7 @@ def preprocess() -> dict:
     for bool_col in ["Required Mobility", "Required Connectivity"]:
         if X[bool_col].dtype == object:
             X[bool_col] = X[bool_col].str.lower().map(bool_map)
-            
+
     # Quick fill of any NaNs in the budget features (e.g. Packet Loss Budget has some nulls in EDA)
     for col in X.columns:
         if X[col].isnull().any():
@@ -102,13 +102,13 @@ def preprocess() -> dict:
     # 5. Add synthetic label noise exclusively to the training set
     num_train = len(y_train)
     num_noise = int(num_train * LABEL_NOISE_RATE)
-    
+
     np.random.seed(RANDOM_STATE)
     noise_indices = np.random.choice(num_train, size=num_noise, replace=False)
-    
+
     y_train_noisy = y_train.copy()
     unique_classes = np.arange(len(label_encoder.classes_))
-    
+
     actually_flipped = 0
     for idx in noise_indices:
         original_class = y_train[idx]
@@ -116,7 +116,7 @@ def preprocess() -> dict:
         new_class = np.random.choice(available_classes)
         y_train_noisy[idx] = new_class
         actually_flipped += 1
-        
+
     print(f"[INFO] Injected {LABEL_NOISE_RATE*100:.0f}% label noise.")
     print(f"[INFO] {actually_flipped} labels were artificially flipped in the training set.")
 

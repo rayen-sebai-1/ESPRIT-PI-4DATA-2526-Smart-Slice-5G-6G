@@ -2,7 +2,7 @@
 
 Loads raw train_dataset_enriched_timeseries.csv, selects final features,
 extracts hour, applies LabelEncoder, and StandardScaling.
-Splits train/val/test slice-wise with temporal splits (60/20/20) and 
+Splits train/val/test slice-wise with temporal splits (60/20/20) and
 sequences the data (seq_length=30).
 
 Outputs:
@@ -61,7 +61,7 @@ class CongestionPreprocessor:
     def fit(self, df):
         # Fit LabelEncoder on the entire dataset first!
         self.le.fit(df['slice_type'])
-        
+
         # We need a temporary copy to fit the scaler
         df_temp = df.copy()
         df_temp['slice_type_encoded'] = self.le.transform(df_temp['slice_type'])
@@ -96,7 +96,7 @@ def preprocess() -> dict:
     global RAW_PATH
     if not os.path.exists(RAW_PATH):
         # Maybe it's not in raw folder in this repo structure, check notebooks path or root
-        alt_paths = ["train_dataset_enriched_timeseries.csv", 
+        alt_paths = ["train_dataset_enriched_timeseries.csv",
                      "data/train_dataset_enriched_timeseries.csv",
                      "notebooks/train_dataset_enriched_timeseries.csv"]
         found = False
@@ -106,7 +106,10 @@ def preprocess() -> dict:
                 found = True
                 break
         if not found:
-            raise FileNotFoundError(f"Raw data not found. Please ensure 'train_dataset_enriched_timeseries.csv' exists.")
+            raise FileNotFoundError(
+                "Raw data not found. Please ensure "
+                "'train_dataset_enriched_timeseries.csv' exists."
+            )
 
     df = pd.read_csv(RAW_PATH)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -114,12 +117,14 @@ def preprocess() -> dict:
 
     # Fit preprocessor
     preprocessor = CongestionPreprocessor(seq_length=SEQ_LENGTH)
-    preprocessor.fit(df)  # Fit LE on all, scaler on all initially or just train? The notebook fits LE on all, and scaler on train!
+    preprocessor.fit(
+        df
+    )  # Fit LE on all, scaler on all initially or just train? The notebook fits LE on all, and scaler on train!
     # Wait, in the notebook, scaler is fit on df_train. Let's fix that.
     preprocessor.le.fit(df['slice_type'])
     df['slice_type_encoded'] = preprocessor.le.transform(df['slice_type'])
     df['hour'] = df['timestamp'].dt.hour
-    
+
     # Split Data
     df_train, df_val, df_test = slice_wise_temporal_split(df, train_ratio=0.6, val_ratio=0.2)
     print(f"[INFO] Train: {len(df_train)} | Val: {len(df_val)} | Test: {len(df_test)}")

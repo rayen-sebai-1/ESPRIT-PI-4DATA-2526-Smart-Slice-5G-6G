@@ -233,7 +233,7 @@ class TestCongestion5GEndpoint:
         bad_payload = {"sequence": seq}
         # Pydantic currently doesn't fail on length unless defined, but endpoint fails validation
         resp = client.post("/predict/congestion_5g", json=bad_payload)
-        assert resp.status_code == 500 or resp.status_code == 422 # Custom shape check causes 500 or ValueError
+        assert resp.status_code == 500 or resp.status_code == 422  # Custom shape check causes 500 or ValueError
 
 
 class TestSliceType6GEndpoint:

@@ -45,7 +45,11 @@ class Congestion5GInput(BaseModel):
 
     sequence: List[List[float]] = Field(
         ...,
-        description="List of 30 time steps. Each time step must have 7 features: [cpu_util_pct, mem_util_pct, bw_util_pct, active_users, queue_len, hour, slice_type_encoded].",
+        description=(
+            "List of 30 time steps. Each time step must have 7 features: "
+            "[cpu_util_pct, mem_util_pct, bw_util_pct, active_users, queue_len, hour, "
+            "slice_type_encoded]."
+        ),
     )
 
 
@@ -175,12 +179,24 @@ class SLA6GInput(BaseModel):
     # Temporal QoS — Slice Latency (ns)
     slice_latency_lag1: float = Field(..., description="Latency of previous session (ns).")
     slice_latency_rolling_mean: float = Field(..., description="Rolling mean latency over last 5 sessions (ns).")
-    slice_latency_rolling_std: float = Field(..., ge=0.0, description="Rolling std of latency over last 5 sessions (ns).")
+    slice_latency_rolling_std: float = Field(
+        ...,
+        ge=0.0,
+        description="Rolling std of latency over last 5 sessions (ns).",
+    )
 
     # Temporal QoS — Slice Packet Loss
     slice_packet_loss_lag1: float = Field(..., ge=0.0, description="Packet loss of previous session.")
-    slice_packet_loss_rolling_mean: float = Field(..., ge=0.0, description="Rolling mean packet loss over last 5 sessions.")
-    slice_packet_loss_rolling_std: float = Field(..., ge=0.0, description="Rolling std of packet loss over last 5 sessions.")
+    slice_packet_loss_rolling_mean: float = Field(
+        ...,
+        ge=0.0,
+        description="Rolling mean packet loss over last 5 sessions.",
+    )
+    slice_packet_loss_rolling_std: float = Field(
+        ...,
+        ge=0.0,
+        description="Rolling std of packet loss over last 5 sessions.",
+    )
 
     # Temporal QoS — Slice Jitter (ns)
     slice_jitter_lag1: float = Field(..., description="Jitter of previous session (ns).")
@@ -188,7 +204,11 @@ class SLA6GInput(BaseModel):
     slice_jitter_rolling_std: float = Field(..., ge=0.0, description="Rolling std of jitter over last 5 sessions (ns).")
 
     # Context features
-    slice_type_encoded: int = Field(..., ge=0, description="Encoded Slice Type (0=ERLLC, 1=feMBB, 2=MBRLLC, 3=mURLLC, 4=umMTC).")
+    slice_type_encoded: int = Field(
+        ...,
+        ge=0,
+        description="Encoded Slice Type (0=ERLLC, 1=feMBB, 2=MBRLLC, 3=mURLLC, 4=umMTC).",
+    )
     mobility_encoded: int = Field(..., ge=0, le=1, description="Encoded Required Mobility (0=no, 1=yes).")
     connectivity_encoded: int = Field(..., ge=0, le=1, description="Encoded Required Connectivity (0=no, 1=yes).")
     handover_encoded: int = Field(..., ge=0, le=1, description="Encoded Slice Handover (0=no, 1=yes).")

@@ -5,9 +5,7 @@ with focal loss and Optuna-based hyperparameter tuning, and logs to MLflow.
 """
 
 import os
-import io
 import warnings
-from datetime import datetime
 
 import mlflow
 import torch
@@ -15,8 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-import optuna
-from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
 
 warnings.filterwarnings("ignore")
 
@@ -138,9 +135,9 @@ def evaluate(model, dataloader, criterion):
             total_loss += loss.item()
             all_preds.extend(torch.sigmoid(outputs).cpu().numpy())
             all_labels.extend(y_batch.cpu().numpy())
-            
+
     avg_loss = total_loss / len(dataloader)
-    
+
     # Handle case where only one class is present in validation set during an epoch
     if len(np.unique(all_labels)) > 1:
         auc = roc_auc_score(all_labels, all_preds)
@@ -177,7 +174,7 @@ def train():
 
     # Setup MLflow
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
-    
+
     # Fast setup instead of extensive search to make the script run quickly
     # Hardcoding best params based on notebook's fine tuning output
     best_params = {
@@ -188,7 +185,7 @@ def train():
         'bidirectional': True,
         'batch_size': 256
     }
-    
+
     with mlflow.start_run(run_name="LSTM_Final_Train"):
         mlflow.log_params(best_params)
 
@@ -208,10 +205,10 @@ def train():
         patience_counter = 0
 
         print(f"[INFO] Training LSTM model on device {DEVICE}...")
-        for epoch in range(15): # Limiting epochs for speed
+        for epoch in range(15):  # Limiting epochs for speed
             train_loss = fit_epoch(model, train_loader, criterion, optimizer)
             val_loss, val_auc = evaluate(model, val_loader, criterion)
-            
+
             scheduler.step(val_auc)
             mlflow.log_metrics({
                 "train_loss": train_loss,

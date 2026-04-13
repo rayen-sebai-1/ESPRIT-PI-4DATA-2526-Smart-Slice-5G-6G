@@ -57,17 +57,17 @@ def predict_congestion_6g(model: torch.nn.Module, data: Congestion6GInput) -> Co
 def predict_congestion_5g(model: torch.nn.Module, preprocessor, data: Congestion5GInput) -> Congestion5GOutput:
     """Run inference with the 5G LSTM congestion model."""
     import numpy as np
-    
+
     # sequence is expected to be a 30x7 list
     seq_array = np.array(data.sequence)
     if seq_array.shape != (30, 7):
         raise ValueError(f"Expected sequence of shape (30, 7), got {seq_array.shape}")
-        
+
     # Scale features
     # Note: data in sequence needs to have same order as preprocessor.feature_cols
     # ['cpu_util_pct', 'mem_util_pct', 'bw_util_pct', 'active_users', 'queue_len', 'hour', 'slice_type_encoded']
     scaled_seq = preprocessor.scaler.transform(seq_array)
-    
+
     # Build batch (1, 30, 7)
     tensor = torch.tensor([scaled_seq], dtype=torch.float32)
     device = next(model.parameters()).device
@@ -78,7 +78,8 @@ def predict_congestion_5g(model: torch.nn.Module, preprocessor, data: Congestion
         output = model(tensor)
         probability = torch.sigmoid(output).item()
 
-    # Optimal threshold based on findings (using dummy 0.5 for now or fetch from loaded model dict but we just return default)
+    # Optimal threshold based on findings.
+    # For now, keep 0.5 as API default.
     # The actual API threshold could be injected alongside model, but let's assume 0.5.
     alert = probability > 0.5
 
