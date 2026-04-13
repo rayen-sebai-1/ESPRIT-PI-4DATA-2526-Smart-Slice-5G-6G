@@ -30,6 +30,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # PyTorch Dataset Definition
 # ---------------------------------------------------------------------------
 
+
 class CongestionDataset(Dataset):
     def __init__(self, X, y):
         self.X = torch.FloatTensor(X)
@@ -44,6 +45,7 @@ class CongestionDataset(Dataset):
 # ---------------------------------------------------------------------------
 # Model Architecture & Loss
 # ---------------------------------------------------------------------------
+
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=0.75, gamma=2.0):
@@ -112,6 +114,7 @@ class LSTMClassifier(nn.Module):
 # ---------------------------------------------------------------------------
 # Training Pipeline
 # ---------------------------------------------------------------------------
+
 
 def fit_epoch(model, dataloader, criterion, optimizer):
     model.train()
