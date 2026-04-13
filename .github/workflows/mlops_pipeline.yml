@@ -11,58 +11,90 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Set up Python
-      - name: Set up Python 3.10
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
-      # 3. Install dependencies
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      # 4. Lint with flake8
       - name: Lint (flake8)
         run: flake8 src/ tests/ --max-line-length=120
 
-      # 5. Security scan with bandit
       - name: Security scan (bandit)
         run: bandit -r src/ -ll
 
-      # 6. Data validation
-      - name: Preprocess & validate data
+      - name: Preprocess and validate base 6G data
         run: |
           python src/data/preprocess_6g.py
           python src/data/validate.py
 
-      # 7. Unit & functional tests
-      - name: Run pytest
+      - name: Preprocess and validate congestion-5g data
+        run: |
+          python src/data/preprocess_congestion_5g.py
+          python src/data/validate_congestion_5g.py
+
+      - name: Preprocess and validate SLA-5G data
+        run: |
+          python src/data/preprocess_sla_5g.py
+          python src/data/validate_sla_5g.py
+
+      - name: Preprocess and validate slice-type-5g data
+        run: |
+          python src/data/preprocess_slice_type_5g.py
+          python src/data/validate_slice_type_5g.py
+
+      - name: Preprocess and validate SLA-6G data
+        run: |
+          python src/data/preprocess_sla_6g.py
+          python src/data/validate_sla_6g.py
+
+      - name: Preprocess and validate slice-type-6g data
+        run: |
+          python src/data/preprocess_slice_type_6g.py
+          python src/data/validate_slice_type_6g.py
+
+      - name: Run unit and API tests
         run: pytest tests/ -v --ignore=tests/test_model_quality.py
 
-      # 8. Train congestion model + quality gate
-      - name: Train congestion LSTM
+      - name: Train congestion-6g LSTM
         run: python src/models/train_congestion_6g.py
 
-      - name: Quality gate – congestion (val_mae < 5.0)
+      - name: Quality gate - congestion-6g (val_mae < 5.0)
         run: pytest tests/test_model_quality.py::TestModelQualityGates::test_congestion_6g_lstm_val_mae -v
 
-      # 9. SLA model pipeline
-      - name: Preprocess SLA data
-        run: python src/data/preprocess_sla_5g.py
+      - name: Train congestion-5g LSTM
+        run: python src/models/train_congestion_5g.py
 
-      - name: Validate SLA data
-        run: python src/data/validate_sla_5g.py
-
-      - name: Train SLA XGBoost
+      - name: Train SLA-5G XGBoost
         run: python src/models/train_sla_5g.py
 
-      - name: Quality gate – SLA (val_roc_auc >= 0.75)
+      - name: Quality gate - SLA-5G (val_roc_auc >= 0.75)
         run: pytest tests/test_model_quality.py::TestModelQualityGates::test_sla_roc_auc -v
 
-      # 10. Build Docker image
+      - name: Train slice-type-5g LightGBM
+        run: python src/models/train_slice_type_5g.py
+
+      - name: Quality gate - slice-type-5g (val_accuracy >= 0.80)
+        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_slice_type_5g_accuracy -v
+
+      - name: Train slice-type-6g XGBoost
+        run: python src/models/train_slice_type_6g.py
+
+      - name: Quality gate - slice-type-6g (val_accuracy >= 0.80)
+        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_slice_type_6g_accuracy -v
+
+      - name: Train SLA-6G XGBoost
+        run: python src/models/train_sla_6g.py
+
+      - name: Quality gate - SLA-6G (val_roc_auc >= 0.75)
+        run: pytest tests/test_model_quality.py::TestModelQualityGates::test_sla_6g_roc_auc -v
+
       - name: Build Docker image
         run: docker build -t smart-slice-api .

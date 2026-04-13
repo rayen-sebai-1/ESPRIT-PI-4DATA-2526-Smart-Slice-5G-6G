@@ -2,18 +2,6 @@ name: smart-slice-5g-6g
 conda_env: conda.yaml
 
 entry_points:
-  train_slice_5g:
-    parameters:
-      n_estimators: {type: int, default: 100}
-      max_depth: {type: int, default: 6}
-    command: "python src/models/train_slice_5g.py --n_estimators {n_estimators} --max_depth {max_depth}"
-
-  train_slice_6g:
-    parameters:
-      n_estimators: {type: int, default: 100}
-      max_depth: {type: int, default: 6}
-    command: "python src/models/train_slice_6g.py --n_estimators {n_estimators} --max_depth {max_depth}"
-
   train_sla_5g:
     parameters:
       n_estimators: {type: int, default: 200}
@@ -28,8 +16,23 @@ entry_points:
       learning_rate: {type: float, default: 0.001}
     command: "python src/models/train_congestion_6g.py"
 
-  train_anomaly:
+  train_slice_type_5g:
     parameters:
-      n_estimators: {type: int, default: 100}
-      contamination: {type: float, default: 0.1}
-    command: "python src/models/train_anomaly.py --n_estimators {n_estimators} --contamination {contamination}"
+      n_estimators: {type: int, default: 20}
+      learning_rate: {type: float, default: 0.05}
+      max_depth: {type: int, default: 3}
+      colsample_bytree: {type: float, default: 0.33}
+      reg_lambda: {type: float, default: 15.0}
+    command: "python src/models/train_slice_type_5g.py --n_estimators {n_estimators} --learning_rate {learning_rate} --max_depth {max_depth} --colsample_bytree {colsample_bytree} --reg_lambda {reg_lambda}"
+
+  train_slice_type_6g:
+    command: "python src/models/train_slice_type_6g.py"
+
+  train_sla_6g:
+    parameters:
+      n_estimators: {type: int, default: 300}
+      learning_rate: {type: float, default: 0.05}
+      max_depth: {type: int, default: 6}
+      subsample: {type: float, default: 0.8}
+      colsample_bytree: {type: float, default: 0.8}
+    command: "python src/models/train_sla_6g.py --n_estimators {n_estimators} --learning_rate {learning_rate} --max_depth {max_depth} --subsample {subsample} --colsample_bytree {colsample_bytree}"

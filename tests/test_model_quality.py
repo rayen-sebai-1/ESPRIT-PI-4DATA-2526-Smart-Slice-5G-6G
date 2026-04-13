@@ -7,8 +7,10 @@ THRESHOLDS = {
     "congestion-forecast-6g": {"val_mae": 5.0},  # LSTM – primary gate
     "slice-selection-5g": {"val_accuracy": 0.80},
     "slice-selection-6g": {"val_accuracy": 0.80},
+    "slice-type-5g": {"val_accuracy": 0.80},
+    "slice-type-6g": {"val_accuracy": 0.80},
     "sla-adherence-5g": {"val_roc_auc": 0.75},
-    "anomaly-detection": {"val_f1": 0.70},
+    "sla-adherence-6g": {"val_roc_auc": 0.75},
 }
 
 
@@ -77,11 +79,41 @@ class TestModelQualityGates:
         assert val_auc is not None
         assert val_auc >= THRESHOLDS[exp]["val_roc_auc"]
 
-    def test_anomaly_f1(self):
-        exp = "anomaly-detection"
+    def test_slice_type_5g_accuracy(self):
+        """val_accuracy for the Slice-Type-5G LightGBM must be >= 0.80."""
+        exp = "slice-type-5g"
         run = _get_latest_run(exp)
         if run is None:
             pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_f1 = run.data.metrics.get("val_f1")
-        assert val_f1 is not None
-        assert val_f1 >= THRESHOLDS[exp]["val_f1"]
+        val_acc = run.data.metrics.get("val_accuracy")
+        assert val_acc is not None, "val_accuracy metric not logged."
+        threshold = THRESHOLDS[exp]["val_accuracy"]
+        assert val_acc >= threshold, (
+            f"Quality gate failed: val_accuracy={val_acc:.4f} < threshold={threshold}"
+        )
+
+    def test_slice_type_6g_accuracy(self):
+        """val_accuracy for the Slice-Type-6G XGBoost must be >= 0.80."""
+        exp = "slice-type-6g"
+        run = _get_latest_run(exp)
+        if run is None:
+            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
+        val_acc = run.data.metrics.get("val_accuracy")
+        assert val_acc is not None, "val_accuracy metric not logged."
+        threshold = THRESHOLDS[exp]["val_accuracy"]
+        assert val_acc >= threshold, (
+            f"Quality gate failed: val_accuracy={val_acc:.4f} < threshold={threshold}"
+        )
+
+    def test_sla_6g_roc_auc(self):
+        """val_roc_auc for the SLA-6G XGBoost must be >= 0.75."""
+        exp = "sla-adherence-6g"
+        run = _get_latest_run(exp)
+        if run is None:
+            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
+        val_auc = run.data.metrics.get("val_roc_auc")
+        assert val_auc is not None, "val_roc_auc metric not logged."
+        threshold = THRESHOLDS[exp]["val_roc_auc"]
+        assert val_auc >= threshold, (
+            f"Quality gate failed: val_roc_auc={val_auc:.4f} < threshold={threshold}"
+        )
