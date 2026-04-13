@@ -88,6 +88,7 @@ def predict_congestion_5g(model: torch.nn.Module, preprocessor, data: Congestion
         congestion_alert=alert,
     )
 
+
 # =============================================================================
 # Slice selection (stub)
 # =============================================================================

@@ -14,6 +14,7 @@ PROCESSED_NPZ = "data/processed/congestion_5g_processed.npz"
 EXPECTED_FEATURES = 7
 SEQ_LENGTH = 30
 
+
 def validate() -> bool:
     errors = []
 
@@ -57,6 +58,7 @@ def validate() -> bool:
     print("[PASS] All Congestion 5G data validation checks passed.")
     print(f"       Train shape: {X_train.shape}, Val shape: {X_val.shape}")
     return True
+
 
 if __name__ == "__main__":
     ok = validate()

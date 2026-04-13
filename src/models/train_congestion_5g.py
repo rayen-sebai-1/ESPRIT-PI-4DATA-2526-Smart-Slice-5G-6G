@@ -29,6 +29,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # ---------------------------------------------------------------------------
 # PyTorch Dataset Definition
 # ---------------------------------------------------------------------------
+
 class CongestionDataset(Dataset):
     def __init__(self, X, y):
         self.X = torch.FloatTensor(X)
@@ -43,6 +44,7 @@ class CongestionDataset(Dataset):
 # ---------------------------------------------------------------------------
 # Model Architecture & Loss
 # ---------------------------------------------------------------------------
+
 class FocalLoss(nn.Module):
     def __init__(self, alpha=0.75, gamma=2.0):
         super(FocalLoss, self).__init__()
@@ -56,6 +58,7 @@ class FocalLoss(nn.Module):
         pt = torch.exp(-BCE_loss)
         F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
         return F_loss.mean()
+
 
 class LSTMClassifier(nn.Module):
     def __init__(self, input_dim, hidden_dim=64, num_layers=2, dropout=0.3, bidirectional=True):
@@ -109,6 +112,7 @@ class LSTMClassifier(nn.Module):
 # ---------------------------------------------------------------------------
 # Training Pipeline
 # ---------------------------------------------------------------------------
+
 def fit_epoch(model, dataloader, criterion, optimizer):
     model.train()
     total_loss = 0
@@ -122,6 +126,7 @@ def fit_epoch(model, dataloader, criterion, optimizer):
         optimizer.step()
         total_loss += loss.item()
     return total_loss / len(dataloader)
+
 
 def evaluate(model, dataloader, criterion):
     model.eval()
@@ -146,6 +151,7 @@ def evaluate(model, dataloader, criterion):
 
     return avg_loss, auc
 
+
 def find_optimal_threshold(probs, labels):
     from sklearn.metrics import roc_curve
     if len(np.unique(labels)) <= 1:
@@ -154,6 +160,7 @@ def find_optimal_threshold(probs, labels):
     youden_j = tpr - fpr
     optimal_idx = np.argmax(youden_j)
     return thresholds[optimal_idx]
+
 
 def train():
     if not os.path.exists(PROCESSED_NPZ):
@@ -280,6 +287,7 @@ def train():
             print(f"Failed to trace model: {e}")
 
         print(f"[INFO] Final model saved to {MODEL_PATH}")
+
 
 if __name__ == "__main__":
     train()

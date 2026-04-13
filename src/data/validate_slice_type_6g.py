@@ -12,6 +12,7 @@ import numpy as np
 
 NPZ_PATH = "data/processed/slice_type_6g_processed.npz"
 
+
 def validate_data():
     """Validates the processed 6G Slice Type data arrays."""
     try:
@@ -24,7 +25,6 @@ def validate_data():
     y_train = data.get("y_train")
     X_test = data.get("X_test")
     y_test = data.get("y_test")
-    feature_names = data.get("feature_names")
     classes = data.get("classes")
 
     errors = []
@@ -68,6 +68,7 @@ def validate_data():
         sys.exit(1)
 
     print("[INFO] Data validation passed successfully.")
+
 
 if __name__ == "__main__":
     validate_data()

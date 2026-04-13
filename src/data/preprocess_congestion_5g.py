@@ -31,6 +31,7 @@ PREPROCESSOR_PATH = os.path.join(PROCESSED_DIR, "preprocessor_congestion_5g.pkl"
 SEQ_LENGTH = 30
 TARGET = "congestion_flag"
 
+
 def slice_wise_temporal_split(df, train_ratio=0.6, val_ratio=0.2):
     """Split data by slice_id, maintaining temporal order within each slice."""
     train_dfs, val_dfs, test_dfs = [], [], []
@@ -46,6 +47,7 @@ def slice_wise_temporal_split(df, train_ratio=0.6, val_ratio=0.2):
         test_dfs.append(slice_df.iloc[val_end:])
 
     return pd.concat(train_dfs), pd.concat(val_dfs), pd.concat(test_dfs)
+
 
 class CongestionPreprocessor:
     """Preprocesses raw frames into scaled sequences."""

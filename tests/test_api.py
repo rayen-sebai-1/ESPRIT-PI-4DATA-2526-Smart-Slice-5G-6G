@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 def _get_client():
     """Return a TestClient that bypasses the startup model loading."""
     # Patch the startup event so we don't need a running MLflow server

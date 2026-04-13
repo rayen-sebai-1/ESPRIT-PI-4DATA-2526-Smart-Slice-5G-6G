@@ -98,7 +98,6 @@ def train(
     X_test = data["X_test"]
     y_test = data["y_test"]
     feature_names = list(data["feature_names"])
-    raw_classes = list(data["classes"])  # original label values before encoding
 
     # Load label encoder to decode predictions back to original labels
     if not os.path.exists(LABEL_ENCODER_PATH):

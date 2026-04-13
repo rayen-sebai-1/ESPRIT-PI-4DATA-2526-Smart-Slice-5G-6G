@@ -37,6 +37,7 @@ class Congestion6GOutput(BaseModel):
         description="True when the forecast exceeds the 0.75 normalised-CPU threshold.",
     )
 
+
 # =============================================================================
 # Congestion (5G LSTM)
 # =============================================================================

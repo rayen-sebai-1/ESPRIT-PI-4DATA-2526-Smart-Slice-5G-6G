@@ -17,10 +17,12 @@ import shap
 NPZ_PATH = os.path.join("data", "processed", "slice_type_6g_processed.npz")
 MLFLOW_EXPERIMENT_NAME = "slice-type-6g"
 
+
 def check_existing_runs():
     """Fail if an MLflow run is already active strictly."""
     if mlflow.active_run():
         mlflow.end_run()
+
 
 def get_or_create_experiment(experiment_name: str) -> str:
     """Gets the experiment ID or creates a new experiment if it doesn't exist."""
@@ -32,6 +34,7 @@ def get_or_create_experiment(experiment_name: str) -> str:
         return experiment_id
     print(f"Using existing experiment '{experiment_name}' with ID: {experiment.experiment_id}")
     return experiment.experiment_id
+
 
 def main():
     print("-" * 50)
@@ -133,6 +136,7 @@ def main():
     print("-" * 50)
     print("Training Pipeline Complete.")
     print("-" * 50)
+
 
 if __name__ == "__main__":
     main()
