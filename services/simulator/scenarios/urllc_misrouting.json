@@ -1,0 +1,21 @@
+{
+  "scenario_id": "urllc_misrouting",
+  "description": "URLLC slices misrouted through central core UPF instead of edge UPF",
+  "duration_sec": 1800,
+  "traffic_modifier": 1.0,
+  "faults": [
+    {
+      "fault_type": "slice_misrouting",
+      "duration_sec": 1800,
+      "affected_entities": ["slice-urllc-01-01", "slice-urllc-01-02", "slice-urllc-02-01", "slice-urllc-02-02"],
+      "severity": 3,
+      "kpi_impacts": {
+        "misrouting_ratio": 0.9,
+        "extra_gbps": 1.5,
+        "latency_ms_added": 15.0,
+        "packet_loss": 0.003
+      }
+    }
+  ],
+  "notes": "URLLC traffic sent through wrong UPF path. Latency breaches URLLC SLA. Core UPF load rises unexpectedly. Edge UPF traffic drops. Misrouting score rises."
+}

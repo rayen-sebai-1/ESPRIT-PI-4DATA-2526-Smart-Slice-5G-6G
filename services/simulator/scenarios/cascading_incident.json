@@ -1,0 +1,58 @@
+{
+  "scenario_id": "cascading_incident",
+  "description": "Multi-layer cascading failure: RAN congestion triggers edge overload, AMF signaling degrades, URLLC misrouted",
+  "duration_sec": 3600,
+  "traffic_modifier": 1.5,
+  "faults": [
+    {
+      "fault_type": "ran_congestion",
+      "duration_sec": 3600,
+      "affected_entities": ["gnb-01", "gnb-02"],
+      "severity": 4,
+      "kpi_impacts": {
+        "congestion": 0.75,
+        "latency_mult": 3.0
+      }
+    },
+    {
+      "fault_type": "edge_overload",
+      "duration_sec": 2400,
+      "affected_entities": ["edge-comp-01", "mec-app-01"],
+      "severity": 3,
+      "kpi_impacts": {
+        "overload": 0.6,
+        "latency_mult": 3.5
+      }
+    },
+    {
+      "fault_type": "amf_degradation",
+      "duration_sec": 1800,
+      "affected_entities": ["amf-01"],
+      "severity": 3,
+      "kpi_impacts": {
+        "degradation": 0.4,
+        "cpu_spike": 0.3
+      }
+    },
+    {
+      "fault_type": "slice_misrouting",
+      "duration_sec": 1800,
+      "affected_entities": ["slice-urllc-01-01", "slice-urllc-02-01"],
+      "severity": 3,
+      "kpi_impacts": {
+        "misrouting_ratio": 0.8,
+        "extra_gbps": 1.0
+      }
+    },
+    {
+      "fault_type": "packet_loss_spike",
+      "duration_sec": 900,
+      "affected_entities": ["core-upf-01"],
+      "severity": 4,
+      "kpi_impacts": {
+        "packet_loss": 0.08
+      }
+    }
+  ],
+  "notes": "Full cascading incident. All domains affected. Visible in Grafana as simultaneous alert on all panels."
+}

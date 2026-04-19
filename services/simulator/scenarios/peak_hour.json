@@ -1,0 +1,19 @@
+{
+  "scenario_id": "peak_hour",
+  "description": "Peak hour congestion — RAN overloaded, core UPF queue rising",
+  "duration_sec": 3600,
+  "traffic_modifier": 1.8,
+  "faults": [
+    {
+      "fault_type": "ran_congestion",
+      "duration_sec": 3600,
+      "affected_entities": ["gnb-01", "gnb-02"],
+      "severity": 3,
+      "kpi_impacts": {
+        "congestion": 0.6,
+        "latency_mult": 2.5
+      }
+    }
+  ],
+  "notes": "Traffic at 1.8x baseline. RAN cells saturate, core UPF queue grows, latency spikes."
+}

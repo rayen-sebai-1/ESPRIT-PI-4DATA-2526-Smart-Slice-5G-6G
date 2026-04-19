@@ -1,0 +1,8 @@
+{
+  "scenario_id": "normal_day",
+  "description": "Typical weekday traffic with morning/evening peaks",
+  "duration_sec": 86400,
+  "traffic_modifier": 1.0,
+  "faults": [],
+  "notes": "Baseline scenario — no injected faults. KPIs vary with daily sinusoidal pattern."
+}

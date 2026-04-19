@@ -1,0 +1,20 @@
+{
+  "scenario_id": "edge_degradation",
+  "description": "Edge compute node overloads, MEC app latency spikes, edge UPF queue fills",
+  "duration_sec": 2400,
+  "traffic_modifier": 1.0,
+  "faults": [
+    {
+      "fault_type": "edge_overload",
+      "duration_sec": 2400,
+      "affected_entities": ["edge-comp-01", "mec-app-01", "edge-upf-01"],
+      "severity": 3,
+      "kpi_impacts": {
+        "overload": 0.7,
+        "latency_mult": 4.0,
+        "packet_loss": 0.01
+      }
+    }
+  ],
+  "notes": "Edge compute saturates. MEC app response time rises > 100ms. Edge UPF packet loss visible. Core UPF takes compensating load."
+}
