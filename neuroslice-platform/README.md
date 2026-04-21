@@ -251,13 +251,28 @@ The `aiops-tier` implements online inference services for the Docker Compose run
 - The runtime AIOps tier is designed for Scenario B (Docker Compose PoC).
 - Kubernetes/Istio deployment concerns are intentionally out of scope for this stage.
 
+### Runtime model loading
+
+- `congestion-detector` loads:
+  - `/mlops/models/congestion_5g_lstm_traced.pt`
+  - `/mlops/data/processed/preprocessor_congestion_5g.pkl`
+- `slice-classifier` loads latest local registry metadata for `slice-type-lgbm-5g` from:
+  - `/mlops/mlflow.db`
+  - `/mlops/mlruns/.../model.pkl`
+  - `/mlops/data/processed/label_encoder_slice_type_5g.pkl`
+- `sla-assurance` loads latest local registry metadata for `sla-xgboost-5g` from:
+  - `/mlops/mlflow.db`
+  - `/mlops/mlruns/.../model.ubj`
+  - `/mlops/data/processed/scaler_sla_5g.pkl`
+- If model artifacts are unavailable, services continue running with heuristic fallback inference and explicit warning logs.
+
 ## 8) Runtime AIOps Output Contracts
 
 The runtime AIOps tier emits derived events and state updates based on normalized telemetry.
 
 ### Kafka / stream outputs
 
-Suggested outputs include:
+Implemented outputs include:
 
 - `events.anomaly`
 - `events.sla`
@@ -302,6 +317,13 @@ Service: `api-dashboard-tier/api-bff-service/main.py`
 
 - `GET /api/v1/stream/kpis` (Server-Sent Events from `stream:norm.telemetry`)
 
+### Runtime AIOps query endpoints
+
+- `GET /api/v1/aiops/congestion/latest`
+- `GET /api/v1/aiops/sla/latest`
+- `GET /api/v1/aiops/slice-classification/latest`
+- `GET /api/v1/aiops/events/recent` (`stream` query supports `events.anomaly`, `events.sla`, `events.slice.classification`)
+
 ### Scenario/fault proxy endpoints (to fault-engine)
 
 - `GET /api/v1/faults/active`
@@ -323,17 +345,24 @@ Service: `api-dashboard-tier/api-bff-service/main.py`
 - `stream:raw.netconf`
 - `stream:norm.telemetry`
 - `stream:fault.events`
+- `events.anomaly`
+- `events.sla`
+- `events.slice.classification`
 
 ### Redis hashes/keys
 
 - `faults:active` (active fault JSON objects)
 - `entity:{entity_id}` (latest canonicalized state snapshot)
 - `ran:congestion_score`, `core:active_ues`, `edge:saturation`, `edge:misrouting_ratio`
+- `aiops:congestion:{entity_id}`
+- `aiops:sla:{entity_id}`
+- `aiops:slice_classification:{entity_id}`
 
 ### Kafka
 
 - broker: `kafka:9092` inside compose network
 - topic: `telemetry-norm`
+- topics (runtime AIOps outputs): `events.anomaly`, `events.sla`, `events.slice.classification`
 
 ### InfluxDB
 
@@ -344,6 +373,9 @@ Service: `api-dashboard-tier/api-bff-service/main.py`
 - measurement `faults`:
   - aggregate `active_count`
   - per-fault severity/status and tags
+- measurement `aiops_congestion`: runtime congestion score/prediction outputs
+- measurement `aiops_sla`: runtime SLA risk outputs
+- measurement `aiops_slice_classification`: runtime slice classification outputs
 
 ## 11) Observability
 
@@ -372,6 +404,9 @@ File: `infrastructure/.env.example`
 | `SIM_SPEED` | simulated seconds per real second | `60.0` |
 | `REDIS_PORT` | host-mapped Redis port | `6379` |
 | `STREAM_MAXLEN` | Redis stream retention maxlen | `10000` |
+| `CONGESTION_THRESHOLD` | congestion anomaly threshold for runtime inference | `0.5` |
+| `SLICE_MISMATCH_CONFIDENCE_THRESHOLD` | confidence threshold for slice mismatch severity | `0.8` |
+| `SLA_RISK_THRESHOLD` | SLA risk threshold (`sla_at_risk` cutover) | `0.5` |
 | `API_PORT` | host API/BFF port | `8000` |
 | `VES_PORT` | host adapter-ves port | `7001` |
 | `NETCONF_PORT` | host adapter-netconf port | `7002` |
@@ -386,6 +421,15 @@ Additional static defaults currently hardcoded in compose:
 
 - InfluxDB init user/password/token/org/bucket
 - Kafka host listener mapping `localhost:29092`
+- AIOps model and preprocessing mounts via `/mlops`:
+  - `CONGESTION_MODEL_PATH=/mlops/models/congestion_5g_lstm_traced.pt`
+  - `CONGESTION_PREPROCESSOR_PATH=/mlops/data/processed/preprocessor_congestion_5g.pkl`
+  - `SLICE_MODEL_NAME=slice-type-lgbm-5g`
+  - `SLICE_LABEL_ENCODER_PATH=/mlops/data/processed/label_encoder_slice_type_5g.pkl`
+  - `SLA_MODEL_NAME=sla-xgboost-5g`
+  - `SLA_SCALER_PATH=/mlops/data/processed/scaler_sla_5g.pkl`
+  - `MLFLOW_DB_PATH=/mlops/mlflow.db`
+  - `MLRUNS_DIR=/mlops/mlruns`
 
 ## 13) Quick Start (Simulation + API + Observability)
 
@@ -404,6 +448,15 @@ curl http://localhost:8000/health
 curl http://localhost:7004/health
 curl http://localhost:7001/health
 curl http://localhost:7002/health
+```
+
+After ~30-60 seconds of telemetry flow, runtime AIOps outputs can be queried from API/BFF:
+
+```bash
+curl "http://localhost:8000/api/v1/aiops/congestion/latest?limit=20"
+curl "http://localhost:8000/api/v1/aiops/sla/latest?limit=20"
+curl "http://localhost:8000/api/v1/aiops/slice-classification/latest?limit=20"
+curl "http://localhost:8000/api/v1/aiops/events/recent?stream=events.anomaly&count=50"
 ```
 
 Useful URLs:
@@ -470,6 +523,10 @@ curl -N http://localhost:8000/api/v1/stream/kpis
 | `/api/v1/kpis/recent` | GET | query: `minutes`, `count` | events from `stream:norm.telemetry` |
 | `/api/v1/kpis/entity/{entity_id}` | GET | path: `entity_id` | single entity latest state |
 | `/api/v1/stream/kpis` | GET | none | SSE stream of canonical telemetry events |
+| `/api/v1/aiops/congestion/latest` | GET | query: `limit` | latest runtime congestion outputs from `aiops:congestion:*` |
+| `/api/v1/aiops/sla/latest` | GET | query: `limit` | latest runtime SLA outputs from `aiops:sla:*` |
+| `/api/v1/aiops/slice-classification/latest` | GET | query: `limit` | latest runtime slice-classification outputs from `aiops:slice_classification:*` |
+| `/api/v1/aiops/events/recent` | GET | query: `stream`, `count` | recent runtime output events from AIOps streams |
 | `/api/v1/faults/active` | GET | none | proxy response from fault-engine |
 | `/api/v1/scenarios/start` | POST | JSON `{ \"scenario_id\": \"...\" }` | scenario start status |
 | `/api/v1/scenarios/stop` | POST | none | scenario stop status |
@@ -650,8 +707,35 @@ neuroslice-platform/
 │   └── telemetry-exporter/
 ├── aiops-tier/
 │   ├── congestion-detector/
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── consumer.py
+│   │   ├── inference.py
+│   │   ├── model_loader.py
+│   │   ├── publisher.py
+│   │   ├── schemas.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
 │   ├── slice-classifier/
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── consumer.py
+│   │   ├── inference.py
+│   │   ├── model_loader.py
+│   │   ├── publisher.py
+│   │   ├── schemas.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
 │   ├── sla-assurance/
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── consumer.py
+│   │   ├── inference.py
+│   │   ├── model_loader.py
+│   │   ├── publisher.py
+│   │   ├── schemas.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
 │   └── misrouting-detector/     (deferred / not implemented)
 ├── api-dashboard-tier/
 │   ├── api-bff-service/

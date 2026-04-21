@@ -120,6 +120,156 @@ services:
       redis:
         condition: service_healthy
 
+  # ── AIOps Runtime Tier ─────────────────────────────────────────────────────
+
+  congestion-detector:
+    build:
+      context: ..
+      dockerfile: aiops-tier/congestion-detector/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ../mlops-tier/batch-orchestrator:/mlops:ro
+    environment:
+      SERVICE_NAME: congestion-detector
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SITE_ID: ${SITE_ID:-TT-SFAX-02}
+      INPUT_STREAM: stream:norm.telemetry
+      OUTPUT_STREAM: events.anomaly
+      CONSUMER_GROUP: aiops-congestion-group
+      CONSUMER_NAME: congestion-detector-01
+      KAFKA_ENABLED: "true"
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC: events.anomaly
+      INFLUXDB_ENABLED: "true"
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: neuroslice_token_12345
+      INFLUXDB_ORG: neuroslice
+      INFLUXDB_BUCKET: telemetry
+      INFLUX_MEASUREMENT: aiops_congestion
+      STATE_PREFIX: aiops:congestion
+      CONGESTION_MODEL_PATH: /mlops/models/congestion_5g_lstm_traced.pt
+      CONGESTION_PREPROCESSOR_PATH: /mlops/data/processed/preprocessor_congestion_5g.pkl
+      CONGESTION_THRESHOLD: ${CONGESTION_THRESHOLD:-0.5}
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      normalizer:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import os,redis; redis.Redis(host=os.environ.get('REDIS_HOST','redis'), port=int(os.environ.get('REDIS_PORT','6379')), decode_responses=True).ping()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  slice-classifier:
+    build:
+      context: ..
+      dockerfile: aiops-tier/slice-classifier/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ../mlops-tier/batch-orchestrator:/mlops:ro
+    environment:
+      SERVICE_NAME: slice-classifier
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SITE_ID: ${SITE_ID:-TT-SFAX-02}
+      INPUT_STREAM: stream:norm.telemetry
+      OUTPUT_STREAM: events.slice.classification
+      CONSUMER_GROUP: aiops-slice-group
+      CONSUMER_NAME: slice-classifier-01
+      KAFKA_ENABLED: "true"
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC: events.slice.classification
+      INFLUXDB_ENABLED: "true"
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: neuroslice_token_12345
+      INFLUXDB_ORG: neuroslice
+      INFLUXDB_BUCKET: telemetry
+      INFLUX_MEASUREMENT: aiops_slice_classification
+      STATE_PREFIX: aiops:slice_classification
+      SLICE_MODEL_NAME: slice-type-lgbm-5g
+      MLFLOW_DB_PATH: /mlops/mlflow.db
+      MLRUNS_DIR: /mlops/mlruns
+      SLICE_LABEL_ENCODER_PATH: /mlops/data/processed/label_encoder_slice_type_5g.pkl
+      SLICE_MISMATCH_CONFIDENCE_THRESHOLD: ${SLICE_MISMATCH_CONFIDENCE_THRESHOLD:-0.8}
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      normalizer:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import os,redis; redis.Redis(host=os.environ.get('REDIS_HOST','redis'), port=int(os.environ.get('REDIS_PORT','6379')), decode_responses=True).ping()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  sla-assurance:
+    build:
+      context: ..
+      dockerfile: aiops-tier/sla-assurance/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ../mlops-tier/batch-orchestrator:/mlops:ro
+    environment:
+      SERVICE_NAME: sla-assurance
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SITE_ID: ${SITE_ID:-TT-SFAX-02}
+      INPUT_STREAM: stream:norm.telemetry
+      OUTPUT_STREAM: events.sla
+      CONSUMER_GROUP: aiops-sla-group
+      CONSUMER_NAME: sla-assurance-01
+      KAFKA_ENABLED: "true"
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC: events.sla
+      INFLUXDB_ENABLED: "true"
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: neuroslice_token_12345
+      INFLUXDB_ORG: neuroslice
+      INFLUXDB_BUCKET: telemetry
+      INFLUX_MEASUREMENT: aiops_sla
+      STATE_PREFIX: aiops:sla
+      SLA_MODEL_NAME: sla-xgboost-5g
+      MLFLOW_DB_PATH: /mlops/mlflow.db
+      MLRUNS_DIR: /mlops/mlruns
+      SLA_SCALER_PATH: /mlops/data/processed/scaler_sla_5g.pkl
+      SLA_RISK_THRESHOLD: ${SLA_RISK_THRESHOLD:-0.5}
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      normalizer:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import os,redis; redis.Redis(host=os.environ.get('REDIS_HOST','redis'), port=int(os.environ.get('REDIS_PORT','6379')), decode_responses=True).ping()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # ── Fault Engine ──────────────────────────────────────────────────────────
 
   fault-engine:
@@ -214,6 +364,12 @@ services:
       FAULT_ENGINE_URL: http://fault-engine:7004
     depends_on:
       normalizer:
+        condition: service_started
+      congestion-detector:
+        condition: service_started
+      slice-classifier:
+        condition: service_started
+      sla-assurance:
         condition: service_started
       fault-engine:
         condition: service_started
