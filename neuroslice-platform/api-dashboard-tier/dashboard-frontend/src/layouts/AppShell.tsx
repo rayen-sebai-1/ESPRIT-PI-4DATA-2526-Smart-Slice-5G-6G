@@ -14,10 +14,8 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-white">
-      <div className="fixed inset-0 -z-20 bg-network-glow opacity-100" />
-      <div className="fixed inset-0 -z-10 bg-network-grid bg-[size:26px_26px] opacity-30" />
-      <Sidebar role={user.role} open={sidebarOpen} onToggle={() => setSidebarOpen((value) => !value)} />
+    <div className="min-h-screen bg-background text-ink theme-transition">
+      <Sidebar role={user.role} open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
       <div className="relative lg:pl-72">
         <Topbar user={user} onLogout={logout} />
         <main className="px-4 py-6 md:px-8 md:py-8">

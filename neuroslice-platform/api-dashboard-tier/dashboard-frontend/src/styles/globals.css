@@ -2,9 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── ORION Design Tokens ─────────────────────────────────────────────────── */
+
 :root {
+  /* Light mode */
+  --bg: #FDFAF5;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  --card-alt: #F8F3EC;
+  --border: #E8DDD0;
+  --accent: #E5C38E;
+  --accent-soft: #FDF3E3;
+  --accent-blue: #A8C9E3;
+  --accent-blue-soft: #EAF4FB;
+  --ink: #0D0906;
+  --ink-secondary: #3A3028;
+  --muted: #7A6E64;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #000000;
+  --surface: #0C0C0C;
+  --card: #131313;
+  --card-alt: #1C1C1C;
+  --border: #2A2A2A;
+  --accent: #E5C38E;
+  --accent-soft: #221A06;
+  --accent-blue: #A8C9E3;
+  --accent-blue-soft: #0A1820;
+  --ink: #FFFFFF;
+  --ink-secondary: #C8C4C0;
+  --muted: #8A8280;
   color-scheme: dark;
 }
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
 
 html {
   scroll-behavior: smooth;
@@ -21,11 +54,23 @@ body {
     -apple-system,
     BlinkMacSystemFont,
     sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  transition: background 0.25s ease, color 0.2s ease;
+}
+
+/* Dark body background: rich black with subtle radial accents */
+.dark body,
+body:where(.dark *) {
   background:
-    radial-gradient(circle at top left, rgba(78, 195, 255, 0.18), transparent 24%),
-    radial-gradient(circle at 85% 10%, rgba(52, 211, 153, 0.08), transparent 18%),
-    linear-gradient(180deg, #07101c 0%, #091321 100%);
-  color: #e5f0ff;
+    radial-gradient(circle at 15% 18%, rgba(168,201,227,0.06) 0%, transparent 38%),
+    radial-gradient(circle at 85% 82%, rgba(229,195,142,0.05) 0%, transparent 38%),
+    #000000;
+}
+
+/* Light body background: cool-to-warm gradient */
+:root:not(.dark) body {
+  background: linear-gradient(145deg, #E0F0F8 0%, #FDFAF5 45%, #F4EBD9 100%);
 }
 
 * {
@@ -33,8 +78,8 @@ body {
 }
 
 *::selection {
-  background: rgba(78, 195, 255, 0.22);
-  color: #f8fbff;
+  background: rgba(229, 195, 142, 0.28);
+  color: var(--ink);
 }
 
 #root {
@@ -52,23 +97,80 @@ select {
   font: inherit;
 }
 
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.28);
+  background: var(--border);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.35);
+  background: transparent;
 }
+
+/* ── Panel grid background ───────────────────────────────────────────────── */
 
 .panel-grid {
   background-image:
-    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 28px 28px;
+  background-blend-mode: overlay;
+  opacity: 1;
+}
+.dark .panel-grid {
+  background-image:
+    linear-gradient(rgba(229,195,142,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(229,195,142,0.06) 1px, transparent 1px);
+}
+:root:not(.dark) .panel-grid {
+  background-image:
+    linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+}
+
+/* ── Light-mode overrides for non-refactored page text ───────────────────── */
+/* Ensures pages using hardcoded Tailwind text utilities still look correct   */
+
+html:not(.dark) .text-white {
+  color: var(--ink);
+}
+html:not(.dark) .text-slate-100 {
+  color: var(--ink);
+}
+html:not(.dark) .text-slate-200 {
+  color: var(--ink-secondary);
+}
+html:not(.dark) .text-slate-300 {
+  color: var(--muted);
+}
+html:not(.dark) .text-slate-400 {
+  color: var(--muted);
+}
+
+/* Preserve white text on explicitly colored/dark backgrounds */
+html:not(.dark) .bg-accent .text-white,
+html:not(.dark) [class*="bg-emerald"] .text-white,
+html:not(.dark) [class*="bg-red"] .text-white,
+html:not(.dark) [class*="bg-amber"] .text-white,
+html:not(.dark) .text-emerald-300,
+html:not(.dark) .text-red-200,
+html:not(.dark) .text-red-300,
+html:not(.dark) .text-amber-300 {
+  /* let these through as-is — they sit on colored backgrounds */
+  color: revert;
+}
+
+/* ── Transitions ─────────────────────────────────────────────────────────── */
+
+.theme-transition,
+.theme-transition * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
 }

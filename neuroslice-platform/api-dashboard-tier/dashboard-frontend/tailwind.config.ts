@@ -1,33 +1,40 @@
 import type { Config } from "tailwindcss";
 
 export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        background: "#07101c",
-        surface: "#0c1726",
-        card: "#101d31",
-        cardAlt: "#16253b",
-        border: "#223653",
-        accent: "#4ec3ff",
-        accentSoft: "#12334d",
+        background: "var(--bg)",
+        surface: "var(--surface)",
+        card: "var(--card)",
+        cardAlt: "var(--card-alt)",
+        border: "var(--border)",
+        accent: "var(--accent)",
+        accentSoft: "var(--accent-soft)",
+        accentBlue: "var(--accent-blue)",
+        accentBlueSoft: "var(--accent-blue-soft)",
+        ink: "var(--ink)",
+        inkSecondary: "var(--ink-secondary)",
+        mutedText: "var(--muted)",
         success: "#22c55e",
         warning: "#f59e0b",
         danger: "#ef4444",
         critical: "#991b1b",
-        mutedText: "#94a8c4",
-        ink: "#e5f0ff",
       },
       boxShadow: {
-        glow: "0 22px 54px rgba(4, 10, 19, 0.42)",
-        panel: "0 18px 46px rgba(6, 12, 23, 0.28)",
+        glow: "0 0 32px rgba(229,195,142,0.22), 0 8px 24px rgba(0,0,0,0.28)",
+        panel: "0 2px 24px rgba(0,0,0,0.12)",
+        "panel-light": "0 2px 16px rgba(0,0,0,0.08)",
       },
       backgroundImage: {
         "network-grid":
-          "radial-gradient(circle at 1px 1px, rgba(148,163,184,0.14) 1px, transparent 0)",
-        "network-glow":
-          "radial-gradient(circle at top left, rgba(78,195,255,0.22), transparent 32%), radial-gradient(circle at bottom right, rgba(34,197,94,0.12), transparent 28%)",
+          "radial-gradient(circle at 1px 1px, rgba(229,195,142,0.10) 1px, transparent 0)",
+        "network-glow-dark":
+          "radial-gradient(circle at 15% 20%, rgba(168,201,227,0.07), transparent 35%), radial-gradient(circle at 85% 80%, rgba(229,195,142,0.06), transparent 35%)",
+        "network-glow-light":
+          "radial-gradient(circle at 10% 15%, rgba(168,201,227,0.22), transparent 40%), radial-gradient(circle at 90% 85%, rgba(229,195,142,0.18), transparent 40%)",
       },
     },
   },

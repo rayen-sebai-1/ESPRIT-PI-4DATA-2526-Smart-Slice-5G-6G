@@ -29,16 +29,16 @@ export function KpiCard({
             </p>
             <p className="mt-2 text-sm text-mutedText">{title}</p>
           </div>
-          <p className="text-3xl font-semibold text-white">{value}</p>
-          <p className="text-sm text-slate-300">{subtitle}</p>
+          <p className="text-3xl font-semibold text-ink">{value}</p>
+          <p className="text-sm text-inkSecondary">{subtitle}</p>
         </div>
         <div
           className={cn(
             "rounded-3xl p-3",
-            tone === "neutral" && "bg-white/5 text-slate-100",
-            tone === "accent" && "bg-accentSoft text-accent",
-            tone === "warning" && "bg-amber-500/12 text-amber-300",
-            tone === "danger" && "bg-red-500/12 text-red-300",
+            tone === "neutral" && "bg-cardAlt text-inkSecondary",
+            tone === "accent"  && "bg-accentSoft text-accent",
+            tone === "warning" && "bg-amber-500/12 text-amber-500 dark:text-amber-300",
+            tone === "danger"  && "bg-red-500/12 text-red-500 dark:text-red-300",
           )}
         >
           {icon}
