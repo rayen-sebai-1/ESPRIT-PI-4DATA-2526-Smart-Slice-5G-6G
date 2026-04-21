@@ -8,6 +8,9 @@ MLFLOW_PORT := 5000
 API_PORT := 8000
 DATA_SRC_DIR := src/data
 MODEL_SRC_DIR := src/models
+MLFLOW_TRACKING_URI := sqlite:///mlflow.db
+
+export MLFLOW_TRACKING_URI
 
 .PHONY: setup lint format security quality data data-sla-5g data-sla-6g data-congestion-5g data-slice-type-5g \
         validate-data validate-data-sla-5g validate-data-sla-6g validate-data-congestion-5g validate-data-slice-type-5g \
@@ -51,7 +54,7 @@ data-sla-6g:
 data-congestion-5g:
 	$(PYTHON) $(DATA_SRC_DIR)/preprocess_congestion_5g.py
 
-validate-data:
+validate-data: data
 	$(PYTHON) $(DATA_SRC_DIR)/validate.py
 
 validate-data-sla-5g:
@@ -108,7 +111,7 @@ test:
 # MLflow
 # ------------------------------------------------------------------------------
 mlflow-ui:
-	mlflow ui --port $(MLFLOW_PORT)
+	mlflow ui --port $(MLFLOW_PORT) --backend-store-uri $(MLFLOW_TRACKING_URI)
 
 # ------------------------------------------------------------------------------
 # API

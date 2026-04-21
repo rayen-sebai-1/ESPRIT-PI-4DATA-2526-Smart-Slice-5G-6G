@@ -10,12 +10,22 @@ Prints a validation report and raises ValueError on failure.
 """
 
 import sys
+from pathlib import Path
 import pandas as pd
 
 PROCESSED_PATH = "data/processed/6g_processed.csv"
 REQUIRED_COLUMNS = ["cpu_utilization", "bandwidth_mbps", "congestion_flag"]
 NORMALISED_COLUMNS = ["cpu_utilization", "bandwidth_mbps"]
 MIN_ROW_COUNT = 100
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+
+def _resolve_path(path: str) -> Path:
+    """Resolve a data path relative to the batch-orchestrator root."""
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return BASE_DIR / candidate
 
 
 def validate(path: str = PROCESSED_PATH) -> None:
@@ -35,8 +45,15 @@ def validate(path: str = PROCESSED_PATH) -> None:
     # ------------------------------------------------------------------
     # Load
     # ------------------------------------------------------------------
-    df = pd.read_csv(path)
-    print(f"\n[OK]  Loaded '{path}' – shape: {df.shape}")
+    csv_path = _resolve_path(path)
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Processed dataset not found at '{csv_path}'. "
+            "Run 'make data' (or 'python src/data/preprocess_6g.py') first."
+        )
+
+    df = pd.read_csv(csv_path)
+    print(f"\n[OK]  Loaded '{csv_path}' - shape: {df.shape}")
 
     # ------------------------------------------------------------------
     # 1. Required columns
@@ -102,6 +119,6 @@ def validate(path: str = PROCESSED_PATH) -> None:
 if __name__ == "__main__":
     try:
         validate()
-    except ValueError as exc:
+    except (ValueError, FileNotFoundError) as exc:
         print(exc)
         sys.exit(1)

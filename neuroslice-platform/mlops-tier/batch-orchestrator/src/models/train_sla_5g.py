@@ -37,6 +37,7 @@ EXPERIMENT_NAME = "sla-adherence-5g"
 PROCESSED_NPZ = "data/processed/sla_5g_processed.npz"
 SCALER_PATH = "data/processed/scaler_sla_5g.pkl"
 REGISTERED_MODEL_NAME = "sla-xgboost-5g"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
 
 # Default hyperparameters (matching the notebook)
 DEFAULT_N_ESTIMATORS = 300
@@ -46,6 +47,8 @@ DEFAULT_SUBSAMPLE = 0.8
 DEFAULT_COLSAMPLE_BYTREE = 0.8
 
 RANDOM_STATE = 42
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 
 # ---------------------------------------------------------------------------
