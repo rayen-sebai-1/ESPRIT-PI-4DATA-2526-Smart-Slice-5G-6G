@@ -19,7 +19,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+import os
 import redis
+from aiokafka import AIOKafkaProducer
 
 sys.path.insert(0, "/shared")
 
@@ -40,6 +42,9 @@ cfg = get_config()
 
 CONSUMER_GROUP = "normalizer-group"
 CONSUMER_NAME = "normalizer-01"
+
+KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:9092")
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "telemetry-norm")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -209,7 +214,7 @@ def _normalize_netconf(payload: dict) -> Optional[CanonicalEvent]:
 # Consumer loop
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def consume_loop(r: redis.Redis) -> None:
+async def consume_loop(r: redis.Redis, producer: AIOKafkaProducer) -> None:
     # Setup consumer groups
     ensure_consumer_group(r, cfg.stream_raw_ves, CONSUMER_GROUP)
     ensure_consumer_group(r, cfg.stream_raw_netconf, CONSUMER_GROUP)
@@ -232,7 +237,13 @@ async def consume_loop(r: redis.Redis) -> None:
                     event = normalizer_fn(payload)
                     if event:
                         event_dict = event.model_dump(by_alias=True)
-                        publish_to_stream(r, cfg.stream_norm_telemetry, {"event": json.dumps(event_dict)})
+                        event_json_str = json.dumps(event_dict)
+                        # Publish to Redis
+                        publish_to_stream(r, cfg.stream_norm_telemetry, {"event": event_json_str})
+                        # Publish to Kafka
+                        kafka_payload = json.dumps({"event": event_json_str}).encode("utf-8")
+                        await producer.send_and_wait(KAFKA_TOPIC, kafka_payload)
+                        
                         # Store latest entity state
                         set_entity_state(r, event.entity_id, {
                             "entityId": event.entity_id,
@@ -266,7 +277,21 @@ async def main() -> None:
             logger.warning("Waiting for Redis (%d/20): %s", attempt + 1, exc)
             await asyncio.sleep(3)
 
-    await consume_loop(r)
+    logger.info("Connecting to Kafka...")
+    producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BROKER)
+    for attempt in range(10):
+        try:
+            await producer.start()
+            logger.info("Normalizer connected to Kafka")
+            break
+        except Exception as exc:
+            logger.warning("Waiting for Kafka (%d/10): %s", attempt + 1, exc)
+            await asyncio.sleep(5)
+            
+    try:
+        await consume_loop(r, producer)
+    finally:
+        await producer.stop()
 
 
 if __name__ == "__main__":
