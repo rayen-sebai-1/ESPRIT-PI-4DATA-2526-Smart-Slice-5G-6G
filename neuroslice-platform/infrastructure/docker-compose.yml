@@ -238,6 +238,72 @@ services:
       influxdb:
         condition: service_started
 
+  # ── Dashboard Tier (neuroslice-tunisia) ───────────────────────────────────
+
+  dashboard-auth-service:
+    build:
+      context: ..
+      dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
+      args:
+        SERVICE_MODULE: auth_service.main:app
+    environment:
+      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET:-neuroslice-draft-secret}
+      TOKEN_EXPIRES_HOURS: "12"
+      USERS_FILE_PATH: /app/data/users.json
+    volumes:
+      - ../api-dashboard-tier/dashboard-backend/data:/app/data
+    ports:
+      - "${DASHBOARD_AUTH_PORT:-8011}:8000"
+
+  dashboard-api-service:
+    build:
+      context: ..
+      dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
+      args:
+        SERVICE_MODULE: api_service.main:app
+    environment:
+      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET:-neuroslice-draft-secret}
+      TOKEN_EXPIRES_HOURS: "12"
+      USERS_FILE_PATH: /app/data/users.json
+    volumes:
+      - ../api-dashboard-tier/dashboard-backend/data:/app/data
+    ports:
+      - "${DASHBOARD_API_PORT:-8012}:8000"
+
+  dashboard-kong:
+    image: kong:3.7
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "off"
+    volumes:
+      - ../api-dashboard-tier/kong/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "${DASHBOARD_KONG_PORT:-8008}:8000"
+    depends_on:
+      - dashboard-auth-service
+      - dashboard-api-service
+
+  dashboard-frontend:
+    build:
+      context: ..
+      dockerfile: api-dashboard-tier/dashboard-frontend/Dockerfile
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_DEV_PROXY_TARGET: http://dashboard-kong:8000
+      VITE_AUTH_API_URL: /api/auth
+      VITE_SESSION_API_URL: /api/session
+      VITE_PREDICTION_API_URL: /api/prediction
+      VITE_DASHBOARD_API_URL: /api/dashboard
+    ports:
+      - "${DASHBOARD_FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - dashboard-kong
+
   # ── Grafana ───────────────────────────────────────────────────────────────
 
   grafana:

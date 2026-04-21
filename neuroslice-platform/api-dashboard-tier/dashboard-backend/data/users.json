@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "full_name": "Admin NeuroSlice",
+    "email": "admin@neuroslice.tn",
+    "password": "admin123",
+    "role": "ADMIN",
+    "is_active": true
+  },
+  {
+    "id": 2,
+    "full_name": "Operateur Reseau",
+    "email": "operator@neuroslice.tn",
+    "password": "operator123",
+    "role": "NETWORK_OPERATOR",
+    "is_active": true
+  },
+  {
+    "id": 3,
+    "full_name": "Manager National",
+    "email": "manager@neuroslice.tn",
+    "password": "manager123",
+    "role": "NETWORK_MANAGER",
+    "is_active": true
+  },
+  {
+    "id": 4,
+    "full_name": "Nadia Operator",
+    "email": "nadia@neuroslice.tn",
+    "password": "nadia123",
+    "role": "NETWORK_OPERATOR",
+    "is_active": true
+  },
+  {
+    "id": 5,
+    "full_name": "Franklin David",
+    "email": "franklindavid@neuroslice.tn",
+    "password": "mlops1234",
+    "role": "DATA_MLOPS_ENGINEER",
+    "is_active": true
+  }
+]
