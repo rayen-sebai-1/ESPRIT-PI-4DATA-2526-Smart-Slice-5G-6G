@@ -6,6 +6,8 @@ PYTHON := python
 PIP := pip
 MLFLOW_PORT := 5000
 API_PORT := 8000
+DATA_SRC_DIR := src/data
+MODEL_SRC_DIR := src/models
 
 .PHONY: setup lint format security quality data data-sla-5g data-sla-6g data-congestion-5g data-slice-type-5g \
         validate-data validate-data-sla-5g validate-data-sla-6g validate-data-congestion-5g validate-data-slice-type-5g \
@@ -38,61 +40,61 @@ quality: lint security
 # Data
 # ------------------------------------------------------------------------------
 data:
-	$(PYTHON) src/data/preprocess_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_6g.py
 
 data-sla-5g:
-	$(PYTHON) src/data/preprocess_sla_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_sla_5g.py
 
 data-sla-6g:
-	$(PYTHON) src/data/preprocess_sla_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_sla_6g.py
 
 data-congestion-5g:
-	$(PYTHON) src/data/preprocess_congestion_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_congestion_5g.py
 
 validate-data:
-	$(PYTHON) src/data/validate.py
+	$(PYTHON) $(DATA_SRC_DIR)/validate.py
 
 validate-data-sla-5g:
-	$(PYTHON) src/data/validate_sla_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/validate_sla_5g.py
 
 validate-data-sla-6g:
-	$(PYTHON) src/data/validate_sla_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/validate_sla_6g.py
 
 validate-data-congestion-5g:
-	$(PYTHON) src/data/validate_congestion_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/validate_congestion_5g.py
 
 data-slice-type-5g:
-	$(PYTHON) src/data/preprocess_slice_type_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_slice_type_5g.py
 
 validate-data-slice-type-5g:
-	$(PYTHON) src/data/validate_slice_type_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/validate_slice_type_5g.py
 
 data-slice-type-6g:
-	$(PYTHON) src/data/preprocess_slice_type_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_slice_type_6g.py
 
 validate-data-slice-type-6g:
-	$(PYTHON) src/data/validate_slice_type_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/validate_slice_type_6g.py
 
 # ------------------------------------------------------------------------------
 # Training
 # ------------------------------------------------------------------------------
 train-sla-5g:
-	$(PYTHON) src/models/train_sla_5g.py
+	$(PYTHON) $(MODEL_SRC_DIR)/train_sla_5g.py
 
 train-sla-6g:
-	$(PYTHON) src/models/train_sla_6g.py
+	$(PYTHON) $(MODEL_SRC_DIR)/train_sla_6g.py
 
 train-congestion-5g:
-	$(PYTHON) src/models/train_congestion_5g.py
+	$(PYTHON) $(MODEL_SRC_DIR)/train_congestion_5g.py
 
 train-congestion-6g:
-	$(PYTHON) src/models/train_congestion_6g.py
+	$(PYTHON) $(MODEL_SRC_DIR)/train_congestion_6g.py
 
 train-slice-type-5g:
-	$(PYTHON) src/models/train_slice_type_5g.py
+	$(PYTHON) $(MODEL_SRC_DIR)/train_slice_type_5g.py
 
 train-slice-type-6g:
-	$(PYTHON) src/models/train_slice_type_6g.py
+	$(PYTHON) $(MODEL_SRC_DIR)/train_slice_type_6g.py
 
 train-all: train-sla-5g train-sla-6g train-congestion-5g train-congestion-6g train-slice-type-5g train-slice-type-6g
 

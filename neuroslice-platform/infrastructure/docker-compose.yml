@@ -1,11 +1,11 @@
 ---
 # neuroslice-sim Docker Compose
-# Run: cd services/simulator && docker compose up --build
-# Each service uses the simulator root as build context so shared/ is accessible.
+# Run: cd neuroslice-platform/infrastructure && docker compose up --build
+# Each service uses the neuroslice-platform root as build context.
 
 x-python-service: &python-service
   volumes:
-    - ./scenarios:/scenarios:ro   # scenario JSON files
+    - ../simulation-tier/scenarios:/scenarios:ro   # scenario JSON files
 
 services:
 
@@ -73,8 +73,8 @@ services:
 
   adapter-ves:
     build:
-      context: .                          # root = services/simulator/
-      dockerfile: adapter-ves/Dockerfile
+      context: ..
+      dockerfile: ingestion-tier/adapter-ves/Dockerfile
     <<: *python-service
     ports:
       - "${VES_PORT:-7001}:7001"
@@ -89,8 +89,8 @@ services:
 
   adapter-netconf:
     build:
-      context: .
-      dockerfile: adapter-netconf/Dockerfile
+      context: ..
+      dockerfile: ingestion-tier/adapter-netconf/Dockerfile
     <<: *python-service
     ports:
       - "${NETCONF_PORT:-7002}:7002"
@@ -107,8 +107,8 @@ services:
 
   normalizer:
     build:
-      context: .
-      dockerfile: normalizer/Dockerfile
+      context: ..
+      dockerfile: ingestion-tier/normalizer/Dockerfile
     <<: *python-service
     environment:
       REDIS_HOST: redis
@@ -124,8 +124,8 @@ services:
 
   fault-engine:
     build:
-      context: .
-      dockerfile: fault-engine/Dockerfile
+      context: ..
+      dockerfile: simulation-tier/fault-engine/Dockerfile
     <<: *python-service
     ports:
       - "${FAULT_ENGINE_PORT:-7004}:7004"
@@ -142,8 +142,8 @@ services:
 
   simulator-core:
     build:
-      context: .
-      dockerfile: simulator-core/Dockerfile
+      context: ..
+      dockerfile: simulation-tier/simulator-core/Dockerfile
     <<: *python-service
     environment:
       REDIS_HOST: redis
@@ -161,8 +161,8 @@ services:
 
   simulator-edge:
     build:
-      context: .
-      dockerfile: simulator-edge/Dockerfile
+      context: ..
+      dockerfile: simulation-tier/simulator-edge/Dockerfile
     <<: *python-service
     environment:
       REDIS_HOST: redis
@@ -180,8 +180,8 @@ services:
 
   simulator-ran:
     build:
-      context: .
-      dockerfile: simulator-ran/Dockerfile
+      context: ..
+      dockerfile: simulation-tier/simulator-ran/Dockerfile
     <<: *python-service
     environment:
       REDIS_HOST: redis
@@ -197,19 +197,19 @@ services:
       redis:
         condition: service_healthy
 
-  # ── API Service ───────────────────────────────────────────────────────────
+  # ── API/BFF Service ───────────────────────────────────────────────────────
 
-  api-service:
+  api-bff-service:
     build:
-      context: .
-      dockerfile: api-service/Dockerfile
+      context: ..
+      dockerfile: api-dashboard-tier/api-bff-service/Dockerfile
     <<: *python-service
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      SERVICE_NAME: api-service
+      SERVICE_NAME: api-bff-service
       SITE_ID: ${SITE_ID:-TT-SFAX-02}
       FAULT_ENGINE_URL: http://fault-engine:7004
     depends_on:
@@ -218,12 +218,12 @@ services:
       fault-engine:
         condition: service_started
 
-  # ── Kafka to InfluxDB Consumer ─────────────────────────────────────────────
+  # ── Telemetry Exporter ────────────────────────────────────────────────────
 
-  kafka-influx-consumer:
+  telemetry-exporter:
     build:
-      context: .
-      dockerfile: kafka-influx-consumer/Dockerfile
+      context: ..
+      dockerfile: ingestion-tier/telemetry-exporter/Dockerfile
     <<: *python-service
     environment:
       KAFKA_BROKER: kafka:9092

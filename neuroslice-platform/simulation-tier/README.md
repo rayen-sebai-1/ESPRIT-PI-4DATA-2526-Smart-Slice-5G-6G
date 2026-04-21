@@ -10,7 +10,7 @@
 
 ```bash
 # From repo root
-cd services/simulator
+cd neuroslice-platform/infrastructure
 cp .env.example .env           # optional — defaults are fine
 docker compose up --build
 ```
@@ -22,7 +22,6 @@ Wait ~30 seconds for all services to become healthy, then:
 | **API** | http://localhost:8000 |
 | **Swagger UI** | http://localhost:8000/docs |
 | **Grafana** | http://localhost:3000 (admin / neuroslice) |
-| **Prometheus** | http://localhost:9090 |
 | **Redis** | localhost:6379 |
 
 ---
@@ -43,7 +42,7 @@ Wait ~30 seconds for all services to become healthy, then:
 │                  ▼                                    ▼              │
 │         stream:norm.telemetry              entity:{id} (hashes)     │
 │                  │                                    │              │
-│           api-service (SSE,                    api-service           │
+│        api-bff-service (SSE,                api-bff-service         │
 │           exports, queries)               telemetry-exporter         │
 │                                                  │                  │
 │                                             Prometheus               │
@@ -166,7 +165,7 @@ curl http://localhost:8000/api/v1/export/congestion-sequences
 |---|---|---|---|
 | `stream:raw.ves` | adapter-ves | normalizer | Raw VES events |
 | `stream:raw.netconf` | adapter-netconf | normalizer | Flat NETCONF records |
-| `stream:norm.telemetry` | normalizer | api-service, exporter | Canonical events |
+| `stream:norm.telemetry` | normalizer | api-bff-service, exporter | Canonical events |
 | `stream:fault.events` | fault-engine | (audit log) | Fault lifecycle events |
 
 Entity latest state is stored in Redis hashes: `entity:{entity_id}` — used by the API for sub-ms reads.
@@ -216,23 +215,26 @@ Simply create a JSON file in `scenarios/` following the existing pattern.
 
 ## Folder Structure
 
-```
-services/simulator/
-├── docker-compose.yml
-├── .env.example
-├── README.md
-├── shared/            ← Pydantic models, Redis helpers, config
-├── simulator-core/    ← AMF, SMF, central UPF
-├── simulator-edge/    ← Edge UPF, MEC app, compute node
-├── simulator-ran/     ← gNBs, cells, slices (eMBB/URLLC/mMTC)
-├── fault-engine/      ← Scenario runner + fault injector API
-├── adapter-ves/       ← HTTP VES event receiver
-├── adapter-netconf/   ← NETCONF polling adapter
-├── normalizer/        ← Canonical schema mapper
-├── api-service/       ← FastAPI public API + ML exports
-├── telemetry-exporter/← Prometheus metrics exporter
-├── scenarios/         ← JSON scenario definitions
-└── observability/
-    ├── grafana/        ← Provisioning + dashboard JSON
-    └── prometheus/     ← Scrape config
+```text
+neuroslice-platform/
+├── infrastructure/
+│   ├── docker-compose.yml
+│   ├── .env.example
+│   └── observability/
+│       ├── grafana/
+│       └── prometheus/
+├── simulation-tier/
+│   ├── simulator-core/
+│   ├── simulator-edge/
+│   ├── simulator-ran/
+│   ├── fault-engine/
+│   └── scenarios/
+├── ingestion-tier/
+│   ├── shared/
+│   ├── adapter-ves/
+│   ├── adapter-netconf/
+│   ├── normalizer/
+│   └── telemetry-exporter/
+└── api-dashboard-tier/
+    └── api-bff-service/
 ```
