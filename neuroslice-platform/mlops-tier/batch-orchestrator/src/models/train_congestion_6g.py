@@ -26,6 +26,7 @@ warnings.filterwarnings("ignore")
 EXPERIMENT_NAME = "congestion-forecast-6g"
 DATA_PATH = "data/processed/6g_processed.csv"
 REGISTERED_MODEL_NAME = "congestion-lstm-6g"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
 
 SEQ_LENGTH = 24
 LSTM_UNITS = 128
@@ -35,6 +36,8 @@ BATCH_SIZE = 64
 TRAIN_SPLIT = 0.8
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 
 # ---------------------------------------------------------------------------

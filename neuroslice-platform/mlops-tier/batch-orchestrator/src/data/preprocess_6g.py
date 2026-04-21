@@ -6,11 +6,13 @@ input, and saves the processed output to data/processed/6g_processed.csv.
 """
 
 import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 RAW_PATH = "data/raw/network_slicing_dataset_enriched_timeseries.csv"
+LEGACY_RAW_PATH = "data/network_slicing_dataset_enriched_timeseries.csv"
 PROCESSED_PATH = "data/processed/6g_processed.csv"
 SEQ_LENGTH = 24
 
@@ -18,6 +20,26 @@ SEQ_LENGTH = 24
 RAW_CPU_COL = "cpu_util_pct"
 RAW_BW_COL = "bw_util_pct"
 RAW_TARGET_COL = "congestion_flag"
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+
+def _resolve_path(path: str) -> Path:
+    """Resolve a data path relative to the batch-orchestrator root."""
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return BASE_DIR / candidate
+
+
+def _resolve_raw_path() -> Path:
+    """Prefer canonical raw path, but support legacy in-repo location."""
+    canonical = _resolve_path(RAW_PATH)
+    legacy = _resolve_path(LEGACY_RAW_PATH)
+    if canonical.exists():
+        return canonical
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 def create_sequences(data: np.ndarray, seq_length: int = SEQ_LENGTH):
@@ -47,15 +69,16 @@ def preprocess() -> pd.DataFrame:
     # ------------------------------------------------------------------
     # 1. Load raw data
     # ------------------------------------------------------------------
-    if not os.path.exists(RAW_PATH):
+    raw_path = _resolve_raw_path()
+    if not os.path.exists(raw_path):
         raise FileNotFoundError(
-            f"Raw data not found at '{RAW_PATH}'. "
+            f"Raw data not found at '{raw_path}'. "
             "Please ensure 'network_slicing_dataset_enriched_timeseries.csv' "
-            "is placed in the data/raw/ directory."
+            "is placed in 'data/raw/' (preferred) or 'data/' (legacy)."
         )
 
-    df = pd.read_csv(RAW_PATH)
-    print(f"[INFO] Loaded {df.shape[0]} rows, {df.shape[1]} columns from '{RAW_PATH}'.")
+    df = pd.read_csv(raw_path)
+    print(f"[INFO] Loaded {df.shape[0]} rows, {df.shape[1]} columns from '{raw_path}'.")
 
     # ------------------------------------------------------------------
     # 2. Select and rename the columns needed by the LSTM
@@ -94,9 +117,10 @@ def preprocess() -> pd.DataFrame:
     # ------------------------------------------------------------------
     df_out = df[required_cols].reset_index(drop=True)
 
-    os.makedirs(os.path.dirname(PROCESSED_PATH), exist_ok=True)
-    df_out.to_csv(PROCESSED_PATH, index=False)
-    print(f"[INFO] Saved processed data to '{PROCESSED_PATH}' ({len(df_out)} rows).")
+    processed_path = _resolve_path(PROCESSED_PATH)
+    os.makedirs(processed_path.parent, exist_ok=True)
+    df_out.to_csv(processed_path, index=False)
+    print(f"[INFO] Saved processed data to '{processed_path}' ({len(df_out)} rows).")
 
     return df_out
 

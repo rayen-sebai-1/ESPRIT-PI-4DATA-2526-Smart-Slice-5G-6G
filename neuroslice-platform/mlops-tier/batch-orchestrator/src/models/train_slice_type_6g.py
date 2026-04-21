@@ -16,6 +16,9 @@ import shap
 # Configuration
 NPZ_PATH = os.path.join("data", "processed", "slice_type_6g_processed.npz")
 MLFLOW_EXPERIMENT_NAME = "slice-type-6g"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 
 def check_existing_runs():

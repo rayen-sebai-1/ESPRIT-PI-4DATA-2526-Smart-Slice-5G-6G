@@ -2,6 +2,7 @@
 
 import joblib
 
+import mlflow
 import mlflow.pytorch
 import mlflow.xgboost
 from fastapi import FastAPI, HTTPException
@@ -47,6 +48,7 @@ app = FastAPI(
 # Model holders (populated at startup)
 _models: dict = {}
 
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
 CONGESTION_MODEL_URI = "models:/congestion-lstm-6g/Production"
 CONGESTION_5G_MODEL_PATH = "models/congestion_5g_lstm_traced.pt"
 CONGESTION_5G_PREPROCESSOR_PATH = "data/processed/preprocessor_congestion_5g.pkl"
@@ -67,6 +69,8 @@ SLA_6G_SCALER_PATH = "data/processed/scaler_sla_6g.pkl"
 @app.on_event("startup")
 async def load_models() -> None:
     """Load registered MLflow models into memory at startup."""
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
     # Congestion model (required)
     try:
         _models["congestion_6g"] = mlflow.pytorch.load_model(CONGESTION_MODEL_URI)
@@ -204,7 +208,10 @@ async def predict_congestion_5g_endpoint(payload: Congestion5GInput) -> Congesti
     preprocessor = _models.get("congestion_5g_preprocessor")
     if model is None or preprocessor is None:
         raise HTTPException(status_code=503, detail="Congestion 5G model or preprocessor not loaded.")
-    return predict_congestion_5g(model, preprocessor, payload)
+    try:
+        return predict_congestion_5g(model, preprocessor, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/predict/slice", response_model=SliceOutput, tags=["Prediction"])

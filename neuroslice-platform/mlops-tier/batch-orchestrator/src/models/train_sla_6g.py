@@ -42,6 +42,7 @@ EXPERIMENT_NAME = "sla-adherence-6g"
 PROCESSED_NPZ = "data/processed/sla_6g_processed.npz"
 SCALER_PATH = "data/processed/scaler_sla_6g.pkl"
 REGISTERED_MODEL_NAME = "sla-xgboost-6g"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
 
 DEFAULT_N_ESTIMATORS = 300
 DEFAULT_MAX_DEPTH = 6
@@ -51,6 +52,8 @@ DEFAULT_COLSAMPLE_BYTREE = 0.8
 
 RANDOM_STATE = 42
 QUALITY_GATE_ROC_AUC = 0.75
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ EXPERIMENT_NAME = "slice-type-5g"
 PROCESSED_NPZ = "data/processed/slice_type_5g_processed.npz"
 LABEL_ENCODER_PATH = "data/processed/label_encoder_slice_type_5g.pkl"
 REGISTERED_MODEL_NAME = "slice-type-lgbm-5g"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
 
 # Class names are loaded dynamically from the label encoder at runtime
 # (dataset uses integer labels 1/2/3, not string slice names)
@@ -47,6 +48,8 @@ DEFAULT_MAX_DEPTH = 3
 DEFAULT_COLSAMPLE_BYTREE = 0.33
 DEFAULT_REG_LAMBDA = 15.0
 RANDOM_STATE = 12
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 
 # ---------------------------------------------------------------------------

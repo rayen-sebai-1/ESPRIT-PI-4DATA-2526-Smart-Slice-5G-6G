@@ -24,7 +24,10 @@ PROCESSED_NPZ = "data/processed/congestion_5g_processed.npz"
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "congestion_5g_lstm.pth")
 MLFLOW_EXPERIMENT_NAME = "Congestion_Forecasting_5G"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 # ---------------------------------------------------------------------------
 # PyTorch Dataset Definition
