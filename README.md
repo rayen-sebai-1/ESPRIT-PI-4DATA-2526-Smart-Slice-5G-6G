@@ -1,46 +1,59 @@
 # Smart Slice Selection in 5G/6G
 
-## Overview
-This project was developed as part of the 4th Year DATA Engineering Program at **Esprit School of Engineering** (Academic Year 2025-2026). 
+This repository contains the `neuroslice-platform`, a Scenario B Docker Compose proof-of-concept for end-to-end telecom simulation, ingestion, live AIOps runtime inference, API access, and observability.
 
-The evolution of mobile communication from 5G to 6G demands dynamic resource management to handle heterogeneous services with strict Quality of Service (QoS) requirements. This project aims to leverage data analytics and machine learning to replace static, semi-manual network slicing policies with intelligent, predictive models. By accurately forecasting network conditions and service requirements, the system dynamically assigns the most appropriate network slice (eMBB, URLLC, mMTC) to optimize resource utilization and protect Service Level Agreements (SLAs).
+## Implemented runtime path (Scenario B)
 
-## Features
-* **Predictive Resource Contention:** Time-series forecasting to anticipate congestion in CPU, bandwidth, and memory 5 to 15 minutes in advance.
-* **QoS Adherence Likelihood Regression:** Probabilistic risk scoring to estimate the confidence level that a slice assignment will satisfy strict QoS constraints.
-* **Adaptive Online Learning:** Continuous model adaptation to evolving traffic patterns and new topologies (like SAGIN) without full batch retraining.
-* **Explainable AI (XAI):** Integration of frameworks (e.g., SHAP, LIME) to provide transparent, human-readable explanations for automated slice selection decisions.
-* **Decision Intelligence Dashboard:** A centralized, real-time interface monitoring slice assignments, QoS metrics, and SLA adherence probabilities.
+The live path is now:
 
-## Tech Stack
-### Frontend
-* `To be completed`
+1. Simulators emit telemetry (Core/Edge/RAN).
+2. VES/NETCONF adapters ingest events.
+3. Normalizer builds canonical telemetry (`stream:norm.telemetry`, `telemetry-norm`).
+4. Runtime AIOps services consume normalized telemetry:
+   - `aiops-tier/congestion-detector`
+   - `aiops-tier/slice-classifier`
+   - `aiops-tier/sla-assurance`
+5. Runtime inference outputs are published to platform streams/topics:
+   - `events.anomaly`
+   - `events.slice.classification`
+   - `events.sla`
+6. Latest AIOps state is stored in Redis (`aiops:*` keys) and exposed via API/BFF.
 
-### Backend
-* Python, FastAPI, PyTorch / Scikit-Learn 
-* Data manipulation & XAI: `[e.g., Pandas, SHAP, LIME]`
+## Quick start
 
-## Architecture
-* Used a synthetic dataset for 6G and a real world 5G dataset
-* We generated other dataset using the initial datasets and simpy
+```bash
+cd neuroslice-platform/infrastructure
+cp .env.example .env
+docker compose up --build
+```
+
+Core checks:
+
+```bash
+curl http://localhost:8000/health
+curl "http://localhost:8000/api/v1/aiops/congestion/latest?limit=20"
+curl "http://localhost:8000/api/v1/aiops/sla/latest?limit=20"
+curl "http://localhost:8000/api/v1/aiops/slice-classification/latest?limit=20"
+```
+
+## Documentation
+
+- Full platform README: `neuroslice-platform/README.md`
+- Simulation details: `neuroslice-platform/simulation-tier/README.md`
+- MLOps batch orchestrator: `neuroslice-platform/mlops-tier/batch-orchestrator/`
+
+## Intentionally out of scope in this iteration
+
+- `aiops-tier/misrouting-detector`
+- Kubernetes deployment (`infrastructure/k8s`)
+- Istio/service mesh (`infrastructure/istio`)
+- Pending tiers/services: `agentic-ai-tier`, `control-tier`, `api-dashboard-tier/auth-service`, `api-dashboard-tier/kong-gateway`, `api-dashboard-tier/react-dashboard`
 
 ## Contributors
-* Ahmed Bouhlel
-* Rayen Sebai
-* Mouhamed Dhia Chaouachi
-* Fourat Hamdi
-* Mouhamed Aziz Weslati
-* Mouhamed Aziz Boughanmi
 
-
-## Academic Context
-Developed at **Esprit School of Engineering - Tunisia** 
-* **Module:** Projet Intégré (4ème année DATA)
-* **Group:** Azerty67
-* **Academic Year:** 2025/2026
-
-## Getting Started
-`git clone https://github.com/rayen-sebai-1/ESPRIT-PI-4DATA-2526-Smart-Slice-5G-6G.git`
-
-## Acknowledgments
-We would like to express our gratitude to our mentors Rahma Bouraoui, Safa Cherif, and Ameni Mejri for their guidance and support throughout this project.
+- Ahmed Bouhlel
+- Rayen Sebai
+- Mouhamed Dhia Chaouachi
+- Fourat Hamdi
+- Mouhamed Aziz Weslati
+- Mouhamed Aziz Boughanmi

@@ -6,6 +6,7 @@ Provides:
 - Health / config
 - Live KPI queries from Redis entity hashes
 - Recent telemetry from stream:norm.telemetry
+- Runtime AIOps output queries from aiops:* keys and events.* streams
 - SSE streaming
 - Fault/scenario control (proxy to fault-engine)
 - ML dataset export endpoints
@@ -23,7 +24,7 @@ import httpx
 import redis
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -40,6 +41,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelna
 
 cfg = get_config()
 FAULT_ENGINE_URL = cfg.fault_engine_url
+AIOPS_STREAMS = {
+    "events.anomaly",
+    "events.sla",
+    "events.slice.classification",
+}
 
 app = FastAPI(
     title="neuroslice-sim API",
@@ -62,6 +68,48 @@ def get_r() -> redis.Redis:
     if _redis is None:
         _redis = get_redis()
     return _redis
+
+
+def _decode_hash(raw: Dict[str, Any]) -> Dict[str, Any]:
+    decoded = {}
+    for key, value in raw.items():
+        if isinstance(value, str):
+            try:
+                decoded[key] = json.loads(value)
+            except Exception:
+                decoded[key] = value
+        else:
+            decoded[key] = value
+    return decoded
+
+
+def _list_state_by_prefix(prefix: str, limit: int) -> List[Dict[str, Any]]:
+    keys = get_r().keys(f"{prefix}:*")
+    rows = []
+    for key in keys:
+        row = get_r().hgetall(key)
+        if row:
+            rows.append(_decode_hash(row))
+
+    # Sort newest-first when timestamp exists.
+    rows.sort(key=lambda item: str(item.get("timestamp", "")), reverse=True)
+    return rows[:limit]
+
+
+def _read_events_from_stream(stream_name: str, count: int) -> List[Dict[str, Any]]:
+    messages = read_stream_latest(get_r(), stream_name, count=count)
+    events: List[Dict[str, Any]] = []
+    for _, fields in messages:
+        raw = fields.get("event")
+        if isinstance(raw, dict):
+            events.append(raw)
+            continue
+        if isinstance(raw, str):
+            try:
+                events.append(json.loads(raw))
+            except Exception:
+                continue
+    return events
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +205,42 @@ def get_entity_kpis(entity_id: str) -> dict:
     if isinstance(state.get("kpis"), str):
         state["kpis"] = json.loads(state["kpis"])
     return state
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Runtime AIOps outputs
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/aiops/congestion/latest")
+def get_latest_congestion_outputs(limit: int = Query(100, ge=1, le=1000)) -> dict:
+    states = _list_state_by_prefix("aiops:congestion", limit)
+    return {"count": len(states), "items": states}
+
+
+@app.get("/api/v1/aiops/sla/latest")
+def get_latest_sla_outputs(limit: int = Query(100, ge=1, le=1000)) -> dict:
+    states = _list_state_by_prefix("aiops:sla", limit)
+    return {"count": len(states), "items": states}
+
+
+@app.get("/api/v1/aiops/slice-classification/latest")
+def get_latest_slice_classification_outputs(limit: int = Query(100, ge=1, le=1000)) -> dict:
+    states = _list_state_by_prefix("aiops:slice_classification", limit)
+    return {"count": len(states), "items": states}
+
+
+@app.get("/api/v1/aiops/events/recent")
+def get_recent_aiops_events(
+    stream: str = Query("events.anomaly"),
+    count: int = Query(200, ge=1, le=2000),
+) -> dict:
+    if stream not in AIOPS_STREAMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported stream '{stream}'. Allowed: {sorted(AIOPS_STREAMS)}",
+        )
+    events = _read_events_from_stream(stream, count)
+    return {"stream": stream, "count": len(events), "events": events}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
