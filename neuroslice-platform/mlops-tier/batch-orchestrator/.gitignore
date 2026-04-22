@@ -2,11 +2,6 @@
 # Data – keep directory structure and READMEs; ignore all CSV files
 # -----------------------------------------------------------------------
 
-# Ignore any CSVs that still sit directly in data/
-data/*.csv
-
-# Ignore all CSVs inside data/raw/ (large binary-like files)
-data/raw/*.csv
 
 # Ignore generated processed outputs
 data/processed/*.csv
@@ -15,7 +10,6 @@ data/processed/*.pkl
 
 # Track only the README files and the folder skeleton
 !data/README.md
-!data/raw/
 !data/processed/
 
 # -----------------------------------------------------------------------
