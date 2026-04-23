@@ -1,0 +1,98 @@
+_format_version: "3.0"
+_transform: true
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - http://localhost:5173
+        - http://127.0.0.1:5173
+      methods:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Authorization
+        - Content-Type
+      exposed_headers:
+        - Authorization
+      credentials: true
+      max_age: 3600
+
+services:
+  - name: auth-service-auth
+    url: http://auth-service:8000/auth
+    routes:
+      - name: auth-service-auth-route
+        paths:
+          - /api/auth
+        strip_path: true
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+
+  - name: auth-service-users
+    url: http://auth-service:8000/users
+    routes:
+      - name: auth-service-users-route
+        paths:
+          - /api/auth/users
+        strip_path: true
+        methods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+
+  - name: dashboard-service-sessions
+    url: http://dashboard-backend:8000/sessions
+    routes:
+      - name: dashboard-service-sessions-route
+        paths:
+          - /api/dashboard/sessions
+        strip_path: true
+      methods:
+          - GET
+          - OPTIONS
+
+  - name: dashboard-service-predictions
+    url: http://dashboard-backend:8000/predictions
+    routes:
+      - name: dashboard-service-predictions-route
+        paths:
+          - /api/dashboard/predictions
+        strip_path: true
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+
+  - name: dashboard-service-models
+    url: http://dashboard-backend:8000/models
+    routes:
+      - name: dashboard-service-models-route
+        paths:
+          - /api/dashboard/models
+        strip_path: true
+      methods:
+          - GET
+          - OPTIONS
+
+  - name: dashboard-service-root
+    url: http://dashboard-backend:8000/dashboard
+    routes:
+      - name: dashboard-service-root-route
+        paths:
+          - /api/dashboard
+        strip_path: true
+      methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
