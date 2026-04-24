@@ -15,6 +15,10 @@ The implemented platform is centered around these active tiers:
   - `slice-classifier`
   - `sla-assurance`
 - `api-dashboard-tier/api-bff-service`: public FastAPI for KPI queries, streaming, and runtime AIOps result access.
+- `api-dashboard-tier/auth-service`: canonical dashboard auth entry for Scenario B.
+- `api-dashboard-tier/kong-gateway`: canonical dashboard gateway entry for Scenario B.
+- `api-dashboard-tier/react-dashboard`: canonical dashboard frontend entry for Scenario B.
+- `api-dashboard-tier/dashboard-backend`: canonical protected dashboard domain API backend.
 - `infrastructure`: Docker Compose runtime, Redis/Kafka/Zookeeper/InfluxDB/Grafana observability.
 - `mlops-tier/batch-orchestrator`: data preprocessing, model training, model-serving API, tests, MLflow integration.
 
@@ -22,9 +26,6 @@ Present but currently scaffold-only or pending:
 
 - `agentic-ai-tier/`
 - `control-tier/`
-- `api-dashboard-tier/auth-service/`
-- `api-dashboard-tier/kong-gateway/`
-- `api-dashboard-tier/react-dashboard/`
 - `infrastructure/k8s/`
 - `infrastructure/istio/`
 
@@ -678,7 +679,6 @@ pytest tests -v
 - `misrouting-detector` is intentionally deferred from the current AIOps runtime iteration.
 - `agentic-ai-tier` remains pending.
 - `control-tier` remains pending.
-- `api-dashboard-tier/auth-service`, `kong-gateway`, and `react-dashboard` remain pending.
 - `infrastructure/k8s` and `infrastructure/istio` remain pending because Scenario B focuses on Docker Compose.
 - Adapter services expose Prometheus-format `/metrics`, but no Prometheus service is currently deployed in compose.
 - Default credentials/tokens in compose are development-friendly defaults and should be replaced for non-local environments.
@@ -739,9 +739,10 @@ neuroslice-platform/
 │   └── misrouting-detector/     (deferred / not implemented)
 ├── api-dashboard-tier/
 │   ├── api-bff-service/
-│   ├── auth-service/            (placeholder)
-│   ├── kong-gateway/            (placeholder)
-│   └── react-dashboard/         (placeholder)
+│   ├── auth-service/
+│   ├── dashboard-backend/
+│   ├── kong-gateway/
+│   └── react-dashboard/
 ├── mlops-tier/
 │   └── batch-orchestrator/
 ├── control-tier/                (placeholder)

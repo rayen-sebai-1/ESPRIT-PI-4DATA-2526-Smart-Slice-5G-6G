@@ -68,6 +68,27 @@ services:
     volumes:
       - influxdb_data:/var/lib/influxdb2
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DASHBOARD_POSTGRES_SUPERUSER:-neuroslice}
+      POSTGRES_PASSWORD: ${DASHBOARD_POSTGRES_SUPERPASS}
+      POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      AUTH_DB_USER: ${AUTH_DB_USER:-auth_app}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_app}
+      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD}
+    ports:
+      - "${DASHBOARD_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - dashboard_postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 
   # ── Adapters ──────────────────────────────────────────────────────────────
 
@@ -396,38 +417,47 @@ services:
 
   # ── Dashboard Tier (neuroslice-tunisia) ───────────────────────────────────
 
-  dashboard-auth-service:
+  auth-service:
+    build:
+      context: ..
+      dockerfile: api-dashboard-tier/auth-service/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://${AUTH_DB_USER:-auth_app}:${AUTH_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRES_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRES_MINUTES:-15}
+      JWT_REFRESH_TOKEN_EXPIRES_DAYS: ${JWT_REFRESH_TOKEN_EXPIRES_DAYS:-7}
+      ARGON2_MEMORY_COST: ${ARGON2_MEMORY_COST:-65536}
+      ARGON2_TIME_COST: ${ARGON2_TIME_COST:-3}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-4}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-neuroslice_refresh_token}
+      REFRESH_COOKIE_PATH: /api/auth
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      REFRESH_COOKIE_SAMESITE: ${REFRESH_COOKIE_SAMESITE:-lax}
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard-backend:
     build:
       context: ..
       dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
-      args:
-        SERVICE_MODULE: auth_service.main:app
     environment:
-      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET:-neuroslice-draft-secret}
-      TOKEN_EXPIRES_HOURS: "12"
-      USERS_FILE_PATH: /app/data/users.json
-    volumes:
-      - ../api-dashboard-tier/dashboard-backend/data:/app/data
-    ports:
-      - "${DASHBOARD_AUTH_PORT:-8011}:8000"
+      DATABASE_URL: postgresql+psycopg://${DASHBOARD_DB_USER:-dashboard_app}:${DASHBOARD_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
+      DASHBOARD_DATA_PROVIDER: ${DASHBOARD_DATA_PROVIDER:-temporary_mock}
+      API_BFF_BASE_URL: http://api-bff-service:8000
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-  dashboard-api-service:
+  kong-gateway:
     build:
       context: ..
-      dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
-      args:
-        SERVICE_MODULE: api_service.main:app
-    environment:
-      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET:-neuroslice-draft-secret}
-      TOKEN_EXPIRES_HOURS: "12"
-      USERS_FILE_PATH: /app/data/users.json
-    volumes:
-      - ../api-dashboard-tier/dashboard-backend/data:/app/data
-    ports:
-      - "${DASHBOARD_API_PORT:-8012}:8000"
-
-  dashboard-kong:
-    image: kong:3.7
+      dockerfile: api-dashboard-tier/kong-gateway/Dockerfile
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
@@ -436,29 +466,25 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "off"
-    volumes:
-      - ../api-dashboard-tier/kong/kong.yml:/etc/kong/kong.yml:ro
     ports:
       - "${DASHBOARD_KONG_PORT:-8008}:8000"
     depends_on:
-      - dashboard-auth-service
-      - dashboard-api-service
+      - auth-service
+      - dashboard-backend
 
-  dashboard-frontend:
+  react-dashboard:
     build:
       context: ..
-      dockerfile: api-dashboard-tier/dashboard-frontend/Dockerfile
+      dockerfile: api-dashboard-tier/react-dashboard/Dockerfile
     environment:
       CHOKIDAR_USEPOLLING: "true"
-      VITE_DEV_PROXY_TARGET: http://dashboard-kong:8000
+      VITE_DEV_PROXY_TARGET: http://kong-gateway:8000
       VITE_AUTH_API_URL: /api/auth
-      VITE_SESSION_API_URL: /api/session
-      VITE_PREDICTION_API_URL: /api/prediction
       VITE_DASHBOARD_API_URL: /api/dashboard
     ports:
       - "${DASHBOARD_FRONTEND_PORT:-5173}:5173"
     depends_on:
-      - dashboard-kong
+      - kong-gateway
 
   # ── Grafana ───────────────────────────────────────────────────────────────
 
@@ -487,3 +513,4 @@ volumes:
   zookeeper_log:
   kafka_data:
   influxdb_data:
+  dashboard_postgres_data:

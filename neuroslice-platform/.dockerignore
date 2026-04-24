@@ -1,0 +1,21 @@
+.git
+**/.git
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/node_modules
+**/dist
+**/build
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Local runtime and experiment artifacts that are not needed for image builds.
+mlops-tier/batch-orchestrator/mlruns
+mlops-tier/batch-orchestrator/artifacts
+mlops-tier/batch-orchestrator/report
+mlops-tier/batch-orchestrator/.pytest_cache
+api-dashboard-tier/api-bff-service/__pycache__
