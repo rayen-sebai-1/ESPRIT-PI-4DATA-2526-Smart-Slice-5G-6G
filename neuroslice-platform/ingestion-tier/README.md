@@ -1,99 +1,174 @@
 # Ingestion Tier
 
-Telemetry ingress and normalization layer for NeuroSlice. It receives simulator events, harmonizes them into a canonical schema, and forwards them to streaming and observability backends.
+The ingestion tier receives simulator telemetry, normalizes heterogeneous payloads into the shared canonical event schema, and forwards the results to Redis, Kafka, and InfluxDB consumers.
 
-## Tier Purpose
+## Implemented Components
 
-This tier is the data backbone between simulation and intelligence.
+This tier currently contains:
 
-Responsibilities:
+- `adapter-ves/`
+- `adapter-netconf/`
+- `normalizer/`
+- `telemetry-exporter/`
+- `shared/`
 
-- Accept raw VES and NETCONF-like telemetry.
-- Simulate realistic ingestion noise (malformed payloads, schema mismatch).
-- Normalize heterogeneous payloads into a shared canonical event model.
-- Persist latest per-entity state for low-latency reads.
-- Fan out normalized events to Kafka and Influx pipelines.
+## Runtime Responsibilities
 
-## Components
+### `adapter-ves`
 
-- `adapter-ves`
-- FastAPI service for `POST /events`
-- Exposes `/health` and Prometheus `/metrics`
-- Publishes accepted payloads to `stream:raw.ves`
+FastAPI service that accepts VES-style telemetry from the Core and RAN simulators.
 
-- `adapter-netconf`
-- FastAPI service for `POST /telemetry`
-- Exposes `/health` and Prometheus `/metrics`
-- Flattens NETCONF blobs and injects controlled schema mismatch (`delay_ms`)
-- Publishes records to `stream:raw.netconf`
+- HTTP routes:
+  - `GET /health`
+  - `GET /metrics`
+  - `POST /events`
+- default Compose port: `7001`
+- publishes accepted payloads to Redis stream `stream:raw.ves`
+- simulates malformed payload rejection at roughly 5%
 
-- `normalizer`
-- Async background worker (no HTTP port)
-- Consumes `stream:raw.ves` and `stream:raw.netconf`
-- Produces canonical events to `stream:norm.telemetry`
-- Mirrors events to Kafka topic `telemetry-norm`
-- Stores latest entity state in Redis hash `entity:{entityId}`
+### `adapter-netconf`
 
-- `telemetry-exporter`
-- Async worker that consumes Kafka `telemetry-norm`
-- Writes telemetry points to Influx measurement `telemetry`
-- Polls `faults:active` and writes measurement `faults`
+FastAPI service that accepts hierarchical NETCONF-like payloads from the Edge simulator.
 
-- `shared`
-- Shared config, enums/schemas, and Redis helpers used by ingestion, simulation, API, and AIOps tiers
+- HTTP routes:
+  - `GET /health`
+  - `GET /metrics`
+  - `POST /telemetry`
+- default Compose port: `7002`
+- flattens nested NETCONF sections into flat records
+- publishes records to Redis stream `stream:raw.netconf`
+- simulates schema mismatch by renaming `forwardingLatencyMs` to `delay_ms` in a small share of requests
 
-## Stream and Data Contracts
+### `normalizer`
 
-Raw ingress streams:
+Async worker with no HTTP surface.
+
+- consumes:
+  - `stream:raw.ves`
+  - `stream:raw.netconf`
+- maps both protocols into the canonical schema defined in `shared/models.py`
+- writes normalized events to Redis stream `stream:norm.telemetry`
+- mirrors normalized events to Kafka topic `telemetry-norm`
+- stores latest entity state in Redis hash `entity:{entityId}`
+- handles the known NETCONF mismatch by remapping `delay_ms` back to `forwardingLatencyMs`
+
+### `telemetry-exporter`
+
+Async worker with no HTTP surface.
+
+- consumes Kafka topic `telemetry-norm`
+- writes canonical telemetry into InfluxDB measurement `telemetry`
+- polls Redis hash `faults:active`
+- writes fault summary/detail points into InfluxDB measurement `faults`
+
+### `shared`
+
+Shared Python package used across multiple tiers.
+
+Current shared modules include:
+
+- `config.py`
+- `models.py`
+- `redis_client.py`
+
+These definitions are imported by simulation, ingestion, AIOps, and API services.
+
+## Data Contracts
+
+Primary Redis streams:
 
 - `stream:raw.ves`
 - `stream:raw.netconf`
-
-Normalized stream:
-
 - `stream:norm.telemetry`
+- `stream:fault.events`
 
-Redis state:
+Primary Redis hashes and keys:
 
-- `entity:{entityId}` (latest canonical per-entity snapshot)
+- `entity:{entityId}` for latest normalized entity state
+- `faults:active` for active injected faults
 
-Kafka egress:
+Primary Kafka topic:
 
 - `telemetry-norm`
 
-## Running the Tier
+Primary InfluxDB measurements:
 
-Preferred (with dependencies):
+- `telemetry`
+- `faults`
+
+## Canonical Model
+
+The canonical event model is defined in `shared/models.py` and includes:
+
+- domain: `core`, `edge`, `ran`
+- entity identifiers and entity types
+- optional slice metadata
+- protocol source (`ves` or `netconf`)
+- raw KPI fields
+- derived metrics such as:
+  - `congestionScore`
+  - `healthScore`
+  - `misroutingScore`
+- scenario identifier and severity
+
+## Key Environment Variables
+
+Shared ingestion config comes from `shared/config.py` and includes:
+
+- `REDIS_HOST`
+- `REDIS_PORT`
+- `REDIS_DB`
+- `STREAM_MAXLEN`
+- `TICK_INTERVAL_SEC`
+- `SIM_SPEED`
+- `SERVICE_NAME`
+- `SITE_ID`
+- `VES_ADAPTER_URL`
+- `NETCONF_ADAPTER_URL`
+- `NORMALIZER_URL`
+- `FAULT_ENGINE_URL`
+- `METRICS_PORT`
+
+Additional component-specific variables:
+
+- `normalizer`
+  - `KAFKA_BROKER`
+  - `KAFKA_TOPIC`
+- `telemetry-exporter`
+  - `KAFKA_BROKER`
+  - `KAFKA_TOPIC`
+  - `INFLUXDB_URL`
+  - `INFLUXDB_TOKEN`
+  - `INFLUXDB_ORG`
+  - `INFLUXDB_BUCKET`
+
+## Running The Tier
+
+Run the ingestion services through the main Compose file:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose up --build adapter-ves adapter-netconf normalizer telemetry-exporter
 ```
 
-Recommended dependency set:
+Recommended dependencies:
 
 - `redis`
 - `kafka`
 - `influxdb`
 
-## Troubleshooting Checklist
+## Observability Note
 
-- If normalized events are missing:
-- verify adapters are receiving payloads (`/metrics`).
-- verify normalizer consumer group can read raw streams.
-- verify Redis connectivity and stream names in env vars.
-
-- If Grafana telemetry is empty:
-- verify Kafka topic `telemetry-norm` has new messages.
-- verify exporter can write to Influx (`INFLUXDB_*` envs).
+The two adapters expose Prometheus-format `/metrics` endpoints, but the current top-level Compose stack does not include a Prometheus service.
 
 ## Folder Map
 
 ```text
 ingestion-tier/
-├── adapter-ves/
-├── adapter-netconf/
-├── normalizer/
-├── telemetry-exporter/
-└── shared/
+|-- README.md
+|-- adapter-netconf/
+|-- adapter-ves/
+|-- normalizer/
+|-- shared/
+`-- telemetry-exporter/
 ```

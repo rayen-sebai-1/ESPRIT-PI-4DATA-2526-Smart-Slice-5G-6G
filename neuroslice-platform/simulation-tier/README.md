@@ -1,240 +1,176 @@
-# neuroslice-sim
+# Simulation Tier
 
-**A production-style 5G AIOps / NWDAF-like telemetry simulator**
+The simulation tier generates the synthetic multi-domain 5G/6G network telemetry used by the rest of the NeuroSlice platform and exposes the fault-engine used for scenario control.
 
-> Stateful, discrete-event, multi-domain network telemetry simulator with realistic correlated KPIs, fault injection, slice misrouting, Redis Streams, and Grafana dashboards.
+## Implemented Components
 
----
+This tier currently contains:
 
-## Quick Start
+- `simulator-core/`
+- `simulator-edge/`
+- `simulator-ran/`
+- `fault-engine/`
+- `scenarios/`
 
-```bash
-# From repo root
-cd neuroslice-platform/infrastructure
-cp .env.example .env           # optional — defaults are fine
-docker compose up --build
-```
+## Runtime Role
 
-Wait ~30 seconds for all services to become healthy, then:
+### `simulator-core`
 
-| Service | URL |
-|---|---|
-| **API** | http://localhost:8000 |
-| **Swagger UI** | http://localhost:8000/docs |
-| **Grafana** | http://localhost:3000 (admin / neuroslice) |
-| **Redis** | localhost:6379 |
+Async SimPy worker for the Core domain.
 
----
+- no public HTTP API
+- emits VES-style telemetry to `adapter-ves`
+- simulates:
+  - `amf-01`
+  - `smf-01`
+  - `core-upf-01`
+- consumes Redis fault state from `faults:active`
+- reads cross-domain signal `ran:congestion_score`
 
-## Architecture
+### `simulator-edge`
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        neuroslice-sim stack                          │
-│                                                                      │
-│  simulator-ran ──▶ adapter-ves  ──┐                                  │
-│  simulator-core ─▶ adapter-ves  ──┤                                  │
-│  simulator-edge ─▶ adapter-netconf┤                                  │
-│                                   ▼                                  │
-│                              normalizer                              │
-│                                   │                                  │
-│                  ┌────────────────┴──────────────────┐              │
-│                  ▼                                    ▼              │
-│         stream:norm.telemetry              entity:{id} (hashes)     │
-│                  │                                    │              │
-│        api-bff-service (SSE,                api-bff-service         │
-│           exports, queries)               telemetry-exporter         │
-│                                                  │                  │
-│                                             Prometheus               │
-│                                                  │                  │
-│                                              Grafana                 │
-│                                                                      │
-│  fault-engine ──▶ faults:active (hash) ◀─ simulators poll           │
-└──────────────────────────────────────────────────────────────────────┘
-```
+Async SimPy worker for the Edge domain.
 
-### Domains simulated
+- no public HTTP API
+- emits NETCONF-like telemetry to `adapter-netconf`
+- simulates:
+  - `edge-upf-01`
+  - `mec-app-01`
+  - `edge-comp-01`
+- consumes Redis fault state from `faults:active`
+- reads cross-domain congestion from `ran:congestion_score`
+- publishes helper state such as `edge:saturation` and `edge:misrouting_ratio`
 
-| Domain | Entities |
-|---|---|
-| **Core** | AMF-01, SMF-01, Core-UPF-01 |
-| **Edge** | Edge-UPF-01, MEC-App-01, Edge-Comp-01 |
-| **RAN** | gNB-01, gNB-02 × 2 cells each × 3 slices (eMBB / URLLC / mMTC) |
+### `simulator-ran`
 
----
+Async SimPy worker for the RAN domain.
 
-## KPI Model
+- no public HTTP API
+- emits VES-style telemetry to `adapter-ves`
+- simulates:
+  - 2 gNBs
+  - 2 cells per gNB
+  - 3 slices per cell (`eMBB`, `URLLC`, `mMTC`)
+- total slice instances: 12
+- publishes cross-domain load signals such as `ran:congestion_score` and `core:active_ues`
 
-KPIs are **not** random values. They are computed from latent state variables:
+### `fault-engine`
 
-```
-active_ues → signaling_load → cpu_util, registration_error_rate
-active_ues → active_sessions → pdu_queue → pdu_latency
-active_sessions → dl_throughput → queue_depth → forwarding_latency → packet_loss
-rb_utilization → latency (exponential above 70%) → packet_loss (above 85%)
-ran_congestion → propagates to edge and core via Redis
-```
+FastAPI service used to inject faults and run scenarios.
 
-Each entity has a **causal update chain** per tick. Faults inject into latent variables, not directly into KPIs.
+- default Compose port: `7004`
+- routes:
+  - `GET /health`
+  - `GET /faults/active`
+  - `GET /scenarios`
+  - `POST /scenarios/start`
+  - `POST /scenarios/stop`
+  - `POST /faults/inject`
+- stores active faults in Redis hash `faults:active`
+- publishes lifecycle events to Redis stream `stream:fault.events`
 
----
+## Current Scenario Files
 
-## Fault Injection
+The committed scenarios in `scenarios/` are:
 
-### Via API
+- `normal_day`
+- `peak_hour`
+- `urllc_misrouting`
+- `edge_degradation`
+- `cascading_incident`
 
-```bash
-# Inject a manual fault
-curl -X POST http://localhost:8000/api/v1/faults/inject \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fault_type": "ran_congestion",
-    "affected_entities": ["gnb-01", "gnb-02"],
-    "severity": 3,
-    "duration_sec": 120,
-    "kpi_impacts": {"congestion": 0.7}
-  }'
-```
+Brief summary:
 
-### Via Scenarios
+- `normal_day`: baseline traffic with no injected faults
+- `peak_hour`: elevated traffic and RAN congestion
+- `urllc_misrouting`: URLLC traffic forced through the wrong UPF path
+- `edge_degradation`: edge compute and MEC overload
+- `cascading_incident`: multi-domain chained incident across RAN, edge, and core
 
-```bash
-# Start URLLC misrouting scenario
-curl -X POST http://localhost:8000/api/v1/scenarios/start \
-  -H "Content-Type: application/json" \
-  -d '{"scenario_id": "urllc_misrouting"}'
+## Cross-Domain Coordination
 
-# Stop current scenario
-curl -X POST http://localhost:8000/api/v1/scenarios/stop
-```
+The simulators coordinate through Redis in addition to the adapter flow.
 
-### Available scenarios
+Important keys and streams include:
 
-| Scenario ID | Description |
-|---|---|
-| `normal_day` | Baseline with sinusoidal daily pattern |
-| `peak_hour` | 1.8× traffic, RAN congestion |
-| `urllc_misrouting` | URLLC sent to wrong UPF, SLA breached |
-| `edge_degradation` | Edge compute overload, MEC app response spikes |
-| `cascading_incident` | All domains affected simultaneously |
+- `faults:active`
+- `stream:fault.events`
+- `ran:congestion_score`
+- `core:active_ues`
+- `edge:saturation`
+- `edge:misrouting_ratio`
 
----
-
-## Sample API Calls
-
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# Latest KPIs — all entities
-curl http://localhost:8000/api/v1/kpis/latest
-
-# Filter by domain
-curl "http://localhost:8000/api/v1/kpis/latest?domain=ran"
-
-# Filter by slice
-curl "http://localhost:8000/api/v1/kpis/latest?sliceId=slice-urllc-01-01"
-
-# Recent 15-minute telemetry window
-curl "http://localhost:8000/api/v1/kpis/recent?minutes=15"
-
-# Specific entity
-curl http://localhost:8000/api/v1/kpis/entity/amf-01
-
-# Active faults
-curl http://localhost:8000/api/v1/faults/active
-
-# SSE stream (live events)
-curl -N http://localhost:8000/api/v1/stream/kpis
-
-# ML export: SLA feature view
-curl http://localhost:8000/api/v1/export/sla | python -m json.tool
-
-# ML export: Slice classifier features
-curl http://localhost:8000/api/v1/export/slice-classifier
-
-# ML export: LSTM congestion sequences
-curl http://localhost:8000/api/v1/export/congestion-sequences
-```
-
----
-
-## Redis Streams
-
-| Stream | Producer | Consumer | Purpose |
-|---|---|---|---|
-| `stream:raw.ves` | adapter-ves | normalizer | Raw VES events |
-| `stream:raw.netconf` | adapter-netconf | normalizer | Flat NETCONF records |
-| `stream:norm.telemetry` | normalizer | api-bff-service, exporter | Canonical events |
-| `stream:fault.events` | fault-engine | (audit log) | Fault lifecycle events |
-
-Entity latest state is stored in Redis hashes: `entity:{entity_id}` — used by the API for sub-ms reads.
-
----
-
-## Slice Misrouting
-
-When `urllc_misrouting` scenario is active:
-
-- URLLC slice `actualUpf` → `core-upf-01` (instead of `edge-upf-01`)  
-- `qosProfileActual` → `embb` (wrong class)  
-- Latency +15ms → breaches 5ms SLA  
-- Core UPF DL throughput rises unexpectedly  
-- Edge UPF `localBreakoutRatio` drops  
-- `misroutingScore` > 0 appears in canonical events and Grafana  
-
-Observable in dashboards AND in `/api/v1/kpis/latest?domain=ran` (routing fields).
-
----
-
-## Extending the Simulator
-
-### Add a new entity
-
-1. Create `entities/new_entity.py` in the relevant simulator service
-2. Add `@dataclass` with latent state + `update()` + `kpis()`
-3. Instantiate in `engine.py` and include in the tick chain
-4. Map entity type in `shared/models.py` `EntityType` enum
-
-### Add a new KPI
-
-1. Return it from the entity's `kpis()` dict
-2. It will flow automatically through VES → normalizer → Redis → Prometheus → Grafana
-
-### Add a new fault type
-
-1. Add value to `shared/models.py` `FaultType` enum
-2. Create a JSON scenario in `scenarios/`
-3. Handle the fault impacts in the relevant simulator engine's `_load_fault_state()`
-
-### Add a new scenario
-
-Simply create a JSON file in `scenarios/` following the existing pattern.
-
----
-
-## Folder Structure
+## Telemetry Flow
 
 ```text
-neuroslice-platform/
-├── infrastructure/
-│   ├── docker-compose.yml
-│   ├── .env.example
-│   └── observability/
-│       ├── grafana/
-│       └── prometheus/
-├── simulation-tier/
-│   ├── simulator-core/
-│   ├── simulator-edge/
-│   ├── simulator-ran/
-│   ├── fault-engine/
-│   └── scenarios/
-├── ingestion-tier/
-│   ├── shared/
-│   ├── adapter-ves/
-│   ├── adapter-netconf/
-│   ├── normalizer/
-│   └── telemetry-exporter/
-└── api-dashboard-tier/
-    └── api-bff-service/
+simulator-core -> adapter-ves
+simulator-ran  -> adapter-ves
+simulator-edge -> adapter-netconf
+
+fault-engine -> faults:active + stream:fault.events
+simulators   -> poll faults:active
+```
+
+## Simulation Characteristics
+
+The tier uses causal, stateful models instead of independent random KPIs.
+
+Examples from the current implementation:
+
+- Core:
+  - AMF active UEs drive registration queue, signaling load, CPU, and failure rate
+  - SMF session load drives setup queue, latency, and success rate
+  - Core UPF throughput, queue depth, latency, and packet loss are influenced by sessions, RAN congestion, and misrouting
+- Edge:
+  - compute saturation influences MEC app behavior
+  - edge UPF latency and packet loss respond to overload and misrouting
+- RAN:
+  - cell and slice behavior changes with daily traffic shape, congestion, and misrouting flags
+
+## Key Environment Variables
+
+Simulation services rely on shared config from `ingestion-tier/shared/config.py`, including:
+
+- `REDIS_HOST`
+- `REDIS_PORT`
+- `SERVICE_NAME`
+- `SITE_ID`
+- `TICK_INTERVAL_SEC`
+- `SIM_SPEED`
+- `VES_ADAPTER_URL`
+- `NETCONF_ADAPTER_URL`
+- `FAULT_ENGINE_URL`
+- `SCENARIOS_DIR`
+
+## Running The Tier
+
+Use the main platform Compose file:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up --build fault-engine simulator-core simulator-edge simulator-ran
+```
+
+Typical dependencies:
+
+- `redis`
+- `adapter-ves`
+- `adapter-netconf`
+
+## Notes
+
+- Only `fault-engine` exposes an HTTP API directly.
+- The simulator services are background workers and are not published on host ports.
+- The scenario JSON files are mounted into relevant services at `/scenarios`.
+
+## Folder Map
+
+```text
+simulation-tier/
+|-- README.md
+|-- fault-engine/
+|-- scenarios/
+|-- simulator-core/
+|-- simulator-edge/
+`-- simulator-ran/
 ```

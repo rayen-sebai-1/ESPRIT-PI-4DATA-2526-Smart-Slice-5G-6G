@@ -1,53 +1,43 @@
 # Control Tier
 
-Control and closed-loop automation tier for turning detections into actions.
-
-## Tier Purpose
-
-This tier is intended to host policy decisions and remediation workflows that act on events coming from AIOps and operations APIs.
-
-Planned responsibilities:
-
-- Evaluate remediation policies based on severity, domain, and slice impact.
-- Manage alert lifecycle and escalation.
-- Trigger corrective actions (traffic steering, scaling, policy updates).
-- Keep auditable action history and rollback context.
+The control tier is intended to host closed-loop automation, remediation policy execution, and operator action workflows driven by NeuroSlice events.
 
 ## Current Status
 
-This tier is scaffold-only for now.
+This tier is scaffold-only in the current repository state.
 
-Available directories:
+- No service directories are committed under `control-tier/`
+- No Docker Compose services are defined for this tier in `infrastructure/docker-compose.yml`
+- No alert-management API, policy engine, or action worker is implemented yet
 
-- `alert-management/`
-- `policy-control/`
+Today, the folder contains only this file.
 
-No runnable services or APIs are currently implemented in this tier.
+## Expected Upstream Inputs
 
-## Recommended Interface Contracts (Target)
+When implemented, this tier would most likely consume:
 
-Suggested inputs:
+- normalized telemetry from `stream:norm.telemetry`
+- AIOps output streams:
+  - `events.anomaly`
+  - `events.sla`
+  - `events.slice.classification`
+- active fault state from `faults:active`
+- dashboard/API workflows from `api-dashboard-tier`
 
-- Redis/Kafka AIOps streams (`events.anomaly`, `events.sla`, `events.slice.classification`)
-- Fault/scenario context from API BFF or fault-engine
+## Possible Future Outputs
 
-Suggested outputs:
+- action or remediation streams for downstream automation
+- alert lifecycle state for operators
+- approval and override APIs for human-in-the-loop workflows
+- audit logs for policy decisions and corrective actions
 
-- Action stream for applied decisions (e.g., `stream:control.actions`)
-- Alert stream for NOC/UI consumption (e.g., `stream:alerts`)
-- Optional northbound API endpoints for manual approval/override
+## Documentation Note
 
-## Suggested MVP Roadmap
-
-1. Implement `alert-management` service for deduplication, severity normalization, and routing.
-2. Implement `policy-control` service with rule engine and dry-run mode.
-3. Add audit persistence for actions and policy decisions.
-4. Connect outcomes into `api-dashboard-tier` for operator visibility.
+Older documentation may mention folders such as `alert-management/` or `policy-control/`. Those directories are not present in the current workspace.
 
 ## Folder Map
 
 ```text
 control-tier/
-├── alert-management/
-└── policy-control/
+`-- README.md
 ```

@@ -1,31 +1,82 @@
 # API Dashboard Tier
 
-Client-facing API and dashboard layer for NeuroSlice. This tier exposes simulator/AIOps data to users and provides operational dashboard UX with authentication, auditability, and role-based access.
+The API dashboard tier is the user-facing access layer for NeuroSlice. It contains one public telemetry BFF, one protected dashboard stack, the Kong gateway in front of the protected APIs, and the React dashboard UI.
 
-## Tier Purpose
+## What Is In This Folder
 
-This tier provides two complementary access surfaces:
+| Path | Stack | Purpose |
+| --- | --- | --- |
+| `api-bff-service/` | FastAPI, Redis, HTTPX | Public BFF for KPIs, AIOps outputs, scenario and fault control, SSE, and ML export views |
+| `auth-service/` | FastAPI, SQLAlchemy, Alembic, PyJWT, Argon2 | Authentication, refresh/session lifecycle, user administration, audit logs |
+| `dashboard-backend/` | FastAPI, SQLAlchemy, Alembic, HTTPX | Protected dashboard domain API, metadata persistence, provider abstraction |
+| `kong-gateway/` | Kong declarative config | Browser-facing gateway for `/api/auth/*` and `/api/dashboard/*` |
+| `react-dashboard/` | React 18, Vite 5, Tailwind CSS, React Query, Axios, Recharts | Protected operations dashboard UI |
 
-- Platform BFF API (`api-bff-service`) for KPI, AIOps events, scenario/fault control, and ML export features.
-- Protected dashboard stack (`react-dashboard` + `kong-gateway` + `auth-service` + `dashboard-backend`) for role-based operations UI.
+## Runtime Architecture
 
-## Subsystems
+```text
+Browser
+  -> react-dashboard (localhost:5173)
+  -> /api/* proxied to kong-gateway (localhost:8008)
+  -> auth-service and dashboard-backend on the internal Docker network
 
-### 1) API BFF Service
+External/API clients
+  -> api-bff-service (localhost:8000)
 
-Path: `api-bff-service/`
+dashboard-backend
+  -> PostgreSQL schemas: auth + dashboard
+  -> api-bff-service when DASHBOARD_DATA_PROVIDER=bff
 
-Main capabilities:
+auth-service
+  -> PostgreSQL schema: auth
 
-- Health/config endpoints.
-- Latest and recent KPI queries.
-- Per-entity telemetry lookups.
-- Latest AIOps outputs and recent AIOps event stream reads.
-- SSE streaming endpoint for live KPIs.
-- Scenario and fault proxy endpoints (to `simulation-tier/fault-engine`).
-- Export endpoints for SLA, slice-classifier, and congestion training views.
+api-bff-service
+  -> Redis entity state and streams
+  -> fault-engine
+```
 
-Important endpoints:
+Current default protected UI flow:
+
+```text
+react-dashboard -> kong-gateway -> auth-service
+react-dashboard -> kong-gateway -> dashboard-backend -> temporary_mock provider
+```
+
+## Current Frontend Surface
+
+The React app currently contains these routes:
+
+- `/login`
+- `/dashboard/national`
+- `/dashboard/region`
+- `/dashboard/region/:regionId`
+- `/sessions`
+- `/predictions`
+- `/admin/users`
+- `*` -> not found page
+
+Current role access:
+
+| Role | Default route | Access |
+| --- | --- | --- |
+| `ADMIN` | `/admin/users` | All pages |
+| `NETWORK_OPERATOR` | `/dashboard/national` | National dashboard, regional dashboard, sessions, predictions |
+| `NETWORK_MANAGER` | `/dashboard/national` | National dashboard, regional dashboard |
+| `DATA_MLOPS_ENGINEER` | `/predictions` | Predictions only |
+
+Current UI modules include:
+
+- national dashboard with KPI cards, region load chart, and Tunisia map
+- regional dashboard with regional drill-down, charts, and session links
+- sessions monitor with search, region/risk/slice filters, pagination, and session detail drawer
+- predictions center with filters, model catalog, ranking tabs, and single-session rerun
+- admin users management for non-admin role creation and lifecycle operations
+
+## API Surface
+
+### Public BFF (`api-bff-service`)
+
+These routes are served directly by the BFF and are not fronted by Kong:
 
 - `GET /health`
 - `GET /config`
@@ -45,115 +96,251 @@ Important endpoints:
 - `GET /api/v1/export/slice-classifier`
 - `GET /api/v1/export/congestion-sequences`
 
-### 2) Dashboard Backend
+### Protected Routes Exposed Through Kong
 
-Path: `dashboard-backend/`
+Auth routes:
 
-Main capabilities:
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `GET /api/auth/users`
+- `POST /api/auth/users`
+- `PATCH /api/auth/users/{userId}`
+- `DELETE /api/auth/users/{userId}`
 
-- National and regional dashboard endpoints.
-- Sessions and prediction catalog endpoints.
-- Prediction execution endpoints (`/predictions/run/*`).
-- Dashboard metadata persistence in PostgreSQL schema `dashboard`.
-- JWT session validation against PostgreSQL-backed auth sessions.
-- Provider abstraction for operational dashboard data:
-  - `temporary_mock` for Scenario B transition
-  - `bff` for future `api-bff-service` integration
+Dashboard routes:
 
-Important note:
+- `GET /api/dashboard/national`
+- `GET /api/dashboard/region/{regionId}`
+- `GET /api/dashboard/sessions`
+- `GET /api/dashboard/sessions/{sessionId}`
+- `GET /api/dashboard/predictions`
+- `GET /api/dashboard/predictions/{sessionId}`
+- `POST /api/dashboard/predictions/run/{sessionId}`
+- `POST /api/dashboard/predictions/run-batch`
+- `GET /api/dashboard/models`
+- `GET /api/dashboard/preferences/me`
+- `PUT /api/dashboard/preferences/me`
+- `GET /api/dashboard/bookmarks`
+- `POST /api/dashboard/bookmarks`
+- `DELETE /api/dashboard/bookmarks?bookmark_id=...`
+- `POST /api/dashboard/alerts/{alertKey}/acknowledge`
 
-- `dashboard-backend/` is the canonical dashboard domain API backend.
-- `common.data` and the old nested `api_service/` and `auth_service/` modules are removed.
-- PostgreSQL is used only for dashboard-owned metadata, not telemetry or live KPI streams.
+Internal/direct service health routes:
 
-### 3) Auth Service
+- `auth-service`: `GET /health`
+- `dashboard-backend`: `GET /health`
 
-Path: `auth-service/`
+Those health routes are not currently exposed by Kong.
 
-Main capabilities:
+## Persistence And Data Ownership
 
-- `POST /auth/login`
-- `POST /auth/refresh`
-- `POST /auth/logout`
-- `GET /auth/me`
-- admin user management endpoints (`/users`) with admin role checks
-- Argon2id password hashing, persisted sessions, refresh rotation, and audit logging in PostgreSQL schema `auth`
+PostgreSQL schemas:
 
-Authentication model:
+- `auth`
+  - `roles`
+  - `users`
+  - `user_sessions`
+  - `audit_logs`
+- `dashboard`
+  - `dashboard_preferences`
+  - `dashboard_bookmarks`
+  - `alert_acknowledgements`
 
-- short-lived JWT access tokens plus `HttpOnly` refresh cookie
-- session revocation enforced by checking `auth.user_sessions` on protected routes
-- no JSON file persistence and no plaintext passwords
+Redis usage:
 
-### 4) Dashboard Gateway and Frontend
+- `api-bff-service` reads entity hashes and telemetry/AIOps streams from Redis
+- protected dashboard services do not store live telemetry in PostgreSQL
 
-- `kong-gateway/kong.yml`: declarative gateway routing
-- `/api/auth/*` -> `auth-service`
-- `/api/dashboard/*` -> `dashboard-backend`
-- cookies are forwarded through Kong with credentialed CORS for the React origin
-- internal auth/backend services are not published on host ports in Compose, so the browser-facing dashboard flow goes through Kong only
+Auth migration seeds these roles:
 
-- `react-dashboard/`: canonical Vite + React + Tailwind entry
-- contains the full frontend source tree and frontend build/runtime assets
-- routes for login, national dashboard, regional dashboard, prediction center, admin users
+- `ADMIN`
+- `NETWORK_OPERATOR`
+- `NETWORK_MANAGER`
+- `DATA_MLOPS_ENGINEER`
 
-## Runtime Ports (Compose Defaults)
+## Dashboard Provider Modes
 
-- BFF API: `8000`
-- Dashboard PostgreSQL: `5432`
-- Kong Gateway: `8008`
-- Frontend: `5173`
-- Internal auth/backend services: Docker network only (`8000` inside the compose network)
+`dashboard-backend` supports two provider modes:
 
-## Running the Tier
+- `temporary_mock`
+  - default mode in `docker-compose.yml`
+  - fully implements national dashboard, regional dashboard, sessions, predictions, reruns, and model catalog using deterministic mock data
+- `bff`
+  - reads live national summary inputs from `api-bff-service`
+  - currently supports national overview aggregation and `/models`
+  - currently returns `501 Not Implemented` for regional dashboards, sessions, prediction detail, reruns, and batch prediction execution
 
-Preferred (full connected mode):
+## Environment Variables
+
+### `api-bff-service`
+
+Read via `ingestion-tier/shared/config.py`:
+
+- `REDIS_HOST`
+- `REDIS_PORT`
+- `REDIS_DB`
+- `STREAM_MAXLEN`
+- `TICK_INTERVAL_SEC`
+- `SIM_SPEED`
+- `SERVICE_NAME`
+- `SITE_ID`
+- `VES_ADAPTER_URL`
+- `NETCONF_ADAPTER_URL`
+- `NORMALIZER_URL`
+- `FAULT_ENGINE_URL`
+- `METRICS_PORT`
+
+### `auth-service`
+
+- `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `JWT_ACCESS_TOKEN_EXPIRES_MINUTES` default `15`
+- `JWT_REFRESH_TOKEN_EXPIRES_DAYS` default `7`
+- `ARGON2_MEMORY_COST` default `65536`
+- `ARGON2_TIME_COST` default `3`
+- `ARGON2_PARALLELISM` default `4`
+- `REFRESH_COOKIE_NAME` default `neuroslice_refresh_token`
+- `REFRESH_COOKIE_PATH` default `/api/auth`
+- `REFRESH_COOKIE_SECURE` default `false`
+- `REFRESH_COOKIE_SAMESITE` default `lax`
+
+Bootstrap script variables:
+
+- `INITIAL_ADMIN_FULL_NAME`
+- `INITIAL_ADMIN_EMAIL`
+- `INITIAL_ADMIN_PASSWORD`
+- `INITIAL_ADMIN_ROLE` default `ADMIN`
+
+### `dashboard-backend`
+
+- `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `DASHBOARD_DATA_PROVIDER` default `temporary_mock`
+- `API_BFF_BASE_URL` required only when `DASHBOARD_DATA_PROVIDER=bff`
+
+### `react-dashboard`
+
+- `VITE_DEV_PROXY_TARGET` default `http://localhost:8008` for local Vite dev
+- `VITE_AUTH_API_URL` default `/api/auth`
+- `VITE_DASHBOARD_API_URL` default `/api/dashboard`
+- `VITE_SESSION_API_URL` optional override for session requests
+- `VITE_PREDICTION_API_URL` optional override for prediction requests
+
+### Compose-Level Variables Used In `infrastructure/docker-compose.yml`
+
+- `API_PORT` default `8000`
+- `DASHBOARD_POSTGRES_PORT` default `5432`
+- `DASHBOARD_KONG_PORT` default `8008`
+- `DASHBOARD_FRONTEND_PORT` default `5173`
+- `DASHBOARD_POSTGRES_DB` default `neuroslice_dashboard`
+- `DASHBOARD_POSTGRES_SUPERUSER` default `neuroslice`
+- `DASHBOARD_POSTGRES_SUPERPASS`
+- `AUTH_DB_USER` default `auth_app`
+- `AUTH_DB_PASSWORD`
+- `DASHBOARD_DB_USER` default `dashboard_app`
+- `DASHBOARD_DB_PASSWORD`
+- `DASHBOARD_JWT_SECRET`
+
+## Running The Tier
+
+The end-to-end runtime for this tier lives in `../infrastructure/docker-compose.yml`.
+
+Start the full platform:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up --build
+```
+
+Start only the API dashboard tier services:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose up --build postgres api-bff-service auth-service dashboard-backend kong-gateway react-dashboard
 ```
 
+Default compose ports:
+
+- BFF API: `http://localhost:8000`
+- PostgreSQL: `localhost:5432`
+- Kong gateway: `http://localhost:8008`
+- React dashboard: `http://localhost:5173`
+
 Notes:
 
-- `api-bff-service` depends on Redis + normalizer + AIOps + fault-engine.
-- `auth-service` and `dashboard-backend` both require PostgreSQL.
-- `common.data` has been removed from the runtime.
-- `dashboard-backend` defaults to `temporary_mock` for Scenario B and can later switch to `bff`.
-- Dashboard public flow is now unambiguous: `react-dashboard` -> `kong-gateway` -> (`auth-service` or `dashboard-backend`).
-- `api-bff-service` stays a separate public BFF for telemetry/AIOps/fault operations and is not used as a bypass for protected dashboard routes.
+- `auth-service` and `dashboard-backend` are internal-only in Compose and are intended to be reached through Kong from the browser.
+- `react-dashboard` proxies `/api/*` to Kong.
+- `api-bff-service` depends on Redis and fault-engine, and is most practical to run through the infrastructure Compose file.
 
-## Migrations And Bootstrap
+## Post-Startup Setup
 
 Run migrations after PostgreSQL is healthy:
 
 ```bash
-cd neuroslice-platform/api-dashboard-tier/auth-service
-DATABASE_URL="postgresql+psycopg://auth_app:change-me-auth-user@localhost:5432/neuroslice_dashboard" alembic upgrade head
-
-cd ../dashboard-backend
-DATABASE_URL="postgresql+psycopg://dashboard_app:change-me-dashboard-user@localhost:5432/neuroslice_dashboard" alembic upgrade head
+cd neuroslice-platform/infrastructure
+docker compose exec auth-service alembic upgrade head
+docker compose exec dashboard-backend alembic upgrade head
 ```
 
 Seed the first admin account:
 
 ```bash
-cd ../auth-service
-DATABASE_URL="postgresql+psycopg://auth_app:change-me-auth-user@localhost:5432/neuroslice_dashboard" \
-JWT_SECRET_KEY="replace-with-long-random-secret" \
-INITIAL_ADMIN_FULL_NAME="Admin NeuroSlice" \
-INITIAL_ADMIN_EMAIL="admin@neuroslice.tn" \
-INITIAL_ADMIN_PASSWORD="change-me-now" \
-python scripts/seed_admin.py
+cd neuroslice-platform/infrastructure
+docker compose exec -e INITIAL_ADMIN_FULL_NAME="Admin NeuroSlice" -e INITIAL_ADMIN_EMAIL="admin@neuroslice.tn" -e INITIAL_ADMIN_PASSWORD="change-me-now" auth-service python scripts/seed_admin.py
 ```
+
+`seed_admin.py` creates the first admin account or updates it if the email already exists.
+
+## Local Frontend Development
+
+If Kong is already running, the frontend can also be started locally:
+
+```bash
+cd neuroslice-platform/api-dashboard-tier/react-dashboard
+npm ci
+npm run dev
+```
+
+By default Vite proxies `/api/*` to `http://localhost:8008`.
 
 ## Folder Map
 
 ```text
 api-dashboard-tier/
-├── api-bff-service/
-├── auth-service/       # canonical auth entry
-├── dashboard-backend/
-├── kong-gateway/       # canonical gateway entry
-└── react-dashboard/    # canonical frontend entry
+|-- README.md
+|-- api-bff-service/
+|   |-- Dockerfile
+|   |-- main.py
+|   `-- requirements.txt
+|-- auth-service/
+|   |-- alembic/
+|   |-- scripts/
+|   |-- Dockerfile
+|   |-- main.py
+|   |-- models.py
+|   |-- repository.py
+|   |-- schemas.py
+|   |-- security.py
+|   `-- service.py
+|-- dashboard-backend/
+|   |-- alembic/
+|   |-- providers/
+|   |-- Dockerfile
+|   |-- main.py
+|   |-- models.py
+|   |-- repository.py
+|   |-- schemas.py
+|   |-- security.py
+|   `-- service.py
+|-- kong-gateway/
+|   |-- Dockerfile
+|   |-- kong.yml
+|   `-- README.md
+`-- react-dashboard/
+    |-- Dockerfile
+    |-- package.json
+    |-- vite.config.ts
+    `-- src/
 ```

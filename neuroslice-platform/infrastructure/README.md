@@ -1,43 +1,69 @@
 # Infrastructure Layer
 
-Runtime orchestration, platform dependencies, and observability assets for NeuroSlice.
+The infrastructure layer is the authoritative local integration environment for NeuroSlice. It wires the active tiers together through Docker Compose and carries the shared data stores, observability assets, and dashboard database bootstrap logic.
 
-## Purpose
+## What Exists In This Folder
 
-This layer wires all tiers together using Docker Compose and provides shared runtime services:
+Committed files and folders:
 
-- Redis (state + streams)
-- Kafka + Zookeeper (event bus)
-- InfluxDB (time-series persistence)
-- Grafana (dashboards)
+- `docker-compose.yml`
+- `.env.example`
+- `.env`
+- `postgres-init/`
+- `observability/`
 
-It also contains deployment scaffolds for future Kubernetes and Istio environments.
+Current observability assets:
 
-## Main Files
+- `observability/grafana/provisioning/datasources/influxdb.yml`
+- `observability/grafana/provisioning/dashboards/dashboards.yml`
+- `observability/grafana/provisioning/dashboards/neuroslice_overview.json`
+- `observability/query.flux`
+- `observability/metrics.txt`
 
-- `docker-compose.yml`: full multi-service topology.
-- `.env.example`: environment and port template.
-- `.env`: local runtime configuration.
-- `observability/`: Grafana provisioning + Flux examples.
-- `k8s/`: Kubernetes deployment scaffold.
-- `istio/`: service-mesh scaffold.
+Current PostgreSQL bootstrap asset:
 
-## Service Topology (Compose)
+- `postgres-init/001-create-dashboard-roles.sh`
 
-Infrastructure services:
+There are no committed `k8s/` or `istio/` directories in the current workspace.
+
+## Compose Service Topology
+
+### Core infrastructure services
 
 - `redis`
 - `zookeeper`
 - `kafka`
 - `influxdb`
+- `postgres`
 - `grafana`
 
-Application services orchestrated here:
+### Simulation tier services
 
-- Simulation tier (`simulator-core`, `simulator-edge`, `simulator-ran`, `fault-engine`)
-- Ingestion tier (`adapter-ves`, `adapter-netconf`, `normalizer`, `telemetry-exporter`)
-- AIOps tier (`congestion-detector`, `slice-classifier`, `sla-assurance`)
-- API/dashboard tier (`api-bff-service`, `auth-service`, `dashboard-backend`, `kong-gateway`, `react-dashboard`)
+- `fault-engine`
+- `simulator-core`
+- `simulator-edge`
+- `simulator-ran`
+
+### Ingestion tier services
+
+- `adapter-ves`
+- `adapter-netconf`
+- `normalizer`
+- `telemetry-exporter`
+
+### AIOps tier services
+
+- `congestion-detector`
+- `slice-classifier`
+- `sla-assurance`
+
+### API/dashboard tier services
+
+- `api-bff-service`
+- `auth-service`
+- `dashboard-backend`
+- `kong-gateway`
+- `react-dashboard`
 
 ## Quick Start
 
@@ -47,45 +73,126 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Useful URLs (default ports):
+## Default Ports And URLs
 
-- NeuroSlice API BFF: `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
-- Dashboard frontend: `http://localhost:5173`
-- Dashboard gateway (Kong): `http://localhost:8008`
-- Protected dashboard API via Kong: `http://localhost:8008/api/auth/*` and `http://localhost:8008/api/dashboard/*`
-- Grafana: `http://localhost:3000`
+- API BFF: `http://localhost:8000`
+- API BFF docs: `http://localhost:8000/docs`
+- VES adapter: `http://localhost:7001`
+- NETCONF adapter: `http://localhost:7002`
+- fault-engine: `http://localhost:7004`
+- Redis: `localhost:6379`
+- Kafka host listener: `localhost:29092`
 - InfluxDB: `http://localhost:8086`
+- PostgreSQL: `localhost:5432`
+- Grafana: `http://localhost:3000`
+- Kong gateway: `http://localhost:8008`
+- React dashboard: `http://localhost:5173`
+
+Protected dashboard routes exposed through Kong:
+
+- `/api/auth/*`
+- `/api/dashboard/*`
 
 ## Environment Variables
 
-Primary knobs in `.env`:
+The main template is `.env.example`.
 
-- Site and simulation speed: `SITE_ID`, `TICK_INTERVAL_SEC`, `SIM_SPEED`
-- Core ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`
-- AIOps thresholds: `CONGESTION_THRESHOLD`, `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`, `SLA_RISK_THRESHOLD`
-- Dashboard ports/secrets: `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`, `DASHBOARD_JWT_SECRET`
-- Grafana auth: `GRAFANA_USER`, `GRAFANA_PASSWORD`
+Variables actively used by the current Compose stack include:
 
-Dashboard notes:
+- site and simulation:
+  - `SITE_ID`
+  - `TICK_INTERVAL_SEC`
+  - `SIM_SPEED`
+- shared platform:
+  - `REDIS_PORT`
+  - `STREAM_MAXLEN`
+  - `API_PORT`
+  - `VES_PORT`
+  - `NETCONF_PORT`
+  - `FAULT_ENGINE_PORT`
+  - `GRAFANA_PORT`
+- AIOps thresholds:
+  - `CONGESTION_THRESHOLD`
+  - `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`
+  - `SLA_RISK_THRESHOLD`
+- dashboard database and auth:
+  - `DASHBOARD_POSTGRES_PORT`
+  - `DASHBOARD_POSTGRES_DB`
+  - `DASHBOARD_POSTGRES_SUPERUSER`
+  - `DASHBOARD_POSTGRES_SUPERPASS`
+  - `AUTH_DB_USER`
+  - `AUTH_DB_PASSWORD`
+  - `DASHBOARD_DB_USER`
+  - `DASHBOARD_DB_PASSWORD`
+  - `DASHBOARD_FRONTEND_PORT`
+  - `DASHBOARD_KONG_PORT`
+  - `DASHBOARD_JWT_SECRET`
+  - `JWT_ACCESS_TOKEN_EXPIRES_MINUTES`
+  - `JWT_REFRESH_TOKEN_EXPIRES_DAYS`
+  - `ARGON2_MEMORY_COST`
+  - `ARGON2_TIME_COST`
+  - `ARGON2_PARALLELISM`
+  - `REFRESH_COOKIE_NAME`
+  - `REFRESH_COOKIE_SECURE`
+  - `REFRESH_COOKIE_SAMESITE`
+  - `DASHBOARD_DATA_PROVIDER`
+- Grafana:
+  - `GRAFANA_USER`
+  - `GRAFANA_PASSWORD`
 
-- `auth-service` and `dashboard-backend` are internal-only Compose services exposed to the browser through `kong-gateway`.
-- `react-dashboard` proxies `/api/*` to `kong-gateway`, making Kong the single public dashboard entry point in Scenario B.
-- `react-dashboard/` contains the full frontend project; there is no parallel `dashboard-frontend/` runtime folder.
-- `kong-gateway/` is the only gateway folder; there is no parallel `kong/` runtime folder.
+Template variables currently present but not wired to an active service or port mapping in `docker-compose.yml`:
 
-## Observability Assets
+- `EXPORTER_PORT`
+- `PROMETHEUS_PORT`
 
-- Grafana data source provisioning:
-- `observability/grafana/provisioning/datasources/`
+The current Compose stack does not define a Prometheus service.
 
-- Grafana dashboards:
-- `observability/grafana/provisioning/dashboards/`
+## Database Bootstrap
 
-- Example Flux query:
-- `observability/query.flux`
+`postgres-init/001-create-dashboard-roles.sh` runs when PostgreSQL initializes and:
 
-## Notes for Future Deployment
+- creates the auth and dashboard database roles if needed
+- grants database connectivity
+- creates schemas:
+  - `auth`
+  - `dashboard`
+- grants `dashboard-backend` read access to the auth schema objects it needs
 
-- `k8s/` and `istio/` are placeholders for production-grade orchestration and service mesh policies.
-- Compose is currently the authoritative local integration environment.
+## Dashboard Notes
+
+- `auth-service` and `dashboard-backend` are internal-only Compose services
+- `kong-gateway` is the public browser-facing entry point for protected dashboard APIs
+- `react-dashboard` proxies `/api/*` to Kong
+- `api-bff-service` remains a separate public API surface on port `8000`
+
+## Useful Compose Subsets
+
+Run only the API/dashboard stack plus database:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up --build postgres api-bff-service auth-service dashboard-backend kong-gateway react-dashboard
+```
+
+Run only the simulation, ingestion, and AIOps runtime path:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up --build redis zookeeper kafka influxdb adapter-ves adapter-netconf normalizer congestion-detector slice-classifier sla-assurance fault-engine simulator-core simulator-edge simulator-ran telemetry-exporter api-bff-service grafana
+```
+
+## Folder Map
+
+```text
+infrastructure/
+|-- .env
+|-- .env.example
+|-- README.md
+|-- docker-compose.yml
+|-- observability/
+|   |-- grafana/
+|   |-- metrics.txt
+|   `-- query.flux
+`-- postgres-init/
+    `-- 001-create-dashboard-roles.sh
+```

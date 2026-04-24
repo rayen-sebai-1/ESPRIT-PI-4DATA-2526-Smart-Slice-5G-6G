@@ -56,9 +56,9 @@ services:
         paths:
           - /api/dashboard/sessions
         strip_path: true
-      methods:
-          - GET
-          - OPTIONS
+        methods:
+            - GET
+            - OPTIONS
 
   - name: dashboard-service-predictions
     url: http://dashboard-backend:8000/predictions
@@ -79,9 +79,9 @@ services:
         paths:
           - /api/dashboard/models
         strip_path: true
-      methods:
-          - GET
-          - OPTIONS
+        methods:
+            - GET
+            - OPTIONS
 
   - name: dashboard-service-root
     url: http://dashboard-backend:8000/dashboard
@@ -90,9 +90,9 @@ services:
         paths:
           - /api/dashboard
         strip_path: true
-      methods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-          - OPTIONS
+        methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS

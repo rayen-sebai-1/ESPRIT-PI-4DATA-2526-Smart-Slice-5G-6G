@@ -1,38 +1,45 @@
 # MLOps Tier
 
-Offline data engineering, model training, registry tracking, and prediction API for Smart Slice 5G/6G models.
-
-## Tier Purpose
-
-This tier manages the model lifecycle used by runtime AIOps services:
-
-- Data preprocessing and validation.
-- Training pipelines for congestion, SLA, and slice-type tasks (5G/6G).
-- Local MLflow tracking and model registry metadata.
-- Serving API for direct prediction calls.
-- Testing and quality gates for data/model logic.
+The MLOps tier contains the offline data-preparation, training, testing, and prediction-serving project used by the runtime AIOps services.
 
 ## Current Scope
 
-Active subproject:
+The only committed subproject in this tier is:
 
 - `batch-orchestrator/`
 
-It contains:
+## What Exists In `batch-orchestrator`
 
-- `src/data/` preprocessing + validation pipelines.
-- `src/models/` training scripts by model family and generation.
-- `src/api/` FastAPI inference service.
-- `tests/` data/model/API tests.
-- `mlflow.db` + `mlruns/` local tracking artifacts.
-- `models/` exported/traced model artifacts used by runtime AIOps.
-- `data/` raw and processed datasets.
+Committed source and assets:
 
-## API Endpoints
+- `src/data/` preprocessing and validation scripts
+- `src/models/` training scripts
+- `src/api/` FastAPI prediction API
+- `tests/` pytest suite
+- `data/raw/` committed raw datasets
+- `notebooks/` modeling notebooks
+- `report/` project report artifact
+- `Makefile`
+- `MLproject`
+- `Dockerfile`
+- `docker-compose.yml`
 
-Prediction API entrypoint: `src/api/main.py`
+Not currently committed in this workspace:
 
-Endpoints:
+- `models/`
+- `data/processed/`
+- `mlflow.db`
+- `mlruns/`
+
+Those missing directories matter because parts of the API, the local Dockerfile, and the runtime AIOps services expect generated artifacts to exist there.
+
+## Prediction API
+
+Entrypoint:
+
+- `batch-orchestrator/src/api/main.py`
+
+Current routes:
 
 - `GET /health`
 - `POST /predict/congestion_6g`
@@ -43,26 +50,94 @@ Endpoints:
 - `POST /predict/slice_type_6g`
 - `POST /predict/sla_6g`
 
-Model loading behavior:
+Model-loading behavior:
 
-- Loads from MLflow URIs and/or local model files.
-- Some endpoints return `503` if required model/scaler/encoder is unavailable.
+- loads MLflow-registered models when available
+- loads local TorchScript and joblib artifacts when present
+- some endpoints intentionally return `503` when required trained artifacts are missing
+- `/predict/slice` uses a stub path when the slice-selection model is not available
+
+## Training And Data Scripts
+
+Current training scripts in `src/models/`:
+
+- `train_congestion_5g.py`
+- `train_congestion_6g.py`
+- `train_sla_5g.py`
+- `train_sla_6g.py`
+- `train_slice_type_5g.py`
+- `train_slice_type_6g.py`
+
+Current preprocessing and validation scripts in `src/data/`:
+
+- `preprocess_6g.py`
+- `preprocess_congestion_5g.py`
+- `preprocess_sla_5g.py`
+- `preprocess_sla_6g.py`
+- `preprocess_slice_type_5g.py`
+- `preprocess_slice_type_6g.py`
+- `validate.py`
+- `validate_congestion_5g.py`
+- `validate_sla_5g.py`
+- `validate_sla_6g.py`
+- `validate_slice_type_5g.py`
+- `validate_slice_type_6g.py`
 
 ## Useful Make Targets
 
 From `batch-orchestrator/Makefile`:
 
 - `make setup`
-- `make data-sla-5g`, `make data-congestion-5g`, `make data-slice-type-5g`, `make data-slice-type-6g`
-- `make validate-data-sla-5g`, `make validate-data-congestion-5g`, `make validate-data-slice-type-5g`
-- `make train-sla-5g`, `make train-congestion-5g`, `make train-slice-type-5g` (and 6G variants)
+- `make lint`
+- `make format`
+- `make security`
+- `make quality`
+- `make data`
+- `make data-sla-5g`
+- `make data-sla-6g`
+- `make data-congestion-5g`
+- `make data-slice-type-5g`
+- `make data-slice-type-6g`
+- `make validate-data`
+- `make validate-data-sla-5g`
+- `make validate-data-sla-6g`
+- `make validate-data-congestion-5g`
+- `make validate-data-slice-type-5g`
+- `make validate-data-slice-type-6g`
+- `make train-sla-5g`
+- `make train-sla-6g`
+- `make train-congestion-5g`
+- `make train-congestion-6g`
+- `make train-slice-type-5g`
+- `make train-slice-type-6g`
 - `make train-all`
 - `make test`
 - `make mlflow-ui`
 - `make serve`
+- `make docker-build`
+- `make docker-run`
+- `make docker-compose-up`
 - `make pipeline`
 
-## Run Locally
+## Runtime Integration With AIOps
+
+The main platform Compose file mounts this project into the online AIOps workers as:
+
+- host path: `../mlops-tier/batch-orchestrator`
+- container path: `/mlops`
+
+The runtime AIOps workers expect generated artifacts such as:
+
+- `/mlops/models/...`
+- `/mlops/data/processed/...`
+- `/mlops/mlflow.db`
+- `/mlops/mlruns/...`
+
+If those artifacts are absent, the workers stay up but fall back to heuristic behavior where supported.
+
+## Local Usage
+
+Run the API from source:
 
 ```bash
 cd neuroslice-platform/mlops-tier/batch-orchestrator
@@ -70,37 +145,32 @@ pip install -r requirements.txt
 make serve
 ```
 
-MLflow UI:
+Run the MLflow UI from source:
 
 ```bash
 cd neuroslice-platform/mlops-tier/batch-orchestrator
 make mlflow-ui
 ```
 
-## Runtime Integration with AIOps Tier
+## Current Repository Caveat
 
-The infrastructure compose mounts this project into AIOps services:
-
-- host path: `../mlops-tier/batch-orchestrator`
-- container path: `/mlops`
-
-This is how runtime services access:
-
-- traced model files in `/mlops/models`
-- preprocessors/scalers/encoders in `/mlops/data/processed`
-- MLflow metadata in `/mlops/mlflow.db` and `/mlops/mlruns`
+The committed `Dockerfile` copies `models/` and `mlruns/`, but those directories are not present in the current workspace. A clean Docker build from this snapshot will therefore require generated artifacts or Dockerfile adjustments before it succeeds.
 
 ## Folder Map
 
 ```text
 mlops-tier/
-└── batch-orchestrator/
-    ├── src/
-    ├── tests/
-    ├── data/
-    ├── models/
-    ├── mlruns/
-    ├── notebooks/
-    ├── Makefile
-    └── MLproject
+|-- README.md
+`-- batch-orchestrator/
+    |-- Dockerfile
+    |-- Makefile
+    |-- MLproject
+    |-- docker-compose.yml
+    |-- requirements.txt
+    |-- data/
+    |   `-- raw/
+    |-- notebooks/
+    |-- report/
+    |-- src/
+    `-- tests/
 ```
