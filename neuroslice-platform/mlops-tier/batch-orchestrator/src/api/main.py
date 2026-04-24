@@ -1,5 +1,7 @@
 """FastAPI application for the Smart Slice 5G/6G MLOps pipeline."""
 
+import os
+
 import joblib
 
 import mlflow
@@ -32,6 +34,7 @@ from src.api.schemas import (
     SliceType6GInput,
     SliceType6GOutput,
 )
+from src.models.lifecycle import configure_mlflow_tracking
 
 # ---------------------------------------------------------------------------
 # Application
@@ -48,7 +51,7 @@ app = FastAPI(
 # Model holders (populated at startup)
 _models: dict = {}
 
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 CONGESTION_MODEL_URI = "models:/congestion-lstm-6g/Production"
 CONGESTION_5G_MODEL_PATH = "models/congestion_5g_lstm_traced.pt"
 CONGESTION_5G_PREPROCESSOR_PATH = "data/processed/preprocessor_congestion_5g.pkl"
@@ -107,8 +110,6 @@ async def load_models() -> None:
 
     # SLA scaler
     try:
-        import os
-
         if os.path.exists(SLA_SCALER_PATH):
             _models["sla_5g_scaler"] = joblib.load(SLA_SCALER_PATH)
             print(f"[INFO] Loaded SLA scaler from '{SLA_SCALER_PATH}'.")
@@ -129,7 +130,6 @@ async def load_models() -> None:
 
     # Slice-Type-5G label encoder
     try:
-        import os
         if os.path.exists(SLICE_TYPE_5G_LABEL_ENCODER_PATH):
             _models["slice_type_5g_encoder"] = joblib.load(SLICE_TYPE_5G_LABEL_ENCODER_PATH)
             print(f"[INFO] Loaded slice-type-5g label encoder from '{SLICE_TYPE_5G_LABEL_ENCODER_PATH}'.")
@@ -150,7 +150,6 @@ async def load_models() -> None:
 
     # Slice-Type-6G label encoder
     try:
-        import os
         if os.path.exists(SLICE_TYPE_6G_LABEL_ENCODER_PATH):
             _models["slice_type_6g_encoder"] = joblib.load(SLICE_TYPE_6G_LABEL_ENCODER_PATH)
             print(f"[INFO] Loaded slice-type-6g label encoder from '{SLICE_TYPE_6G_LABEL_ENCODER_PATH}'.")
@@ -171,7 +170,6 @@ async def load_models() -> None:
 
     # SLA-6G scaler
     try:
-        import os
         if os.path.exists(SLA_6G_SCALER_PATH):
             _models["sla_6g_scaler"] = joblib.load(SLA_6G_SCALER_PATH)
             print(f"[INFO] Loaded SLA-6G scaler from '{SLA_6G_SCALER_PATH}'.")

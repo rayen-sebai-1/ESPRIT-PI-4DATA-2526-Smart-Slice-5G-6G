@@ -24,7 +24,7 @@ def _require_env(name: str) -> str:
 def main() -> None:
     email = _require_env("INITIAL_ADMIN_EMAIL").strip().lower()
     password = _require_env("INITIAL_ADMIN_PASSWORD")
-    full_name = _require_env("INITIAL_ADMIN_FULL_NAME").strip()
+    full_name = os.getenv("INITIAL_ADMIN_FULL_NAME", "NeuroSlice Administrator").strip() or "NeuroSlice Administrator"
     role_name = os.getenv("INITIAL_ADMIN_ROLE", "ADMIN").strip().upper()
 
     session_factory = get_session_factory()

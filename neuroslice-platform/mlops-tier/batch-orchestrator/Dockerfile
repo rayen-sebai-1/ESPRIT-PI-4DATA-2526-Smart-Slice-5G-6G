@@ -14,9 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ ./src/
+COPY data/ ./data/
 COPY models/ ./models/
 COPY mlruns/ ./mlruns/
 
-EXPOSE 8000
+ENV API_PORT=8010
 
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8010
+
+CMD ["sh", "-c", "uvicorn src.api.main:app --host 0.0.0.0 --port ${API_PORT:-8010}"]

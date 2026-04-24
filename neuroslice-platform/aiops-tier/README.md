@@ -1,177 +1,60 @@
 # AIOps Tier
 
-The AIOps tier contains the online inference workers that consume normalized telemetry and publish near-real-time congestion, SLA-risk, and slice-classification outputs.
-
-## Implemented Services
-
-This tier currently contains three runtime workers:
+The AIOps tier contains the online inference workers:
 
 - `congestion-detector/`
 - `sla-assurance/`
 - `slice-classifier/`
 
-There are no additional committed services under `aiops-tier/` in the current workspace.
+## Model Loading
 
-## Runtime Role
+The services now include a Scenario B integration scaffold:
 
-All three workers:
+1. read `MODEL_REGISTRY_PATH` through `shared/model_registry_client.py`
+2. look for the latest `promotion_status=promoted` entry for `MODEL_NAME`
+3. if `MODEL_FORMAT=onnx_fp16` exists, load it with ONNX Runtime
+4. otherwise fall back to the previous loader path
+5. if no model can be loaded, keep the existing heuristic behavior
 
-- consume canonical telemetry from `stream:norm.telemetry`
-- run as background workers, not HTTP APIs
-- publish results to Redis Streams
-- store latest inference state in Redis hashes
-- enrich the existing `entity:{entityId}` hashes for fast reads by `api-bff-service`
-- optionally publish to Kafka and InfluxDB
-- read model artifacts from `/mlops`, mounted from `../mlops-tier/batch-orchestrator`
+Current runtime logging now reports:
 
-## Output Contracts
+- `model_loaded`
+- `model_format`
+- `model_version`
+- `fallback_mode`
+- `onnxruntime_enabled`
 
-### `congestion-detector`
+## Shared Registry Env Vars
 
-- input stream: `stream:norm.telemetry`
-- output Redis stream: `events.anomaly`
-- latest-state hash prefix: `aiops:congestion:{entityId}`
-- Kafka topic: `events.anomaly`
-- InfluxDB measurement: `aiops_congestion`
-- key threshold env: `CONGESTION_THRESHOLD`
-- model inputs:
-  - `/mlops/models/congestion_5g_lstm_traced.pt`
-  - `/mlops/data/processed/preprocessor_congestion_5g.pkl`
+All current services support these generic model-discovery variables:
 
-If the model or preprocessor is missing, the service falls back to heuristic scoring.
+- `MODEL_REGISTRY_PATH`
+- `MODEL_POLL_INTERVAL_SEC`
+- `MODEL_NAME`
+- `MODEL_FORMAT`
 
-### `sla-assurance`
+Existing service-specific variables remain valid and are still used for fallback:
 
-- input stream: `stream:norm.telemetry`
-- output Redis stream: `events.sla`
-- latest-state hash prefix: `aiops:sla:{entityId}`
-- Kafka topic: `events.sla`
-- InfluxDB measurement: `aiops_sla`
-- key threshold env: `SLA_RISK_THRESHOLD`
-- model discovery:
-  - explicit `SLA_MODEL_PATH`, if provided
-  - otherwise local MLflow metadata from `/mlops/mlflow.db` and `/mlops/mlruns`
-- scaler path:
-  - `/mlops/data/processed/scaler_sla_5g.pkl`
+- `CONGESTION_MODEL_PATH`
+- `CONGESTION_PREPROCESSOR_PATH`
+- `SLA_MODEL_PATH`
+- `SLA_MODEL_NAME`
+- `SLICE_MODEL_PATH`
+- `SLICE_MODEL_NAME`
+- `MLFLOW_DB_PATH`
+- `MLRUNS_DIR`
 
-If the model or scaler is unavailable, the service falls back to heuristic risk scoring.
+## Current Defaults
 
-### `slice-classifier`
+- `congestion-detector`: `MODEL_NAME=congestion_5g`
+- `sla-assurance`: `MODEL_NAME=sla_5g`
+- `slice-classifier`: `MODEL_NAME=slice_type_5g`
+- `MODEL_FORMAT=onnx_fp16`
 
-- input stream: `stream:norm.telemetry`
-- output Redis stream: `events.slice.classification`
-- latest-state hash prefix: `aiops:slice_classification:{entityId}`
-- Kafka topic: `events.slice.classification`
-- InfluxDB measurement: `aiops_slice_classification`
-- key threshold env: `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`
-- model discovery:
-  - explicit `SLICE_MODEL_PATH`, if provided
-  - otherwise local MLflow metadata from `/mlops/mlflow.db` and `/mlops/mlruns`
-- label encoder path:
-  - `/mlops/data/processed/label_encoder_slice_type_5g.pkl`
+## Hot Reload Scaffold
 
-If the model or encoder is unavailable, the service falls back to heuristic classification.
+`shared/model_registry_client.py` exposes `should_reload_model(current_version, model_name)`. The current change only adds the discovery and comparison scaffold. Direct MLflow or MinIO download and background polling remain TODOs.
 
-## Data Flow
+## Runtime Dependency
 
-```text
-stream:norm.telemetry
-  -> congestion-detector  -> events.anomaly
-  -> sla-assurance        -> events.sla
-  -> slice-classifier     -> events.slice.classification
-
-Outputs also go to:
-  -> Redis latest-state hashes under aiops:*
-  -> Redis entity:{entityId} enrichment fields
-  -> Kafka topics
-  -> InfluxDB measurements
-```
-
-Current downstream consumers include:
-
-- `api-dashboard-tier/api-bff-service`
-- Grafana via InfluxDB
-- future control and agentic-ai tiers
-
-## Key Environment Variables
-
-Common variables across all three services:
-
-- `REDIS_HOST`
-- `REDIS_PORT`
-- `REDIS_DB`
-- `STREAM_MAXLEN`
-- `INPUT_STREAM`
-- `CONSUMER_GROUP`
-- `CONSUMER_NAME`
-- `READ_COUNT`
-- `BLOCK_MS`
-- `OUTPUT_STREAM`
-- `KAFKA_ENABLED`
-- `KAFKA_BROKER`
-- `KAFKA_TOPIC`
-- `INFLUXDB_ENABLED`
-- `INFLUXDB_URL`
-- `INFLUXDB_TOKEN`
-- `INFLUXDB_ORG`
-- `INFLUXDB_BUCKET`
-- `INFLUX_MEASUREMENT`
-- `STATE_PREFIX`
-- `STATE_TTL_SEC`
-- `SITE_ID`
-
-Service-specific variables:
-
-- `congestion-detector`
-  - `CONGESTION_MODEL_PATH`
-  - `CONGESTION_PREPROCESSOR_PATH`
-  - `CONGESTION_MODEL_VERSION`
-  - `CONGESTION_SEQUENCE_LENGTH`
-  - `CONGESTION_THRESHOLD`
-- `sla-assurance`
-  - `SLA_MODEL_NAME`
-  - `SLA_MODEL_PATH`
-  - `SLA_MODEL_VERSION`
-  - `MLFLOW_DB_PATH`
-  - `MLRUNS_DIR`
-  - `SLA_SCALER_PATH`
-  - `SLA_RISK_THRESHOLD`
-- `slice-classifier`
-  - `SLICE_MODEL_NAME`
-  - `SLICE_MODEL_PATH`
-  - `SLICE_MODEL_VERSION`
-  - `MLFLOW_DB_PATH`
-  - `MLRUNS_DIR`
-  - `SLICE_LABEL_ENCODER_PATH`
-  - `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`
-
-## Running The Tier
-
-The authoritative runtime path is the top-level Compose file:
-
-```bash
-cd neuroslice-platform/infrastructure
-docker compose up --build congestion-detector sla-assurance slice-classifier
-```
-
-Typical required dependencies:
-
-- `redis`
-- `kafka`
-- `influxdb`
-- `normalizer`
-- the read-only mount `../mlops-tier/batch-orchestrator:/mlops`
-
-## Current Repository Note
-
-Earlier documents referenced `misrouting-detector/` and `shared-alibi-sidecar/`. Those directories are not present in the current repo snapshot.
-
-## Folder Map
-
-```text
-aiops-tier/
-|-- README.md
-|-- congestion-detector/
-|-- sla-assurance/
-`-- slice-classifier/
-```
+These services still expect the MLOps project to be mounted at `/mlops`. Promoted ONNX FP16 artifacts are resolved from `models/registry.json`, usually under `/mlops/models/onnx/`.

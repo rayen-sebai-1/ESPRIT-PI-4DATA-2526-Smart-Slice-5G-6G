@@ -35,6 +35,14 @@ There are no committed `k8s/` or `istio/` directories in the current workspace.
 - `kafka`
 - `influxdb`
 - `postgres`
+- `mlflow-postgres`
+- `minio`
+- `minio-init`
+- `mlflow`
+- `mlops-api`
+- `elasticsearch`
+- `logstash`
+- `kibana`
 - `grafana`
 
 ### Simulation tier services
@@ -73,6 +81,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
+If you previously started `mlops-tier/batch-orchestrator/docker-compose.yml`, stop it before using the integrated infrastructure stack unless you intentionally override the overlapping host ports.
+
 ## Default Ports And URLs
 
 - API BFF: `http://localhost:8000`
@@ -84,6 +94,14 @@ docker compose up --build
 - Kafka host listener: `localhost:29092`
 - InfluxDB: `http://localhost:8086`
 - PostgreSQL: `localhost:5432`
+- MLflow PostgreSQL: `localhost:5433`
+- MLflow: `http://localhost:5000`
+- MLOps API: `http://localhost:8010`
+- MinIO API: `http://localhost:9000`
+- MinIO console: `http://localhost:9001`
+- Elasticsearch: `http://localhost:9200`
+- Logstash HTTP input: `http://localhost:8081/predictions`
+- Kibana: `http://localhost:5601`
 - Grafana: `http://localhost:3000`
 - Kong gateway: `http://localhost:8008`
 - React dashboard: `http://localhost:5173`
@@ -107,14 +125,37 @@ Variables actively used by the current Compose stack include:
   - `REDIS_PORT`
   - `STREAM_MAXLEN`
   - `API_PORT`
+  - `MLOPS_API_PORT`
   - `VES_PORT`
   - `NETCONF_PORT`
   - `FAULT_ENGINE_PORT`
   - `GRAFANA_PORT`
+  - `MLFLOW_PORT`
+  - `MLFLOW_POSTGRES_PORT`
+  - `MINIO_API_PORT`
+  - `MINIO_CONSOLE_PORT`
+  - `LOGSTASH_PORT`
+  - `ELASTICSEARCH_PORT`
+  - `KIBANA_PORT`
 - AIOps thresholds:
   - `CONGESTION_THRESHOLD`
   - `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`
   - `SLA_RISK_THRESHOLD`
+  - `MODEL_POLL_INTERVAL_SEC`
+- MLOps Scenario B:
+  - `MLFLOW_TRACKING_URI`
+  - `MLFLOW_BACKEND_STORE_URI`
+  - `MLFLOW_ARTIFACT_ROOT`
+  - `MLFLOW_POSTGRES_USER`
+  - `MLFLOW_POSTGRES_PASSWORD`
+  - `MLFLOW_POSTGRES_DB`
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+  - `MLFLOW_S3_ENDPOINT_URL`
+  - `MINIO_ROOT_USER`
+  - `MINIO_ROOT_PASSWORD`
+  - `MINIO_BUCKET`
+  - `MLOPS_LOG_MONITORING_MODE`
 - dashboard database and auth:
   - `DASHBOARD_POSTGRES_PORT`
   - `DASHBOARD_POSTGRES_DB`
@@ -179,6 +220,13 @@ Run only the simulation, ingestion, and AIOps runtime path:
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose up --build redis zookeeper kafka influxdb adapter-ves adapter-netconf normalizer congestion-detector slice-classifier sla-assurance fault-engine simulator-core simulator-edge simulator-ran telemetry-exporter api-bff-service grafana
+```
+
+Run the integrated MLOps Scenario B stack:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up --build mlflow-postgres minio minio-init mlflow mlops-api elasticsearch logstash kibana
 ```
 
 ## Folder Map
