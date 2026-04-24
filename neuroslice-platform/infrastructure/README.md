@@ -1,10 +1,10 @@
 # Infrastructure Layer
 
-The infrastructure layer is the canonical local integration entry point for NeuroSlice. It keeps the default runtime lightweight and adds the Scenario B MLOps control plane only when the `mlops` profile is enabled.
+The infrastructure layer is the canonical local entry point for the NeuroSlice platform. It wires together the simulators, ingestion pipeline, runtime AIOps services, dashboard stack, observability tooling, and optional MLOps control plane.
 
 ## Runtime Modes
 
-Normal runtime:
+Default platform runtime:
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -12,7 +12,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Runtime plus Scenario B MLOps:
+Platform runtime plus integrated MLOps services:
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -20,73 +20,90 @@ cp .env.example .env
 docker compose --profile mlops up --build
 ```
 
-Validate the rendered Compose file:
+Run the offline MLOps worker against the integrated services:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
+```
+
+Useful validation:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose config
 ```
 
-## What Starts By Default
+## What Starts by Default
 
-`docker compose up --build` starts the shared platform, simulation tier, ingestion tier, AIOps workers, dashboard tier, and Grafana.
+`docker compose up --build` starts:
 
-It does not start:
+- Redis
+- Zookeeper
+- Kafka
+- InfluxDB
+- PostgreSQL
+- Grafana
+- simulation services
+- ingestion services
+- runtime AIOps workers
+- `api-bff-service`
+- `auth-service`
+- `dashboard-backend`
+- `kong-gateway`
+- `react-dashboard`
 
-- `mlops-postgres`
-- `minio`
-- `minio-init`
-- `mlflow-server`
-- `elasticsearch`
-- `logstash`
-- `mlops-api`
-- `mlops-worker`
+It does not start the integrated MLOps services unless the `mlops` profile is enabled.
 
-Those services are optional so the normal runtime stays lighter and does not publish extra MLOps ports unless requested.
+## Published URLs
 
-## Scenario B Profile
+Default runtime:
 
-`docker compose --profile mlops up --build` adds the integrated MLOps runtime services:
-
-- `mlops-postgres` for MLflow metadata
-- `minio` for artifact storage
-- `minio-init` to create the default artifact bucket
-- `mlflow-server` for tracking and artifact serving
-- `elasticsearch` and `logstash` for internal MLOps log ingestion
-- `mlops-api` built from `../mlops-tier/batch-orchestrator`
-
-`mlops-worker` is intentionally not part of the `mlops` profile. Run it only when you want the offline pipeline to execute manually.
-
-## URLs
-
-Default runtime URLs:
-
-- API BFF: `http://localhost:8000`
+- Public API/BFF: `http://localhost:8000`
 - VES adapter: `http://localhost:7001`
 - NETCONF adapter: `http://localhost:7002`
-- fault-engine: `http://localhost:7004`
-- InfluxDB: `http://localhost:8086`
-- Grafana: `http://localhost:3000`
-- Kong gateway: `http://localhost:8008`
+- Fault engine: `http://localhost:7004`
 - React dashboard: `http://localhost:5173`
+- Kong gateway: `http://localhost:8008`
+- Grafana: `http://localhost:3000`
+- InfluxDB: `http://localhost:8086`
+- Redis: `localhost:6379`
+- Platform PostgreSQL: `localhost:5432`
+- Kafka host listener: `localhost:29092`
 
-Scenario B MLOps URLs:
+Optional `mlops` profile:
 
 - MLflow UI: `http://localhost:5000`
 - MinIO API: `http://localhost:9000`
 - MinIO console: `http://localhost:9001`
 - MLOps API: `http://localhost:8010`
+- MLOps PostgreSQL: `localhost:5433`
 
-The dashboard stack is preconfigured for future ML engineer features through:
+## Environment Variables
 
-- `MLOPS_API_BASE_URL=http://mlops-api:8010`
-- `MLFLOW_TRACKING_URI=http://mlflow-server:5000`
+Primary template:
 
-These environment variables are set on `dashboard-backend`, but no UI integration is implemented yet.
+- `.env.example`
+
+Key values already wired into Compose:
+
+- simulation settings: `SITE_ID`, `TICK_INTERVAL_SEC`, `SIM_SPEED`
+- runtime thresholds: `CONGESTION_THRESHOLD`, `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`, `SLA_RISK_THRESHOLD`, `MODEL_POLL_INTERVAL_SEC`
+- public ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`
+- optional MLOps ports and credentials: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`
+- dashboard backend config: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
+
+Current caveats in `docker-compose.yml`:
+
+- platform PostgreSQL is still bound to fixed host port `5432`; `DASHBOARD_POSTGRES_PORT` in `.env.example` is not wired yet
+- `auth-service` and the platform `postgres` service still include development credentials directly in the compose file
+- `dashboard-backend` already reads `DASHBOARD_JWT_SECRET` from `.env`
+
+If you need production-style secret management, update the compose file in addition to `.env`.
 
 ## AIOps Artifact Access
 
-The AIOps services do not require the `mlops` profile to start. They keep reading local promoted artifacts from `../mlops-tier/batch-orchestrator` through read-only mounts:
+The runtime AIOps services always mount local artifacts from `../mlops-tier/batch-orchestrator`, even when the `mlops` profile is disabled:
 
 - `models/`
 - `data/`
@@ -94,106 +111,26 @@ The AIOps services do not require the `mlops` profile to start. They keep readin
 - `mlflow.db`
 - `src/`
 
-`models/registry.json` remains the first discovery target when it exists. This preserves the current fallback mode while keeping the future hot-reload path available.
+This keeps the runtime lightweight while still allowing local training artifacts to be reused.
 
-## Manual Offline Pipeline
+## Common Operations
 
-Local, outside Docker:
-
-```bash
-cd neuroslice-platform/mlops-tier/batch-orchestrator
-pip install -r requirements.txt
-make pipeline
-```
-
-Docker, against the integrated Scenario B services:
+Stop the stack:
 
 ```bash
 cd neuroslice-platform/infrastructure
-docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
+docker compose down
 ```
 
-## Artifact Flow
+Remove containers and persisted volumes:
 
-The integrated Scenario B flow is:
-
-1. training
-2. ONNX FP16 export
-3. MLflow metadata in `mlops-postgres`
-4. artifacts in MinIO under `MLFLOW_ARTIFACT_BUCKET`
-5. promoted registry metadata in `../mlops-tier/batch-orchestrator/models/registry.json`
-6. AIOps runtime reload scaffolding consuming those promoted artifacts later
-
-## Key Environment Variables
-
-The main template is `.env.example`.
-
-Core runtime variables:
-
-- `SITE_ID`
-- `TICK_INTERVAL_SEC`
-- `SIM_SPEED`
-- `REDIS_PORT`
-- `STREAM_MAXLEN`
-- `API_PORT`
-- `VES_PORT`
-- `NETCONF_PORT`
-- `FAULT_ENGINE_PORT`
-- `GRAFANA_PORT`
-- `DASHBOARD_POSTGRES_PORT`
-- `DASHBOARD_FRONTEND_PORT`
-- `DASHBOARD_KONG_PORT`
-
-Scenario B profile variables:
-
-- `MLOPS_POSTGRES_DB`
-- `MLOPS_POSTGRES_USER`
-- `MLOPS_POSTGRES_PASSWORD`
-- `MLOPS_POSTGRES_PORT`
-- `MINIO_ROOT_USER`
-- `MINIO_ROOT_PASSWORD`
-- `MINIO_API_PORT`
-- `MINIO_CONSOLE_PORT`
-- `MLFLOW_ARTIFACT_BUCKET`
-- `MLFLOW_TRACKING_PORT`
-- `MLOPS_API_PORT`
-- `MLFLOW_TRACKING_URI`
-- `MLFLOW_BACKEND_STORE_URI`
-- `MLFLOW_ARTIFACT_ROOT`
-- `MLFLOW_S3_ENDPOINT_URL`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `MLOPS_LOG_MONITORING_MODE`
-
-Dashboard and auth variables:
-
-- `DASHBOARD_POSTGRES_DB`
-- `DASHBOARD_POSTGRES_SUPERUSER`
-- `DASHBOARD_POSTGRES_SUPERPASS`
-- `AUTH_DB_USER`
-- `AUTH_DB_PASSWORD`
-- `DASHBOARD_DB_USER`
-- `DASHBOARD_DB_PASSWORD`
-- `DASHBOARD_JWT_SECRET`
-- `JWT_ACCESS_TOKEN_EXPIRES_MINUTES`
-- `JWT_REFRESH_TOKEN_EXPIRES_DAYS`
-- `ARGON2_MEMORY_COST`
-- `ARGON2_TIME_COST`
-- `ARGON2_PARALLELISM`
-- `REFRESH_COOKIE_NAME`
-- `REFRESH_COOKIE_PATH`
-- `REFRESH_COOKIE_SECURE`
-- `REFRESH_COOKIE_SAMESITE`
-- `DASHBOARD_DATA_PROVIDER`
-
-## Folder Map
-
-```text
-infrastructure/
-|-- .env
-|-- .env.example
-|-- README.md
-|-- docker-compose.yml
-|-- observability/
-`-- postgres-init/
+```bash
+cd neuroslice-platform/infrastructure
+docker compose down -v
 ```
+
+## Current Limits
+
+- The default stack uses local-development credentials and should not be treated as production-ready.
+- `mlops-worker` is intentionally manual and does not start during `docker compose --profile mlops up --build`.
+- Prometheus-format adapter metrics are available, but the Compose stack does not currently include a Prometheus service.
