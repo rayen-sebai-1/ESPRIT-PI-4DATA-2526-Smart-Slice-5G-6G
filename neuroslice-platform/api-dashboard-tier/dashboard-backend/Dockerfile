@@ -7,10 +7,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY api-dashboard-tier/dashboard-backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN apt-get update && apt-get install -y --no-install-recommends dos2unix && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 COPY api-dashboard-tier/dashboard-backend/ /app/
-RUN chmod +x /app/scripts/start.sh
+RUN dos2unix /app/scripts/start.sh && \
+    chmod +x /app/scripts/start.sh
 
 CMD ["./scripts/start.sh"]

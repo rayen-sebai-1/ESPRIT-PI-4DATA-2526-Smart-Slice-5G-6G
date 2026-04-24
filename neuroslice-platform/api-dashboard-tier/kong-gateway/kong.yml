@@ -27,7 +27,7 @@ plugins:
 
 services:
   - name: auth-service-login
-    url: http://auth-service:8000/auth/login
+    url: http://auth-service:8001/auth/login
     routes:
       - name: auth-service-login-route
         paths:
@@ -49,7 +49,7 @@ services:
               error_message: Too many login attempts.
 
   - name: auth-service-auth
-    url: http://auth-service:8000/auth
+    url: http://auth-service:8001/auth
     routes:
       - name: auth-service-auth-route
         paths:
@@ -61,7 +61,7 @@ services:
           - OPTIONS
 
   - name: auth-service-users
-    url: http://auth-service:8000/users
+    url: http://auth-service:8001/users
     routes:
       - name: auth-service-users-route
         paths:
@@ -75,7 +75,7 @@ services:
           - OPTIONS
 
   - name: dashboard-service-sessions
-    url: http://dashboard-backend:8000/sessions
+    url: http://dashboard-backend:8002/sessions
     routes:
       - name: dashboard-service-sessions-route
         paths:
@@ -97,7 +97,7 @@ services:
               error_message: Too many protected dashboard requests.
 
   - name: dashboard-service-predictions
-    url: http://dashboard-backend:8000/predictions
+    url: http://dashboard-backend:8002/predictions
     routes:
       - name: dashboard-service-predictions-route
         paths:
@@ -120,7 +120,7 @@ services:
               error_message: Too many protected dashboard requests.
 
   - name: dashboard-service-models
-    url: http://dashboard-backend:8000/models
+    url: http://dashboard-backend:8002/models
     routes:
       - name: dashboard-service-models-route
         paths:
@@ -142,7 +142,7 @@ services:
               error_message: Too many protected dashboard requests.
 
   - name: dashboard-service-root
-    url: http://dashboard-backend:8000/dashboard
+    url: http://dashboard-backend:8002/dashboard
     routes:
       - name: dashboard-service-root-route
         paths:

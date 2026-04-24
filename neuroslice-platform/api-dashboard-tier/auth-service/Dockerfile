@@ -6,11 +6,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY api-dashboard-tier/auth-service/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt
+COPY api-dashboard-tier/auth-service/requirements.txt ./requirements.txt
 
-COPY api-dashboard-tier/auth-service/ /app/
-RUN chmod +x /app/scripts/start.sh
+RUN apt-get update && apt-get install -y --no-install-recommends bash dos2unix && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-CMD ["./scripts/start.sh"]
+COPY api-dashboard-tier/auth-service/ ./
+
+RUN dos2unix ./scripts/start.sh ./scripts/*.py && \
+    chmod +x ./scripts/start.sh
+
+CMD ["bash", "./scripts/start.sh"]
