@@ -81,16 +81,8 @@ export function LoginPage() {
           <div className="relative flex h-full flex-col justify-between gap-10">
             {/* Logo + name */}
             <div>
-              <div className="mb-8 flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-accentSoft ring-1 ring-accent/30">
-                  <OrionLogo size={34} />
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold tracking-[0.22em] text-ink">ORION</p>
-                  <p className="text-xs uppercase tracking-[0.3em] text-mutedText">
-                    Telecom AI supervision
-                  </p>
-                </div>
+              <div className="mb-8">
+                <OrionLogo size={52} />
               </div>
 
               <h1 className="max-w-xl text-4xl font-semibold leading-tight tracking-tight text-ink md:text-5xl">
