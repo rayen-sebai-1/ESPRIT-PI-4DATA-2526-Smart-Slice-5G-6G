@@ -274,24 +274,25 @@ Notes:
 - `react-dashboard` proxies `/api/*` to Kong.
 - `api-bff-service` depends on Redis and fault-engine, and is most practical to run through the infrastructure Compose file.
 
-## Post-Startup Setup
+## Startup Bootstrap
 
-Run migrations after PostgreSQL is healthy:
+`auth-service` now waits for PostgreSQL, runs `alembic upgrade head`, optionally seeds the initial admin from `INITIAL_ADMIN_*`, and then starts FastAPI.
+
+`dashboard-backend` now waits for PostgreSQL, waits for `auth-service` to finish its bootstrap, runs `alembic upgrade head`, and then starts FastAPI.
+
+The bootstrap is idempotent:
+
+- `alembic upgrade head` is safe to run on every container start
+- `seed_admin.py` creates the initial admin once and updates the same account on later starts instead of duplicating users
+
+Manual fallback commands remain available:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose exec auth-service alembic upgrade head
 docker compose exec dashboard-backend alembic upgrade head
-```
-
-Seed the first admin account:
-
-```bash
-cd neuroslice-platform/infrastructure
 docker compose exec -e INITIAL_ADMIN_FULL_NAME="Admin NeuroSlice" -e INITIAL_ADMIN_EMAIL="admin@neuroslice.tn" -e INITIAL_ADMIN_PASSWORD="change-me-now" auth-service python scripts/seed_admin.py
 ```
-
-`seed_admin.py` creates the first admin account or updates it if the email already exists.
 
 ## Local Frontend Development
 
@@ -304,6 +305,84 @@ npm run dev
 ```
 
 By default Vite proxies `/api/*` to `http://localhost:8008`.
+
+## Validation Checklist
+
+Before starting, set `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` in `infrastructure/.env` if you want the auth container to create the first admin automatically.
+
+1. Validate Compose:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose config
+```
+
+2. Start the protected dashboard stack:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up --build postgres auth-service dashboard-backend kong-gateway react-dashboard
+```
+
+3. Verify Kong health:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose exec kong-gateway kong health
+```
+
+4. Verify auth-service health:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose exec auth-service python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read().decode())"
+```
+
+5. Verify dashboard-backend health:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose exec dashboard-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read().decode())"
+```
+
+6. Login through Kong and keep the refresh cookie:
+
+```bash
+curl -i -c .cookies.txt -H "Content-Type: application/json" -d '{"email":"admin@example.com","password":"change-me-admin-password"}' http://localhost:8008/api/auth/login
+```
+
+Copy the `access_token` value from the JSON response into `ACCESS_TOKEN`.
+
+7. Confirm `/api/auth/me` rejects anonymous requests:
+
+```bash
+curl -i http://localhost:8008/api/auth/me
+```
+
+8. Confirm `/api/auth/me` succeeds with a valid bearer token:
+
+```bash
+curl -i -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8008/api/auth/me
+```
+
+9. Confirm dashboard APIs reject anonymous requests:
+
+```bash
+curl -i http://localhost:8008/api/dashboard/national
+```
+
+10. Confirm dashboard APIs succeed with a valid bearer token:
+
+```bash
+curl -i -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8008/api/dashboard/national
+```
+
+11. Verify the database users and grants:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose exec postgres psql -U "${DASHBOARD_POSTGRES_SUPERUSER:-neuroslice}" -d "${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}" -c "SELECT grantee, table_schema, array_agg(DISTINCT privilege_type ORDER BY privilege_type) AS privileges FROM information_schema.role_table_grants WHERE grantee IN ('auth_app', 'dashboard_app') GROUP BY grantee, table_schema ORDER BY grantee, table_schema;"
+```
 
 ## Folder Map
 

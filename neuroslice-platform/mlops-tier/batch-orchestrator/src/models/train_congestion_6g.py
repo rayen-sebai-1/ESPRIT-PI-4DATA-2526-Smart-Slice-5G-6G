@@ -7,6 +7,7 @@ Quality gate     : val_mae < 5.0
 """
 
 import warnings
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import mlflow
@@ -18,15 +19,19 @@ import torch.nn as nn
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from torch.utils.data import DataLoader, Dataset
 
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 EXPERIMENT_NAME = "congestion-forecast-6g"
-DATA_PATH = "data/processed/6g_processed.csv"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DATA_PATH = ROOT_DIR / "data" / "processed" / "6g_processed.csv"
+TRACED_MODEL_PATH = ROOT_DIR / "models" / "congestion_6g_lstm_traced.pt"
 REGISTERED_MODEL_NAME = "congestion-lstm-6g"
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 
 SEQ_LENGTH = 24
 LSTM_UNITS = 128
@@ -129,7 +134,7 @@ def train(
     # 1. Load & split data
     # -----------------------------------------------------------------------
     df = pd.read_csv(DATA_PATH)
-    print(f"[INFO] Loaded {len(df)} rows from '{DATA_PATH}'.")
+    print(f"[INFO] Loaded {len(df)} rows from '{DATA_PATH.as_posix()}'.")
 
     X, y = build_sequences(df, seq_length)
     split_idx = int(len(X) * TRAIN_SPLIT)
@@ -242,6 +247,37 @@ def train(
                 "final_val_rmse": final_rmse,
                 "final_val_mape": final_mape,
             }
+        )
+
+        traced_model_path: Path | None = None
+        try:
+            TRACED_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            traced_model = torch.jit.trace(
+                model.to("cpu").eval(),
+                torch.as_tensor(X_val[:1], dtype=torch.float32),
+            )
+            traced_model.save(TRACED_MODEL_PATH.as_posix())
+            traced_model_path = TRACED_MODEL_PATH
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] Could not save TorchScript congestion_6g artifact: {exc}")
+
+        finalize_model_lifecycle(
+            model_name="congestion_6g",
+            model_family="pytorch_lstm",
+            artifact_format="torchscript",
+            metrics={
+                "val_mae": final_mae,
+                "val_rmse": final_rmse,
+                "val_mape": final_mape,
+            },
+            local_artifact_path=traced_model_path,
+            model=model.to("cpu").eval(),
+            export_kind="pytorch",
+            export_basename="congestion_6g",
+            example_input=X_val[:1],
+            input_names=["input"],
+            output_names=["prediction"],
+            dynamic_axes={"input": {0: "batch", 1: "sequence"}, "prediction": {0: "batch"}},
         )
 
         print(

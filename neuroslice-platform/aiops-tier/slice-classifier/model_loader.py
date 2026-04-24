@@ -11,6 +11,8 @@ from typing import Any, Optional, Tuple
 import joblib
 
 from config import SliceClassifierConfig
+from shared.model_registry_client import ModelRegistryClient
+from shared.onnx_runtime import ONNXClassifierAdapter, load_session, onnxruntime_available
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,9 @@ class SliceModelBundle:
     loaded: bool
     model_version: str
     model_source: str
+    model_format: str
+    fallback_mode: bool
+    onnxruntime_enabled: bool
 
 
 class SliceModelLoader:
@@ -32,6 +37,8 @@ class SliceModelLoader:
         model = None
         model_source = "heuristic"
         discovered_version = ""
+        model_format = "heuristic"
+        onnx_enabled = onnxruntime_available()
 
         # Label encoder can exist independently and is used by both model and fallback.
         label_encoder = None
@@ -44,11 +51,50 @@ class SliceModelLoader:
         else:
             logger.warning("Slice label encoder not found at %s", self.cfg.label_encoder_path)
 
-        # 1) explicit path wins
-        if self.cfg.model_path and os.path.exists(self.cfg.model_path):
+        registry_client = ModelRegistryClient(
+            registry_path=self.cfg.model_registry_path,
+            tracking_uri=self.cfg.mlflow_tracking_uri or None,
+        )
+        promoted_entry = registry_client.get_promoted_model(self.cfg.registry_model_name)
+        if promoted_entry:
+            discovered_version = str(promoted_entry.get("version", ""))
+
+            if (
+                self.cfg.model_format == "onnx_fp16"
+                and promoted_entry.get("onnx_fp16_path")
+                and onnx_enabled
+            ):
+                onnx_path = registry_client.resolve_artifact_path(
+                    promoted_entry,
+                    preferred_format="onnx_fp16",
+                )
+                if onnx_path is not None:
+                    try:
+                        model = ONNXClassifierAdapter(load_session(onnx_path.as_posix()))
+                        model_source = onnx_path.as_posix()
+                        model_format = "onnx_fp16"
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Could not load promoted slice ONNX model: %s", exc)
+
+            if model is None:
+                promoted_local_path = registry_client.resolve_artifact_path(
+                    promoted_entry,
+                    preferred_format="legacy_local_artifact",
+                )
+                if promoted_local_path is not None:
+                    try:
+                        model = joblib.load(promoted_local_path)
+                        model_source = promoted_local_path.as_posix()
+                        model_format = "legacy_local_artifact"
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Could not load promoted slice local artifact: %s", exc)
+
+        # 1) explicit path wins after promoted registry lookup
+        if model is None and self.cfg.model_path and os.path.exists(self.cfg.model_path):
             try:
                 model = joblib.load(self.cfg.model_path)
                 model_source = self.cfg.model_path
+                model_format = "legacy_explicit_path"
                 logger.info("Loaded slice model from explicit path %s", self.cfg.model_path)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Could not load explicit slice model path: %s", exc)
@@ -60,13 +106,24 @@ class SliceModelLoader:
                 db_path=self.cfg.mlflow_db_path,
                 mlruns_dir=self.cfg.mlruns_dir,
             )
+            if model is not None:
+                model_format = "legacy_mlflow_registry"
 
         model_version = self.cfg.model_version.strip() or discovered_version or "heuristic"
         loaded = model is not None and label_encoder is not None
+        fallback_mode = model_format != "onnx_fp16"
 
-        if loaded:
-            logger.info("Slice model ready (version=%s source=%s)", model_version, model_source)
-        else:
+        logger.info(
+            "model_loaded=%s model_format=%s model_version=%s fallback_mode=%s onnxruntime_enabled=%s model_source=%s",
+            loaded,
+            model_format,
+            model_version,
+            fallback_mode,
+            onnx_enabled,
+            model_source,
+        )
+
+        if not loaded:
             logger.warning("Slice model unavailable, runtime will use heuristic classification")
 
         return SliceModelBundle(
@@ -75,6 +132,9 @@ class SliceModelLoader:
             loaded=loaded,
             model_version=model_version,
             model_source=model_source,
+            model_format=model_format,
+            fallback_mode=fallback_mode,
+            onnxruntime_enabled=onnx_enabled,
         )
 
     def _load_from_local_registry(

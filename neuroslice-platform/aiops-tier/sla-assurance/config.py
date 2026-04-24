@@ -47,6 +47,15 @@ class SlaAssuranceConfig:
     model_version: str = field(default_factory=lambda: os.getenv("SLA_MODEL_VERSION", ""))
     mlflow_db_path: str = field(default_factory=lambda: os.getenv("MLFLOW_DB_PATH", "/mlops/mlflow.db"))
     mlruns_dir: str = field(default_factory=lambda: os.getenv("MLRUNS_DIR", "/mlops/mlruns"))
+    model_registry_path: str = field(
+        default_factory=lambda: os.getenv("MODEL_REGISTRY_PATH", "/mlops/models/registry.json")
+    )
+    model_poll_interval_sec: int = field(
+        default_factory=lambda: int(os.getenv("MODEL_POLL_INTERVAL_SEC", "60"))
+    )
+    registry_model_name: str = field(default_factory=lambda: os.getenv("MODEL_NAME", "sla_5g"))
+    model_format: str = field(default_factory=lambda: os.getenv("MODEL_FORMAT", "onnx_fp16"))
+    mlflow_tracking_uri: str = field(default_factory=lambda: os.getenv("MLFLOW_TRACKING_URI", ""))
     scaler_path: str = field(
         default_factory=lambda: os.getenv("SLA_SCALER_PATH", "/mlops/data/processed/scaler_sla_5g.pkl")
     )

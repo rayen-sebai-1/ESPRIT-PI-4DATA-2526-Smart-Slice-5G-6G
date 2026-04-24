@@ -4,8 +4,8 @@ Loads processed Data (congestion_5g_processed.npz), trains an LSTM model
 with focal loss and Optuna-based hyperparameter tuning, and logs to MLflow.
 """
 
-import os
 import warnings
+from pathlib import Path
 
 import mlflow
 import torch
@@ -15,17 +15,22 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
 
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-PROCESSED_NPZ = "data/processed/congestion_5g_processed.npz"
-MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "congestion_5g_lstm.pth")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+PROCESSED_NPZ = ROOT_DIR / "data" / "processed" / "congestion_5g_processed.npz"
+MODEL_DIR = ROOT_DIR / "models"
+MODEL_PATH = MODEL_DIR / "congestion_5g_lstm.pth"
+TRACED_MODEL_PATH = MODEL_DIR / "congestion_5g_lstm_traced.pt"
+TEMP_MODEL_PATH = ROOT_DIR / "best_temp_model.pt"
 MLFLOW_EXPERIMENT_NAME = "Congestion_Forecasting_5G"
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+MLFLOW_TRACKING_URI = configure_mlflow_tracking()
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
@@ -169,8 +174,8 @@ def find_optimal_threshold(probs, labels):
 
 
 def train():
-    if not os.path.exists(PROCESSED_NPZ):
-        raise FileNotFoundError(f"Missing {PROCESSED_NPZ}. Run preprocessing first.")
+    if not PROCESSED_NPZ.exists():
+        raise FileNotFoundError(f"Missing {PROCESSED_NPZ.as_posix()}. Run preprocessing first.")
 
     data = np.load(PROCESSED_NPZ, allow_pickle=True)
     X_train, y_train = data["X_train"], data["y_train"]
@@ -232,7 +237,7 @@ def train():
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
                 patience_counter = 0
-                torch.save(model.state_dict(), "best_temp_model.pt")
+                torch.save(model.state_dict(), TEMP_MODEL_PATH.as_posix())
             else:
                 patience_counter += 1
                 if patience_counter >= 5:
@@ -242,9 +247,9 @@ def train():
             print(f"Epoch {epoch+1:2d}: Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}, Val AUC={val_auc:.4f}")
 
         # Load best model
-        if os.path.exists("best_temp_model.pt"):
-            model.load_state_dict(torch.load("best_temp_model.pt", weights_only=True))
-            os.remove("best_temp_model.pt")
+        if TEMP_MODEL_PATH.exists():
+            model.load_state_dict(torch.load(TEMP_MODEL_PATH.as_posix(), weights_only=True))
+            TEMP_MODEL_PATH.unlink()
 
         # Evaluate on Test
         model.eval()
@@ -261,38 +266,62 @@ def train():
         all_preds = (np.array(all_probs) >= optimal_threshold).astype(int)
 
         metrics = {
-            'accuracy': accuracy_score(all_labels, all_preds),
-            'precision': precision_score(all_labels, all_preds, zero_division=0),
-            'recall': recall_score(all_labels, all_preds, zero_division=0),
-            'f1': f1_score(all_labels, all_preds, zero_division=0),
-            'auc_roc': roc_auc_score(all_labels, all_probs) if len(np.unique(all_labels)) > 1 else 0.5
+            "val_accuracy": accuracy_score(all_labels, all_preds),
+            "val_precision": precision_score(all_labels, all_preds, zero_division=0),
+            "val_recall": recall_score(all_labels, all_preds, zero_division=0),
+            "val_f1": f1_score(all_labels, all_preds, zero_division=0),
+            "val_roc_auc": roc_auc_score(all_labels, all_probs) if len(np.unique(all_labels)) > 1 else 0.5,
+        }
+        legacy_metrics = {
+            "accuracy": metrics["val_accuracy"],
+            "precision": metrics["val_precision"],
+            "recall": metrics["val_recall"],
+            "f1": metrics["val_f1"],
+            "auc_roc": metrics["val_roc_auc"],
         }
 
         print("\n[INFO] Final Test Set Performance:")
         for metric, value in metrics.items():
             print(f"  {metric}: {value:.4f}")
 
-        mlflow.log_metrics(metrics)
+        mlflow.log_metrics({**metrics, **legacy_metrics})
         mlflow.log_param("optimal_threshold", optimal_threshold)
 
         # Save model
-        os.makedirs(MODEL_DIR, exist_ok=True)
+        MODEL_DIR.mkdir(parents=True, exist_ok=True)
         torch.save({
-            'model_state_dict': model.state_dict(),
-            'hyperparameters': best_params,
-            'threshold': optimal_threshold,
-            'metrics': metrics
-        }, MODEL_PATH)
+            "model_state_dict": model.state_dict(),
+            "hyperparameters": best_params,
+            "threshold": optimal_threshold,
+            "metrics": metrics,
+        }, MODEL_PATH.as_posix())
 
         # Let's save a torchscript compatible model for easy inference later without class dependencies
         from torch.jit import trace
         try:
-            model_traced = trace(model.to('cpu'), torch.randn(1, 30, input_dim))
-            model_traced.save(MODEL_PATH.replace('.pth', '_traced.pt'))
+            model_traced = trace(model.to("cpu").eval(), torch.as_tensor(X_test[:1], dtype=torch.float32))
+            model_traced.save(TRACED_MODEL_PATH.as_posix())
         except Exception as e:
             print(f"Failed to trace model: {e}")
 
-        print(f"[INFO] Final model saved to {MODEL_PATH}")
+        mlflow.log_artifact(MODEL_PATH.as_posix(), artifact_path="offline_artifacts")
+
+        finalize_model_lifecycle(
+            model_name="congestion_5g",
+            model_family="pytorch_lstm",
+            artifact_format="torchscript",
+            metrics=metrics,
+            local_artifact_path=TRACED_MODEL_PATH if TRACED_MODEL_PATH.exists() else MODEL_PATH,
+            model=model.to("cpu").eval(),
+            export_kind="pytorch",
+            export_basename="congestion_5g",
+            example_input=X_test[:1],
+            input_names=["input"],
+            output_names=["logits"],
+            dynamic_axes={"input": {0: "batch", 1: "sequence"}, "logits": {0: "batch"}},
+        )
+
+        print(f"[INFO] Final model saved to {MODEL_PATH.as_posix()}")
 
 
 if __name__ == "__main__":

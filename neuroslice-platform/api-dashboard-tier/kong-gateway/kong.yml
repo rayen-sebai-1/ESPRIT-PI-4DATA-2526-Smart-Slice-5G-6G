@@ -10,6 +10,7 @@ plugins:
       methods:
         - GET
         - POST
+        - PUT
         - PATCH
         - DELETE
         - OPTIONS
@@ -17,12 +18,36 @@ plugins:
         - Accept
         - Authorization
         - Content-Type
+        - Origin
+        - X-Requested-With
       exposed_headers:
         - Authorization
       credentials: true
       max_age: 3600
 
 services:
+  - name: auth-service-login
+    url: http://auth-service:8000/auth/login
+    routes:
+      - name: auth-service-login-route
+        paths:
+          - /api/auth/login
+        strip_path: true
+        methods:
+          - POST
+          - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 5
+              hour: 100
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many login attempts.
+
   - name: auth-service-auth
     url: http://auth-service:8000/auth
     routes:
@@ -57,8 +82,19 @@ services:
           - /api/dashboard/sessions
         strip_path: true
         methods:
-            - GET
-            - OPTIONS
+          - GET
+          - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 120
+              hour: 5000
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many protected dashboard requests.
 
   - name: dashboard-service-predictions
     url: http://dashboard-backend:8000/predictions
@@ -71,6 +107,17 @@ services:
           - GET
           - POST
           - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 120
+              hour: 5000
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many protected dashboard requests.
 
   - name: dashboard-service-models
     url: http://dashboard-backend:8000/models
@@ -80,8 +127,19 @@ services:
           - /api/dashboard/models
         strip_path: true
         methods:
-            - GET
-            - OPTIONS
+          - GET
+          - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 120
+              hour: 5000
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many protected dashboard requests.
 
   - name: dashboard-service-root
     url: http://dashboard-backend:8000/dashboard
@@ -91,8 +149,19 @@ services:
           - /api/dashboard
         strip_path: true
         methods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 120
+              hour: 5000
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many protected dashboard requests.

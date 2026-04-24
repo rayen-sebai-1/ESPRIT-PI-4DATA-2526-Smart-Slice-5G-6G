@@ -12,6 +12,8 @@ import joblib
 import xgboost as xgb
 
 from config import SlaAssuranceConfig
+from shared.model_registry_client import ModelRegistryClient
+from shared.onnx_runtime import ONNXClassifierAdapter, load_session, onnxruntime_available
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,9 @@ class SlaModelBundle:
     loaded: bool
     model_version: str
     model_source: str
+    model_format: str
+    fallback_mode: bool
+    onnxruntime_enabled: bool
 
 
 class SlaModelLoader:
@@ -33,6 +38,8 @@ class SlaModelLoader:
         model = None
         model_source = "heuristic"
         discovered_version = ""
+        model_format = "heuristic"
+        onnx_enabled = onnxruntime_available()
 
         scaler = None
         if os.path.exists(self.cfg.scaler_path):
@@ -44,10 +51,47 @@ class SlaModelLoader:
         else:
             logger.warning("SLA scaler not found at %s", self.cfg.scaler_path)
 
-        if self.cfg.model_path and os.path.exists(self.cfg.model_path):
+        registry_client = ModelRegistryClient(
+            registry_path=self.cfg.model_registry_path,
+            tracking_uri=self.cfg.mlflow_tracking_uri or None,
+        )
+        promoted_entry = registry_client.get_promoted_model(self.cfg.registry_model_name)
+        if promoted_entry:
+            discovered_version = str(promoted_entry.get("version", ""))
+
+            if (
+                self.cfg.model_format == "onnx_fp16"
+                and promoted_entry.get("onnx_fp16_path")
+                and onnx_enabled
+            ):
+                onnx_path = registry_client.resolve_artifact_path(
+                    promoted_entry,
+                    preferred_format="onnx_fp16",
+                )
+                if onnx_path is not None:
+                    try:
+                        model = ONNXClassifierAdapter(load_session(onnx_path.as_posix()))
+                        model_source = onnx_path.as_posix()
+                        model_format = "onnx_fp16"
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Could not load promoted SLA ONNX model: %s", exc)
+
+            if model is None:
+                promoted_local_path = registry_client.resolve_artifact_path(
+                    promoted_entry,
+                    preferred_format="legacy_local_artifact",
+                )
+                if promoted_local_path is not None:
+                    model = self._load_xgb_classifier(promoted_local_path.as_posix())
+                    if model is not None:
+                        model_source = promoted_local_path.as_posix()
+                        model_format = "legacy_local_artifact"
+
+        if model is None and self.cfg.model_path and os.path.exists(self.cfg.model_path):
             model = self._load_xgb_classifier(self.cfg.model_path)
             if model is not None:
                 model_source = self.cfg.model_path
+                model_format = "legacy_explicit_path"
 
         if model is None:
             model, model_source, discovered_version = self._load_from_local_registry(
@@ -55,13 +99,24 @@ class SlaModelLoader:
                 db_path=self.cfg.mlflow_db_path,
                 mlruns_dir=self.cfg.mlruns_dir,
             )
+            if model is not None:
+                model_format = "legacy_mlflow_registry"
 
         model_version = self.cfg.model_version.strip() or discovered_version or "heuristic"
         loaded = model is not None and scaler is not None
+        fallback_mode = model_format != "onnx_fp16"
 
-        if loaded:
-            logger.info("SLA model ready (version=%s source=%s)", model_version, model_source)
-        else:
+        logger.info(
+            "model_loaded=%s model_format=%s model_version=%s fallback_mode=%s onnxruntime_enabled=%s model_source=%s",
+            loaded,
+            model_format,
+            model_version,
+            fallback_mode,
+            onnx_enabled,
+            model_source,
+        )
+
+        if not loaded:
             logger.warning("SLA model unavailable, runtime will use heuristic risk scoring")
 
         return SlaModelBundle(
@@ -70,6 +125,9 @@ class SlaModelLoader:
             loaded=loaded,
             model_version=model_version,
             model_source=model_source,
+            model_format=model_format,
+            fallback_mode=fallback_mode,
+            onnxruntime_enabled=onnx_enabled,
         )
 
     def _load_from_local_registry(

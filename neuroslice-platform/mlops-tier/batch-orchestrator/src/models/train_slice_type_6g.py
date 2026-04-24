@@ -4,8 +4,9 @@ Uses XGBoost to train a multiclass classifier for the 5 6G slice types.
 Integrates with MLflow to track parameters, evaluation metrics, and SHAP summary plots.
 """
 
-import os
 import sys
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -13,10 +14,16 @@ import xgboost as xgb
 import mlflow
 import shap
 
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+
 # Configuration
-NPZ_PATH = os.path.join("data", "processed", "slice_type_6g_processed.npz")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+NPZ_PATH = ROOT_DIR / "data" / "processed" / "slice_type_6g_processed.npz"
+LABEL_ENCODER_PATH = ROOT_DIR / "data" / "processed" / "label_encoder_slice_type_6g.pkl"
+ARTIFACTS_DIR = ROOT_DIR / "artifacts"
+LOCAL_MODEL_PATH = ROOT_DIR / "models" / "slice_type_6g_model.ubj"
 MLFLOW_EXPERIMENT_NAME = "slice-type-6g"
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
@@ -45,11 +52,11 @@ def main():
     print("-" * 50)
 
     # 1. Load Data
-    if not os.path.exists(NPZ_PATH):
-        print(f"[ERROR] Processed data not found at '{NPZ_PATH}'. Please run preprocessing.")
+    if not NPZ_PATH.exists():
+        print(f"[ERROR] Processed data not found at '{NPZ_PATH.as_posix()}'. Please run preprocessing.")
         sys.exit(1)
 
-    print(f"Loading data from {NPZ_PATH}...")
+    print(f"Loading data from {NPZ_PATH.as_posix()}...")
     data = np.load(NPZ_PATH, allow_pickle=True)
     X_train = data["X_train"]
     y_train = data["y_train"]
@@ -118,21 +125,37 @@ def main():
         plt.figure(figsize=(10, 8))
         shap.summary_plot(shap_values, X_train_sample, feature_names=feature_names, show=False)
 
-        os.makedirs("artifacts", exist_ok=True)
-        shap_plot_path = os.path.join("artifacts", "shap_summary_6g.png")
+        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+        shap_plot_path = ARTIFACTS_DIR / "shap_summary_6g.png"
         plt.tight_layout()
-        plt.savefig(shap_plot_path, bbox_inches='tight')
+        plt.savefig(shap_plot_path.as_posix(), bbox_inches="tight")
         plt.close()
 
-        mlflow.log_artifact(shap_plot_path)
-        print(f"Logged SHAP artifact: {shap_plot_path}")
+        mlflow.log_artifact(shap_plot_path.as_posix())
+        print(f"Logged SHAP artifact: {shap_plot_path.as_posix()}")
+
+        if LABEL_ENCODER_PATH.exists():
+            mlflow.log_artifact(LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing")
 
         # 7. Log Model
         # Log xgboost explicitly or via scikit-learn
+        LOCAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        model.save_model(LOCAL_MODEL_PATH.as_posix())
         mlflow.xgboost.log_model(
              xgb_model=model,
              artifact_path="model",
              registered_model_name="slice-type-6g"
+        )
+        finalize_model_lifecycle(
+            model_name="slice_type_6g",
+            model_family="xgboost_classifier",
+            artifact_format="xgboost_ubj",
+            metrics=metrics,
+            local_artifact_path=LOCAL_MODEL_PATH,
+            model=model,
+            export_kind="xgboost",
+            export_basename="slice_type_6g",
+            example_input=X_test[:1],
         )
         print("Logged model to MLflow (slice-type-6g).")
 

@@ -53,6 +53,15 @@ class CongestionConfig:
         )
     )
     model_version: str = field(default_factory=lambda: os.getenv("CONGESTION_MODEL_VERSION", ""))
+    model_registry_path: str = field(
+        default_factory=lambda: os.getenv("MODEL_REGISTRY_PATH", "/mlops/models/registry.json")
+    )
+    model_poll_interval_sec: int = field(
+        default_factory=lambda: int(os.getenv("MODEL_POLL_INTERVAL_SEC", "60"))
+    )
+    registry_model_name: str = field(default_factory=lambda: os.getenv("MODEL_NAME", "congestion_5g"))
+    model_format: str = field(default_factory=lambda: os.getenv("MODEL_FORMAT", "onnx_fp16"))
+    mlflow_tracking_uri: str = field(default_factory=lambda: os.getenv("MLFLOW_TRACKING_URI", ""))
     default_site_id: str = field(default_factory=lambda: os.getenv("SITE_ID", "TT-SFAX-02"))
 
     sequence_length: int = field(default_factory=lambda: int(os.getenv("CONGESTION_SEQUENCE_LENGTH", "30")))

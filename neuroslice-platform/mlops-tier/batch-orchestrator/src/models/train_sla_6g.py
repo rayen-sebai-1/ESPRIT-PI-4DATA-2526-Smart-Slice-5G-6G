@@ -13,8 +13,8 @@ Features (14 total):
 """
 
 import argparse
-import os
 import warnings
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import mlflow
@@ -33,16 +33,20 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier
 
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 EXPERIMENT_NAME = "sla-adherence-6g"
-PROCESSED_NPZ = "data/processed/sla_6g_processed.npz"
-SCALER_PATH = "data/processed/scaler_sla_6g.pkl"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+PROCESSED_NPZ = ROOT_DIR / "data" / "processed" / "sla_6g_processed.npz"
+SCALER_PATH = ROOT_DIR / "data" / "processed" / "scaler_sla_6g.pkl"
+LOCAL_MODEL_PATH = ROOT_DIR / "models" / "sla_6g_model.ubj"
 REGISTERED_MODEL_NAME = "sla-xgboost-6g"
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 
 DEFAULT_N_ESTIMATORS = 300
 DEFAULT_MAX_DEPTH = 6
@@ -89,9 +93,9 @@ def train(
     # -------------------------------------------------------------------
     # 1. Load processed data
     # -------------------------------------------------------------------
-    if not os.path.exists(PROCESSED_NPZ):
+    if not PROCESSED_NPZ.exists():
         raise FileNotFoundError(
-            f"Processed data not found at '{PROCESSED_NPZ}'. "
+            f"Processed data not found at '{PROCESSED_NPZ.as_posix()}'. "
             "Run 'python src/data/preprocess_sla_6g.py' first."
         )
 
@@ -247,16 +251,30 @@ def train(
         # ---------------------------------------------------------------
         # 8. Log scaler as artifact
         # ---------------------------------------------------------------
-        if os.path.exists(SCALER_PATH):
-            mlflow.log_artifact(SCALER_PATH, artifact_path="preprocessing")
+        if SCALER_PATH.exists():
+            mlflow.log_artifact(SCALER_PATH.as_posix(), artifact_path="preprocessing")
 
         # ---------------------------------------------------------------
         # 9. Register model
         # ---------------------------------------------------------------
+        LOCAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        model.save_model(LOCAL_MODEL_PATH.as_posix())
         mlflow.xgboost.log_model(
             model,
             artifact_path="model",
             registered_model_name=REGISTERED_MODEL_NAME,
+        )
+
+        finalize_model_lifecycle(
+            model_name="sla_6g",
+            model_family="xgboost_classifier",
+            artifact_format="xgboost_ubj",
+            metrics=metrics,
+            local_artifact_path=LOCAL_MODEL_PATH,
+            model=model,
+            export_kind="xgboost",
+            export_basename="sla_6g",
+            example_input=X_test[:1],
         )
 
         roc_auc = metrics["val_roc_auc"]

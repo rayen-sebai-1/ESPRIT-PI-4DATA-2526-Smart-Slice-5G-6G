@@ -12,6 +12,7 @@ import numpy as np
 from config import CongestionConfig
 from model_loader import CongestionModelBundle
 from schemas import CanonicalTelemetryEvent, CongestionOutputEvent
+from shared.onnx_runtime import run_session
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class CongestionInferencer:
                 "threshold": self.threshold,
                 "modelLoaded": self.bundle.loaded,
                 "modelUsed": model_used,
+                "modelFormat": self.bundle.model_format,
+                "fallbackMode": self.bundle.fallback_mode,
+                "onnxruntimeEnabled": self.bundle.onnxruntime_enabled,
                 "bufferLength": len(buffer),
                 "reason": reason,
                 "scenarioId": event.scenario_id,
@@ -71,16 +75,20 @@ class CongestionInferencer:
             return self._heuristic_score(event), False, "sequence_not_ready"
 
         try:
-            import torch
-
             seq_array = np.asarray(sequence[-self.sequence_length :], dtype=np.float32)
             if self.bundle.preprocessor is not None and hasattr(self.bundle.preprocessor, "scaler"):
                 seq_array = self.bundle.preprocessor.scaler.transform(seq_array)
 
-            tensor = torch.tensor(seq_array, dtype=torch.float32).unsqueeze(0)
-            with torch.no_grad():
-                raw_out = self.bundle.model(tensor)
-            raw_score = float(raw_out.squeeze().item())
+            if self.bundle.model_format == "onnx_fp16":
+                outputs = run_session(self.bundle.model, seq_array[np.newaxis, ...])
+                raw_score = float(np.asarray(outputs[0]).squeeze())
+            else:
+                import torch
+
+                tensor = torch.tensor(seq_array, dtype=torch.float32).unsqueeze(0)
+                with torch.no_grad():
+                    raw_out = self.bundle.model(tensor)
+                raw_score = float(raw_out.squeeze().item())
 
             # Model was trained with BCE-with-logits. Convert logits -> probability.
             return 1.0 / (1.0 + math.exp(-raw_score)), True, "model_inference"

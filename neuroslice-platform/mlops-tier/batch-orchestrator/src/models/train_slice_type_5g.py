@@ -8,8 +8,8 @@ Quality gate     : val_accuracy >= 0.80
 """
 
 import argparse
-import os
 import warnings
+from pathlib import Path
 
 import joblib
 import lightgbm as lgb
@@ -26,6 +26,7 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
 
 warnings.filterwarnings("ignore")
 
@@ -33,10 +34,12 @@ warnings.filterwarnings("ignore")
 # Configuration
 # ---------------------------------------------------------------------------
 EXPERIMENT_NAME = "slice-type-5g"
-PROCESSED_NPZ = "data/processed/slice_type_5g_processed.npz"
-LABEL_ENCODER_PATH = "data/processed/label_encoder_slice_type_5g.pkl"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+PROCESSED_NPZ = ROOT_DIR / "data" / "processed" / "slice_type_5g_processed.npz"
+LABEL_ENCODER_PATH = ROOT_DIR / "data" / "processed" / "label_encoder_slice_type_5g.pkl"
+LOCAL_MODEL_PATH = ROOT_DIR / "models" / "slice_type_5g_model.pkl"
 REGISTERED_MODEL_NAME = "slice-type-lgbm-5g"
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 
 # Class names are loaded dynamically from the label encoder at runtime
 # (dataset uses integer labels 1/2/3, not string slice names)
@@ -89,9 +92,9 @@ def train(
     # -------------------------------------------------------------------
     # 1. Load processed data
     # -------------------------------------------------------------------
-    if not os.path.exists(PROCESSED_NPZ):
+    if not PROCESSED_NPZ.exists():
         raise FileNotFoundError(
-            f"Processed data not found at '{PROCESSED_NPZ}'. "
+            f"Processed data not found at '{PROCESSED_NPZ.as_posix()}'. "
             "Run 'python src/data/preprocess_slice_type_5g.py' first."
         )
 
@@ -103,9 +106,9 @@ def train(
     feature_names = list(data["feature_names"])
 
     # Load label encoder to decode predictions back to original labels
-    if not os.path.exists(LABEL_ENCODER_PATH):
+    if not LABEL_ENCODER_PATH.exists():
         raise FileNotFoundError(
-            f"Label encoder not found at '{LABEL_ENCODER_PATH}'. "
+            f"Label encoder not found at '{LABEL_ENCODER_PATH.as_posix()}'. "
             "Run 'python src/data/preprocess_slice_type_5g.py' first."
         )
     label_encoder = joblib.load(LABEL_ENCODER_PATH)
@@ -241,16 +244,30 @@ def train(
         # ---------------------------------------------------------------
         # 7. Log label encoder as artifact
         # ---------------------------------------------------------------
-        if os.path.exists(LABEL_ENCODER_PATH):
-            mlflow.log_artifact(LABEL_ENCODER_PATH, artifact_path="preprocessing")
+        if LABEL_ENCODER_PATH.exists():
+            mlflow.log_artifact(LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing")
 
         # ---------------------------------------------------------------
         # 8. Register model
         # ---------------------------------------------------------------
+        LOCAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(model, LOCAL_MODEL_PATH)
         mlflow.lightgbm.log_model(
             model,
             artifact_path="model",
             registered_model_name=REGISTERED_MODEL_NAME,
+        )
+
+        finalize_model_lifecycle(
+            model_name="slice_type_5g",
+            model_family="lightgbm_classifier",
+            artifact_format="lightgbm_joblib",
+            metrics=metrics,
+            local_artifact_path=LOCAL_MODEL_PATH,
+            model=model,
+            export_kind="lightgbm",
+            export_basename="slice_type_5g",
+            example_input=X_test[:1],
         )
 
         print(
