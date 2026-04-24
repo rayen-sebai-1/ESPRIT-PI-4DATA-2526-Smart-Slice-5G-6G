@@ -271,6 +271,7 @@ Default compose ports:
 Notes:
 
 - `auth-service` and `dashboard-backend` are internal-only in Compose and are intended to be reached through Kong from the browser.
+- Internal container ports are split to avoid overlap: `auth-service` listens on `8001` and `dashboard-backend` listens on `8002`.
 - `react-dashboard` proxies `/api/*` to Kong.
 - `api-bff-service` depends on Redis and fault-engine, and is most practical to run through the infrastructure Compose file.
 
@@ -335,14 +336,14 @@ docker compose exec kong-gateway kong health
 
 ```bash
 cd neuroslice-platform/infrastructure
-docker compose exec auth-service python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read().decode())"
+docker compose exec auth-service python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3).read().decode())"
 ```
 
 5. Verify dashboard-backend health:
 
 ```bash
 cd neuroslice-platform/infrastructure
-docker compose exec dashboard-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read().decode())"
+docker compose exec dashboard-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3).read().decode())"
 ```
 
 6. Login through Kong and keep the refresh cookie:

@@ -1,16 +1,42 @@
 ---
-# neuroslice-sim Docker Compose
-# Run: cd neuroslice-platform/infrastructure && docker compose up --build
+# NeuroSlice integrated Docker Compose
+# Normal runtime:
+#   cd neuroslice-platform/infrastructure
+#   docker compose up --build
+#
+# Runtime + Scenario B MLOps:
+#   cd neuroslice-platform/infrastructure
+#   docker compose --profile mlops up --build
+#
 # Each service uses the neuroslice-platform root as build context.
 
 x-python-service: &python-service
   volumes:
-    - ../simulation-tier/scenarios:/scenarios:ro   # scenario JSON files
+    - ../simulation-tier/scenarios:/scenarios:ro
+
+x-aiops-mlops-mounts: &aiops-mlops-mounts
+  - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
+  - ../mlops-tier/batch-orchestrator/data:/mlops/data:ro
+  - ../mlops-tier/batch-orchestrator/mlruns:/mlops/mlruns:ro
+  - ../mlops-tier/batch-orchestrator/mlflow.db:/mlops/mlflow.db:ro
+  - ../mlops-tier/batch-orchestrator/src:/mlops/src:ro
+
+x-mlops-project-volumes: &mlops-project-volumes
+  - ../mlops-tier/batch-orchestrator/models:/app/models
+  - ../mlops-tier/batch-orchestrator/data:/app/data
+  - ../mlops-tier/batch-orchestrator/reports:/app/reports
+  - ../mlops-tier/batch-orchestrator/mlruns:/app/mlruns
+
+x-mlops-runtime-env: &mlops-runtime-env
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
+  MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://minio:9000}
+  MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
+  LOG_MONITORING_MODE: ${MLOPS_LOG_MONITORING_MODE:-logstash}
+  LOGSTASH_HTTP_URL: http://logstash:8081/predictions
+  ES_HOST: http://elasticsearch:9200
 
 services:
-
-  # ── Infrastructure ────────────────────────────────────────────────────────
-
   redis:
     image: redis:7.2-alpine
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -69,36 +95,49 @@ services:
       - influxdb_data:/var/lib/influxdb2
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    # Docker volumes persist the initialized database and its passwords.
+    # Changing POSTGRES_* or *_DB_* values later will not update existing DB credentials.
+    # If this service was already initialized with different credentials, run:
+    #   docker compose down -v
+    # Then rebuild and restart the services.
     environment:
-      POSTGRES_USER: ${DASHBOARD_POSTGRES_SUPERUSER:-neuroslice}
-      POSTGRES_PASSWORD: ${DASHBOARD_POSTGRES_SUPERPASS}
-      POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
-      AUTH_DB_USER: ${AUTH_DB_USER:-auth_app}
-      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_USER: auth_app
+      POSTGRES_PASSWORD: auth_password
+      POSTGRES_DB: neuroslice_dashboard
+      AUTH_DB_USER: auth_app
+      AUTH_DB_PASSWORD: auth_password
       DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_app}
-      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD}
+      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_password}
     ports:
-      - "${DASHBOARD_POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
-      - dashboard_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 20s
 
-  mlflow-postgres:
+  mlops-postgres:
     image: postgres:16-alpine
+    profiles: ["mlops"]
     environment:
-      POSTGRES_USER: ${MLFLOW_POSTGRES_USER:-mlflow}
-      POSTGRES_PASSWORD: ${MLFLOW_POSTGRES_PASSWORD:-mlflow123}
-      POSTGRES_DB: ${MLFLOW_POSTGRES_DB:-mlflow}
+      POSTGRES_USER: ${MLOPS_POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${MLOPS_POSTGRES_PASSWORD:-mlflow123}
+      POSTGRES_DB: ${MLOPS_POSTGRES_DB:-mlflow}
     ports:
-      - "${MLFLOW_POSTGRES_PORT:-5433}:5432"
+      - "${MLOPS_POSTGRES_PORT:-5433}:5432"
     volumes:
-      - mlflow_postgres_data:/var/lib/postgresql/data
+      - mlops_postgres_data:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - mlflow-postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -107,6 +146,7 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2024-06-29T01-20-47Z
+    profiles: ["mlops"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -116,98 +156,147 @@ services:
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: ["mlops"]
+    restart: "no"
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
     entrypoint: >
       /bin/sh -c "
       until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123}; do sleep 2; done &&
-      mc mb --ignore-existing local/${MINIO_BUCKET:-mlflow-artifacts}
+      mc mb --ignore-existing local/${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}
       "
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-      MINIO_BUCKET: ${MINIO_BUCKET:-mlflow-artifacts}
+      MLFLOW_ARTIFACT_BUCKET: ${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}
 
-  mlflow:
+  mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.13.0
+    profiles: ["mlops"]
     depends_on:
-      mlflow-postgres:
+      mlops-postgres:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
     ports:
-      - "${MLFLOW_PORT:-5000}:5000"
+      - "${MLFLOW_TRACKING_PORT:-5000}:5000"
     environment:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
       MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://minio:9000}
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://mlflow:mlflow123@mlflow-postgres:5432/mlflow}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI:-}
       MLFLOW_ARTIFACT_ROOT: ${MLFLOW_ARTIFACT_ROOT:-s3://mlflow-artifacts}
+      MLFLOW_ARTIFACT_BUCKET: ${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}
+      MLOPS_POSTGRES_USER: ${MLOPS_POSTGRES_USER:-mlflow}
+      MLOPS_POSTGRES_PASSWORD: ${MLOPS_POSTGRES_PASSWORD:-mlflow123}
+      MLOPS_POSTGRES_DB: ${MLOPS_POSTGRES_DB:-mlflow}
+    networks:
+      default:
+        aliases:
+          - mlflow
     command: >
       /bin/sh -c "
       pip install --no-cache-dir boto3 psycopg2-binary &&
-      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$MLFLOW_BACKEND_STORE_URI --artifacts-destination $$MLFLOW_ARTIFACT_ROOT --serve-artifacts
+      BACKEND_URI=$${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://$${MLOPS_POSTGRES_USER:-mlflow}:$${MLOPS_POSTGRES_PASSWORD:-mlflow123}@mlops-postgres:5432/$${MLOPS_POSTGRES_DB:-mlflow}} &&
+      ARTIFACT_ROOT=$${MLFLOW_ARTIFACT_ROOT:-s3://$${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}} &&
+      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$BACKEND_URI --artifacts-destination $$ARTIFACT_ROOT --serve-artifacts
       "
-
-  mlops-api:
-    build:
-      context: ../mlops-tier/batch-orchestrator
-      dockerfile: Dockerfile
-    ports:
-      - "${MLOPS_API_PORT:-8010}:8010"
-    environment:
-      API_PORT: "8010"
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
-      LOG_MONITORING_MODE: ${MLOPS_LOG_MONITORING_MODE:-logstash}
-      LOGSTASH_HTTP_URL: http://logstash:8081/predictions
-      ES_HOST: http://elasticsearch:9200
-    depends_on:
-      mlflow:
-        condition: service_started
-      logstash:
-        condition: service_started
-      elasticsearch:
-        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/', timeout=3).status < 500 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    profiles: ["mlops"]
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
-    ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    expose:
+      - "9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
+    profiles: ["mlops"]
     depends_on:
       elasticsearch:
         condition: service_started
     environment:
       LS_JAVA_OPTS: "-Xms256m -Xmx256m"
       XPACK_MONITORING_ENABLED: "false"
-    ports:
-      - "${LOGSTASH_PORT:-8081}:8081"
+    expose:
+      - "8081"
     volumes:
       - ../mlops-tier/batch-orchestrator/logstash/pipeline:/usr/share/logstash/pipeline:ro
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.4
+  mlops-api:
+    build:
+      context: ../mlops-tier/batch-orchestrator
+      dockerfile: Dockerfile
+    profiles: ["mlops"]
     ports:
-      - "${KIBANA_PORT:-5601}:5601"
+      - "${MLOPS_API_PORT:-8010}:8010"
     environment:
-      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      <<: *mlops-runtime-env
+      API_PORT: "8010"
+    volumes: *mlops-project-volumes
     depends_on:
+      mlflow-server:
+        condition: service_healthy
+      logstash:
+        condition: service_started
       elasticsearch:
         condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)); sys.exit(0 if data.get('status') == 'ok' else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
-
-  # ── Adapters ──────────────────────────────────────────────────────────────
+  mlops-worker:
+    build:
+      context: ../mlops-tier/batch-orchestrator
+      dockerfile: Dockerfile
+    profiles: ["mlops-worker"]
+    restart: "no"
+    command: ["make", "pipeline"]
+    environment:
+      <<: *mlops-runtime-env
+      API_PORT: "8010"
+    volumes: *mlops-project-volumes
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+      logstash:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
 
   adapter-ves:
     build:
@@ -241,8 +330,6 @@ services:
       redis:
         condition: service_healthy
 
-  # ── Normalizer ────────────────────────────────────────────────────────────
-
   normalizer:
     build:
       context: ..
@@ -258,15 +345,12 @@ services:
       redis:
         condition: service_healthy
 
-  # ── AIOps Runtime Tier ─────────────────────────────────────────────────────
-
   congestion-detector:
     build:
       context: ..
       dockerfile: aiops-tier/congestion-detector/Dockerfile
     restart: unless-stopped
-    volumes:
-      - ../mlops-tier/batch-orchestrator:/mlops:ro
+    volumes: *aiops-mlops-mounts
     environment:
       SERVICE_NAME: congestion-detector
       REDIS_HOST: redis
@@ -290,7 +374,7 @@ services:
       MODEL_POLL_INTERVAL_SEC: ${MODEL_POLL_INTERVAL_SEC:-60}
       MODEL_NAME: congestion_5g
       MODEL_FORMAT: onnx_fp16
-      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
       CONGESTION_MODEL_PATH: /mlops/models/congestion_5g_lstm_traced.pt
       CONGESTION_PREPROCESSOR_PATH: /mlops/data/processed/preprocessor_congestion_5g.pkl
       CONGESTION_THRESHOLD: ${CONGESTION_THRESHOLD:-0.5}
@@ -318,8 +402,7 @@ services:
       context: ..
       dockerfile: aiops-tier/slice-classifier/Dockerfile
     restart: unless-stopped
-    volumes:
-      - ../mlops-tier/batch-orchestrator:/mlops:ro
+    volumes: *aiops-mlops-mounts
     environment:
       SERVICE_NAME: slice-classifier
       REDIS_HOST: redis
@@ -343,7 +426,7 @@ services:
       MODEL_POLL_INTERVAL_SEC: ${MODEL_POLL_INTERVAL_SEC:-60}
       MODEL_NAME: slice_type_5g
       MODEL_FORMAT: onnx_fp16
-      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
       SLICE_MODEL_NAME: slice-type-lgbm-5g
       MLFLOW_DB_PATH: /mlops/mlflow.db
       MLRUNS_DIR: /mlops/mlruns
@@ -373,8 +456,7 @@ services:
       context: ..
       dockerfile: aiops-tier/sla-assurance/Dockerfile
     restart: unless-stopped
-    volumes:
-      - ../mlops-tier/batch-orchestrator:/mlops:ro
+    volumes: *aiops-mlops-mounts
     environment:
       SERVICE_NAME: sla-assurance
       REDIS_HOST: redis
@@ -398,7 +480,7 @@ services:
       MODEL_POLL_INTERVAL_SEC: ${MODEL_POLL_INTERVAL_SEC:-60}
       MODEL_NAME: sla_5g
       MODEL_FORMAT: onnx_fp16
-      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
       SLA_MODEL_NAME: sla-xgboost-5g
       MLFLOW_DB_PATH: /mlops/mlflow.db
       MLRUNS_DIR: /mlops/mlruns
@@ -423,8 +505,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Fault Engine ──────────────────────────────────────────────────────────
-
   fault-engine:
     build:
       context: ..
@@ -440,8 +520,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-
-  # ── Simulators ────────────────────────────────────────────────────────────
 
   simulator-core:
     build:
@@ -500,8 +578,6 @@ services:
       redis:
         condition: service_healthy
 
-  # ── API/BFF Service ───────────────────────────────────────────────────────
-
   api-bff-service:
     build:
       context: ..
@@ -527,8 +603,6 @@ services:
       fault-engine:
         condition: service_started
 
-  # ── Telemetry Exporter ────────────────────────────────────────────────────
-
   telemetry-exporter:
     build:
       context: ..
@@ -547,40 +621,41 @@ services:
       influxdb:
         condition: service_started
 
-  # ── Dashboard Tier (neuroslice-tunisia) ───────────────────────────────────
-
   auth-service:
     build:
       context: ..
       dockerfile: api-dashboard-tier/auth-service/Dockerfile
-    environment:
-      DATABASE_URL: postgresql+psycopg://${AUTH_DB_USER:-auth_app}:${AUTH_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
-      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
-      JWT_ACCESS_TOKEN_EXPIRES_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRES_MINUTES:-15}
-      JWT_REFRESH_TOKEN_EXPIRES_DAYS: ${JWT_REFRESH_TOKEN_EXPIRES_DAYS:-7}
-      ARGON2_MEMORY_COST: ${ARGON2_MEMORY_COST:-65536}
-      ARGON2_TIME_COST: ${ARGON2_TIME_COST:-3}
-      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-4}
-      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-neuroslice_refresh_token}
-      REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH:-/api/auth}
-      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
-      REFRESH_COOKIE_SAMESITE: ${REFRESH_COOKIE_SAMESITE:-lax}
-      INITIAL_ADMIN_FULL_NAME: ${INITIAL_ADMIN_FULL_NAME:-}
-      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
-      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
-      INITIAL_ADMIN_ROLE: ${INITIAL_ADMIN_ROLE:-ADMIN}
-    expose:
-      - "8000"
+    container_name: auth-service
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      # Keep this URL aligned with the postgres service credentials above.
+      DATABASE_URL: postgresql+psycopg://auth_app:auth_password@postgres:5432/neuroslice_dashboard
+      PORT: "8001"
+      JWT_SECRET_KEY: super-secret-key
+      JWT_ACCESS_TOKEN_EXPIRES_MINUTES: 15
+      JWT_REFRESH_TOKEN_EXPIRES_DAYS: 7
+      ARGON2_MEMORY_COST: 65536
+      ARGON2_TIME_COST: 3
+      ARGON2_PARALLELISM: 4
+      REFRESH_COOKIE_NAME: neuroslice_refresh_token
+      REFRESH_COOKIE_PATH: /api/auth
+      REFRESH_COOKIE_SECURE: "false"
+      REFRESH_COOKIE_SAMESITE: lax
+      INITIAL_ADMIN_FULL_NAME: Admin NeuroSlice
+      INITIAL_ADMIN_EMAIL: admin@neuroslice.tn
+      INITIAL_ADMIN_PASSWORD: change-me-now
+    expose:
+      - "8001"
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)); sys.exit(0 if data.get('status') == 'ok' else 1)",
+          "import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)); sys.exit(0 if data.get('status') == 'ok' else 1)",
         ]
       interval: 10s
       timeout: 5s
@@ -592,12 +667,15 @@ services:
       context: ..
       dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://${DASHBOARD_DB_USER:-dashboard_app}:${DASHBOARD_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      DATABASE_URL: postgresql+psycopg://${DASHBOARD_DB_USER:-dashboard_app}:${DASHBOARD_DB_PASSWORD:-dashboard_password}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      PORT: "8002"
       JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
       DASHBOARD_DATA_PROVIDER: ${DASHBOARD_DATA_PROVIDER:-temporary_mock}
       API_BFF_BASE_URL: http://api-bff-service:8000
+      MLOPS_API_BASE_URL: http://mlops-api:8010
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
     expose:
-      - "8000"
+      - "8002"
     depends_on:
       postgres:
         condition: service_healthy
@@ -609,7 +687,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)); sys.exit(0 if data.get('status') == 'ok' else 1)",
+          "import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)); sys.exit(0 if data.get('status') == 'ok' else 1)",
         ]
       interval: 10s
       timeout: 5s
@@ -657,8 +735,6 @@ services:
       kong-gateway:
         condition: service_healthy
 
-  # ── Grafana ───────────────────────────────────────────────────────────────
-
   grafana:
     image: grafana/grafana:10.4.2
     ports:
@@ -684,7 +760,7 @@ volumes:
   zookeeper_log:
   kafka_data:
   influxdb_data:
-  dashboard_postgres_data:
-  mlflow_postgres_data:
+  postgres_data:
+  mlops_postgres_data:
   minio_data:
   es_data:

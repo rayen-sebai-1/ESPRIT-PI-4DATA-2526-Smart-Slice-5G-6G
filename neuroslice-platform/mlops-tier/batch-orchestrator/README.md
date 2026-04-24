@@ -1,98 +1,87 @@
 # Batch Orchestrator
 
-This project now supports two offline-learning modes:
+The batch orchestrator keeps all Scenario B MLOps source code in one place:
 
-- local fallback mode: `MLFLOW_TRACKING_URI` unset, training logs to `sqlite:///mlflow.db`
-- Scenario B mode: `docker compose` runs MLflow with PostgreSQL metadata and MinIO artifacts
+- offline preprocessing and validation
+- model training and reporting
+- ONNX FP16 export
+- registry metadata generation
+- FastAPI prediction service
 
-The authoritative integrated Docker runtime now lives in `neuroslice-platform/infrastructure/docker-compose.yml`. The local `batch-orchestrator/docker-compose.yml` remains available as an isolated MLOps-only stack.
+The authoritative integrated runtime now lives in `neuroslice-platform/infrastructure/docker-compose.yml`. The local `docker-compose.yml` in this folder remains available as standalone developer mode.
 
-Do not run the isolated MLOps stack and the integrated infrastructure stack at the same time unless you override host ports, because both publish MLflow, MinIO, Elasticsearch, Logstash, and Kibana on the same defaults.
+## Operating Modes
 
-## Scenario B Flow
+Local fallback mode on the host:
 
-Each training script keeps its existing model fit and MLflow logging, then adds:
+- unset `MLFLOW_TRACKING_URI` to use `sqlite:///mlflow.db`
+- run `make pipeline` directly from this folder
 
-1. evaluation and quality-gate checks
-2. local artifact persistence under `models/`
-3. ONNX export under `models/onnx/`
-4. FP16 conversion and ONNX validation
-5. MLflow artifact logging for original and ONNX artifacts
-6. registry metadata append in `models/registry.json`
+Integrated Scenario B mode:
 
-Generated registry fields include:
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops up --build
+```
 
-- `model_name`
-- `model_family`
-- `version`
-- `created_at`
-- `run_id`
-- `metrics`
-- `quality_gate_status`
-- `artifact_format`
-- `local_artifact_path`
-- `mlflow_artifact_uri`
-- `onnx_fp16_path`
-- `onnx_export_status`
-- `promotion_status`
-- `reason`
+Standalone MLOps-only mode:
 
-## Promotion Rules
+```bash
+cd neuroslice-platform/mlops-tier/batch-orchestrator
+docker compose up --build
+```
 
-- `sla_5g`: promote when `val_roc_auc >= 0.75`
-- `sla_6g`: promote when `val_roc_auc >= 0.75`
-- `slice_type_5g`: promote when `val_accuracy >= 0.80`
-- `slice_type_6g`: promote when `val_accuracy >= 0.80`; warn when `val_accuracy == 1.0`
-- `congestion_6g`: promote when `val_mae < 5.0`
-- `congestion_5g`: promote only when `val_precision >= 0.50` and `val_recall >= 0.70`
+## Runtime Access
 
-## Docker Services
+When the integrated profile is running:
 
-`docker-compose.yml` now provisions:
+- MLflow UI: `http://localhost:5000`
+- MinIO console: `http://localhost:9001`
+- MLOps API: `http://localhost:8010`
 
-- `postgres` for the MLflow backend store
-- `minio` for the artifact bucket
-- `minio-init` to create the artifact bucket
-- `mlflow` configured with PostgreSQL and MinIO
-- `logstash` for HTTP log ingestion into Elasticsearch
-- `api` exposed on `8010` by default
+The integrated API is published as `mlops-api` and is built from this directory without moving the source code.
 
-Copy `.env.example` to `.env` when you want the Docker-backed configuration.
+## Manual Pipeline Execution
 
-## Commands
+Run on the host:
 
 ```bash
 cd neuroslice-platform/mlops-tier/batch-orchestrator
 pip install -r requirements.txt
 make pipeline
-make model-report
 ```
 
-Integrated runtime:
+Run with the integrated Docker services:
 
 ```bash
 cd neuroslice-platform/infrastructure
-docker compose up --build mlflow-postgres minio minio-init mlflow mlops-api elasticsearch logstash kibana
+docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 ```
 
+`mlops-worker` is intentionally manual and does not start during `docker compose --profile mlops up --build`.
+
 ## Generated Outputs
+
+Important outputs remain local to this project directory:
 
 - `models/registry.json`
 - `models/onnx/*.onnx`
 - `reports/model_training_summary.md`
+- `data/processed/*`
 
-If ONNX export fails for a specific model, the training pipeline keeps running, the original artifact remains available, and the failure reason is written into the registry metadata.
+Those paths are mounted into the integrated services so Docker usage and non-Docker usage share the same artifacts.
 
-## Logstash
+## Artifact Flow
 
-The local observability stack now includes Logstash between application log emission and Elasticsearch:
+The expected flow is:
 
-- `src/monitoring/log_sender.py` sends to `LOGSTASH_HTTP_URL` when `LOG_MONITORING_MODE=logstash`
-- if Logstash is unavailable, the sender falls back to direct Elasticsearch indexing
-- the Logstash pipeline lives in `logstash/pipeline/logstash.conf`
+1. training
+2. ONNX FP16 export
+3. MLflow metadata in PostgreSQL
+4. artifacts in MinIO
+5. promoted registry metadata in `models/registry.json`
+6. AIOps runtime discovery and future hot reload
 
-Default local endpoint:
+## Standalone Compose Notes
 
-```bash
-http://localhost:8081/predictions
-```
+`docker-compose.yml` in this folder is kept as an isolated MLOps developer stack. It is useful for focused MLOps work, but the infrastructure compose file is the canonical integrated Scenario B path for the full platform.

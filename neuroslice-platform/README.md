@@ -650,12 +650,15 @@ make serve
 
 `mlops-tier/batch-orchestrator/docker-compose.yml` starts:
 
-- API container (port `8000`)
+- API container (port `8010`)
+- PostgreSQL (port `5432`)
+- MinIO API and console (ports `9000` and `9001`)
 - MLflow server (port `5000`)
 - Elasticsearch (port `9200`)
+- Logstash (port `8081`)
 - Kibana (port `5601`)
 
-Important: this API also binds `8000`, which conflicts with `api-bff-service` if both stacks run on the same host port.
+Important: if you run the standalone MLOps compose and the integrated infrastructure MLOps profile at the same time, the shared host ports `5000`, `8010`, `9000`, and `9001` will conflict.
 
 ## 16) Test Coverage
 
