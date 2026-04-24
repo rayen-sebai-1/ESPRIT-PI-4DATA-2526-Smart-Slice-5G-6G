@@ -1,28 +1,65 @@
 # Data Folder
 
-All raw CSV datasets now live in **`data/raw/`**.
+This directory contains both the source datasets and the generated preprocessing artifacts used by the NeuroSlice MLOps project.
 
-## `data/raw/` — canonical location
+## Layout
 
-| File | Used by |
-|------|---------|
-| `network_slicing_dataset_enriched_timeseries.csv` | **LSTM congestion model** (`src/data/preprocess_6g.py`) |
-| `5G_prepared.csv` | 5G slice-selection notebook / future training scripts |
-| `6G_prepared.csv` | 6G slice-selection notebook / future training scripts |
-| `network_slicing_dataset_v3.csv` | Exploratory notebooks |
+- `data/raw/`: committed source CSV files
+- `data/processed/`: generated processed datasets, scalers, encoders, and preprocessing artifacts
 
-## `data/processed/` — generated outputs
+## Current Raw Datasets
 
-Processed CSVs are written here by the preprocessing scripts (e.g. `6g_processed.csv`).
-Do **not** commit files in this folder.
+Files currently present in `data/raw/`:
 
-## Notes
+- `5G_prepared.csv`
+- `6G_prepared.csv`
+- `network_slicing_dataset_enriched_timeseries.csv`
+- `network_slicing_dataset_v3.csv`
+- `train_dataset.csv`
+- `train_dataset_enriched_timeseries.csv`
 
-- The CSV files that previously lived directly in `data/` are **no longer needed** there.
-  You can safely delete:
-  - `data/5G_prepared.csv`
-  - `data/6G_prepared.csv`
-  - `data/network_slicing_dataset - v3.csv`
-  - `data/network_slicing_dataset_enriched_timeseries.csv`
-- Keep this `README.md` in the repository.
-- All dataset files are listed in `.gitignore` and will not be pushed.
+## Current Processed Artifacts
+
+Files currently present in `data/processed/` include:
+
+- `6g_processed.csv`
+- `congestion_5g_processed.npz`
+- `sla_5g_processed.npz`
+- `sla_6g_processed.npz`
+- `slice_type_5g_processed.npz`
+- `slice_type_6g_processed.npz`
+- `preprocessor_congestion_5g.pkl`
+- `scaler_sla_5g.pkl`
+- `scaler_sla_6g.pkl`
+- `encoders_sla_6g.pkl`
+- `label_encoder_slice_type_5g.pkl`
+- `label_encoder_slice_type_6g.pkl`
+
+These generated artifacts are important in the current repository state because:
+
+- the MLOps API loads several of them directly
+- runtime AIOps services mount this directory through the integrated Compose stack
+- the repository currently keeps these local artifacts alongside the codebase
+
+## Regenerating Processed Data
+
+From `mlops-tier/batch-orchestrator/`:
+
+```bash
+make data
+make data-sla-5g
+make data-sla-6g
+make data-congestion-5g
+make data-slice-type-5g
+make data-slice-type-6g
+```
+
+Run the full data and training pipeline:
+
+```bash
+make pipeline
+```
+
+## Practical Note
+
+Earlier documentation treated `data/processed/` as purely disposable output. In the current workspace, those artifacts are part of the local runtime contract and are intentionally present so the platform can run without first rebuilding every preprocessing step.

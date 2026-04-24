@@ -1,23 +1,72 @@
 # React Dashboard
 
-Canonical frontend for the protected NeuroSlice dashboard stack.
+`react-dashboard` is the protected React frontend for the NeuroSlice operations dashboard.
 
-## Role
+## Stack
 
-- Contains the full React + Vite application source (`src/`, `package.json`, `vite.config.ts`, Tailwind config, and assets).
-- Is the only browser-facing dashboard UI project in `api-dashboard-tier/`.
-- Keeps the access token in memory only and refreshes sessions through an `HttpOnly` cookie flow.
-- Sends all dashboard traffic through Kong only:
-  - `/api/auth/*`
-  - `/api/dashboard/*`
+- React 18
+- Vite 5
+- TypeScript
+- Tailwind CSS
+- TanStack Query
+- Axios
+- Recharts
 
-## Runtime
+## Runtime Model
 
-- Docker build entry: `react-dashboard/Dockerfile`
-- Local dev/build files live directly in this folder
-- Default UI URL: `http://localhost:5173`
+- default UI URL: `http://localhost:5173`
+- all browser API traffic goes through Kong
+- access tokens are kept in memory
+- refresh uses the HttpOnly refresh cookie issued by `auth-service`
+- Vite proxies `/api/*` to `http://localhost:8008` by default
 
-## Ownership
+## Routes
 
-- `react-dashboard/` is the only authoritative frontend runtime component.
-- There is no secondary `dashboard-frontend/` folder anymore.
+- `/login`
+- `/dashboard/national`
+- `/dashboard/region`
+- `/dashboard/region/:regionId`
+- `/sessions`
+- `/predictions`
+- `/admin/users`
+- `*` -> not found page
+
+Role guards in the router:
+
+- all authenticated users can access the dashboard shell
+- `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
+- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
+- `/admin/users`: `ADMIN`
+
+## Local Development
+
+```bash
+cd neuroslice-platform/api-dashboard-tier/react-dashboard
+npm ci
+npm run dev
+```
+
+Build and preview:
+
+```bash
+npm run build
+npm run preview
+```
+
+## Environment Variables
+
+- `VITE_DEV_PROXY_TARGET` default `http://localhost:8008`
+- `VITE_AUTH_API_URL` default `/api/auth`
+- `VITE_DASHBOARD_API_URL` default `/api/dashboard`
+- `VITE_SESSION_API_URL` optional override
+- `VITE_PREDICTION_API_URL` optional override
+
+## Docker Runtime
+
+The Docker image:
+
+- uses `node:20-alpine`
+- runs `npm ci`
+- starts `npm run dev -- --host 0.0.0.0 --port 5173`
+
+This is a development-oriented container, not a production static build image.

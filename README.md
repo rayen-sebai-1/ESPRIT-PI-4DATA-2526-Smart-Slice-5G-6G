@@ -1,25 +1,25 @@
-# Smart Slice Selection in 5G/6G
+# Smart Slice 5G/6G
 
-This repository contains the `neuroslice-platform`, a Scenario B Docker Compose proof-of-concept for end-to-end telecom simulation, ingestion, live AIOps runtime inference, API access, and observability.
+This repository contains the NeuroSlice platform: a local, multi-service 5G/6G network-slicing environment for simulation, telemetry ingestion, online AIOps inference, dashboard access, observability, and offline MLOps workflows.
 
-## Implemented runtime path (Scenario B)
+## Repository Layout
 
-The live path is now:
+- `neuroslice-platform/`: runnable platform code, Docker Compose stack, dashboards, simulators, and MLOps project
+- `report/`: project report assets, including `Rapport_PI_modeling_phase.pdf`
 
-1. Simulators emit telemetry (Core/Edge/RAN).
-2. VES/NETCONF adapters ingest events.
-3. Normalizer builds canonical telemetry (`stream:norm.telemetry`, `telemetry-norm`).
-4. Runtime AIOps services consume normalized telemetry:
-   - `aiops-tier/congestion-detector`
-   - `aiops-tier/slice-classifier`
-   - `aiops-tier/sla-assurance`
-5. Runtime inference outputs are published to platform streams/topics:
-   - `events.anomaly`
-   - `events.slice.classification`
-   - `events.sla`
-6. Latest AIOps state is stored in Redis (`aiops:*` keys) and exposed via API/BFF.
+## What Runs Today
 
-## Quick start
+The current implementation covers this end-to-end path:
+
+1. Simulators generate Core, Edge, and RAN telemetry.
+2. VES and NETCONF adapters receive the payloads.
+3. The normalizer writes canonical events to Redis and Kafka.
+4. Runtime AIOps workers score congestion, SLA risk, and slice classification.
+5. The public API/BFF exposes live KPIs, AIOps outputs, and fault/scenario controls.
+6. The protected dashboard stack exposes authentication, Kong routing, and the React UI.
+7. Grafana and InfluxDB provide observability for telemetry and runtime AIOps outputs.
+
+## Quick Start
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -27,27 +27,62 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Core checks:
+Optional integrated MLOps profile:
 
 ```bash
-curl http://localhost:8000/health
-curl "http://localhost:8000/api/v1/aiops/congestion/latest?limit=20"
-curl "http://localhost:8000/api/v1/aiops/sla/latest?limit=20"
-curl "http://localhost:8000/api/v1/aiops/slice-classification/latest?limit=20"
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops up --build
 ```
 
-## Documentation
+## Default URLs
 
-- Full platform README: `neuroslice-platform/README.md`
-- Simulation details: `neuroslice-platform/simulation-tier/README.md`
-- MLOps batch orchestrator: `neuroslice-platform/mlops-tier/batch-orchestrator/`
+- Public API/BFF: `http://localhost:8000`
+- React dashboard: `http://localhost:5173`
+- Kong gateway: `http://localhost:8008`
+- Fault engine: `http://localhost:7004`
+- Grafana: `http://localhost:3000`
+- InfluxDB: `http://localhost:8086`
+- MLflow UI: `http://localhost:5000` (`mlops` profile)
+- MLOps API: `http://localhost:8010` (`mlops` profile)
 
-## Intentionally out of scope in this iteration
+Development dashboard bootstrap in the current Compose file seeds an admin account by default:
+
+- email: `admin@neuroslice.tn`
+- password: `change-me-now`
+
+Change those defaults before using the stack outside local development.
+
+## Current Status
+
+Implemented tiers:
+
+- `simulation-tier`
+- `ingestion-tier`
+- `aiops-tier`
+- `api-dashboard-tier`
+- `infrastructure`
+- `mlops-tier/batch-orchestrator`
+
+Present but still placeholder-only:
+
+- `control-tier`
+- `agentic-ai-tier`
+
+Deferred in this iteration:
 
 - `aiops-tier/misrouting-detector`
-- Kubernetes deployment (`infrastructure/k8s`)
-- Istio/service mesh (`infrastructure/istio`)
-- Pending tiers/services: `agentic-ai-tier`, `control-tier`, `api-dashboard-tier/auth-service`, `api-dashboard-tier/kong-gateway`, `api-dashboard-tier/react-dashboard`
+- Kubernetes and Istio deployment assets
+
+## Documentation Map
+
+- Platform overview: `neuroslice-platform/README.md`
+- Infrastructure and Compose runtime: `neuroslice-platform/infrastructure/README.md`
+- Simulation tier: `neuroslice-platform/simulation-tier/README.md`
+- Ingestion tier: `neuroslice-platform/ingestion-tier/README.md`
+- AIOps tier: `neuroslice-platform/aiops-tier/README.md`
+- API and dashboard tier: `neuroslice-platform/api-dashboard-tier/README.md`
+- MLOps tier: `neuroslice-platform/mlops-tier/README.md`
+- Batch orchestrator project: `neuroslice-platform/mlops-tier/batch-orchestrator/README.md`
 
 ## Contributors
 

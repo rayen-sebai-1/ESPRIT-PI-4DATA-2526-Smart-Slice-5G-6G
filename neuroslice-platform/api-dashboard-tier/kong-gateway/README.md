@@ -1,41 +1,50 @@
 # Kong Gateway
 
-Canonical API gateway entry for the Scenario B dashboard stack.
+`kong-gateway` is the browser-facing API gateway for the protected NeuroSlice dashboard stack.
 
-## Role
+## Current Role
 
-- Publishes the only browser-facing dashboard API surface.
-- Routes auth traffic to `auth-service`.
-- Routes dashboard domain traffic to `dashboard-backend`.
-- Keeps the platform BFF (`api-bff-service`) separate from the protected dashboard flow.
+- exposes the only public protected API endpoint at `http://localhost:8008`
+- routes auth requests to `auth-service`
+- routes dashboard requests to `dashboard-backend`
+- keeps the public telemetry BFF separate from the protected dashboard flow
 
-## Runtime
+## Configuration Sources
 
 - Docker build entry: `kong-gateway/Dockerfile`
-- Declarative config: `kong-gateway/kong.yml`
-- Default public URL: `http://localhost:8008`
+- declarative config: `kong-gateway/kong.yml`
 
-## Public Routes
+## Route Mapping
 
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `GET|POST|PATCH|DELETE /api/auth/users`
-- `GET /api/dashboard/national`
-- `GET /api/dashboard/region/{regionId}`
-- `GET /api/dashboard/sessions`
-- `GET /api/dashboard/sessions/{sessionId}`
-- `GET /api/dashboard/predictions`
-- `GET /api/dashboard/predictions/{sessionId}`
-- `POST /api/dashboard/predictions/run/{sessionId}`
-- `POST /api/dashboard/predictions/run-batch`
-- `GET /api/dashboard/models`
-- `GET|PUT /api/dashboard/preferences/me`
-- `GET|POST|DELETE /api/dashboard/bookmarks`
-- `POST /api/dashboard/alerts/{alertKey}/acknowledge`
+`kong.yml` currently maps:
 
-## Ownership
+- `POST /api/auth/login` -> `auth-service:8001/auth/login`
+- `/api/auth/*` -> `auth-service:8001/auth/*`
+- `/api/auth/users*` -> `auth-service:8001/users*`
+- `/api/dashboard/sessions*` -> `dashboard-backend:8002/sessions*`
+- `/api/dashboard/predictions*` -> `dashboard-backend:8002/predictions*`
+- `/api/dashboard/models` -> `dashboard-backend:8002/models`
+- other `/api/dashboard/*` routes -> `dashboard-backend:8002/dashboard/*`
 
-- `kong-gateway/` is the only authoritative dashboard gateway component.
-- There is no secondary `kong/` folder anymore.
+## Active Plugins
+
+Global plugin:
+
+- CORS with credentials enabled for `http://localhost:5173` and `http://127.0.0.1:5173`
+
+Route-level rate limits:
+
+- login route: `5` requests per minute and `100` per hour
+- protected dashboard routes: `120` requests per minute and `5000` per hour
+
+## Validation
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose exec kong-gateway kong health
+```
+
+## Current Scope
+
+- There is no secondary gateway folder in this repository.
+- Health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong.
