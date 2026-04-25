@@ -9,6 +9,8 @@
 - routes dashboard requests to `dashboard-backend`
 - keeps the public telemetry BFF separate from the protected dashboard flow
 
+Kong is currently doing routing, CORS, and rate limiting only. Authentication and role checks are still enforced by `auth-service` and `dashboard-backend`.
+
 ## Configuration Sources
 
 - Docker build entry: `kong-gateway/Dockerfile`
@@ -19,7 +21,7 @@
 `kong.yml` currently maps:
 
 - `POST /api/auth/login` -> `auth-service:8001/auth/login`
-- `/api/auth/*` -> `auth-service:8001/auth/*`
+- other `/api/auth/*` routes -> `auth-service:8001/auth/*`
 - `/api/auth/users*` -> `auth-service:8001/users*`
 - `/api/dashboard/sessions*` -> `dashboard-backend:8002/sessions*`
 - `/api/dashboard/predictions*` -> `dashboard-backend:8002/predictions*`
@@ -46,5 +48,5 @@ docker compose exec kong-gateway kong health
 
 ## Current Scope
 
-- There is no secondary gateway folder in this repository.
-- Health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong.
+- there is no second gateway configuration in this repository
+- health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong

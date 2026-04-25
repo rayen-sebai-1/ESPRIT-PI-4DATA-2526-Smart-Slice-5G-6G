@@ -24,6 +24,7 @@ psycopg2-binary>=2.9.9
 
 # ONNX export / runtime validation
 onnx>=1.16.0
+onnxscript>=0.1.0
 onnxruntime>=1.18.0
 onnxmltools>=1.12.0
 skl2onnx>=1.17.0

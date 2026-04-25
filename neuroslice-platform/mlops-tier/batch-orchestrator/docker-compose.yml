@@ -5,30 +5,35 @@ services:
       - "${API_PORT:-8010}:${API_PORT:-8010}"
     environment:
       API_PORT: "${API_PORT:-8010}"
-      MLFLOW_TRACKING_URI: "${MLFLOW_TRACKING_URI:-http://mlflow:5000}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minioadmin}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-minioadmin123}"
+      MLFLOW_S3_ENDPOINT_URL: "${MLFLOW_S3_ENDPOINT_URL:-http://minio:9000}"
+      MLFLOW_TRACKING_URI: "${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}"
+      MLFLOW_ARTIFACT_ROOT: "${MLFLOW_ARTIFACT_ROOT:-s3://mlflow-artifacts}"
+      MLFLOW_EXPERIMENT_NAME: "${MLFLOW_EXPERIMENT_NAME:-neuroslice-aiops}"
       LOG_MONITORING_MODE: "${LOG_MONITORING_MODE:-logstash}"
       LOGSTASH_HTTP_URL: "${LOGSTASH_HTTP_URL:-http://logstash:8081/predictions}"
       ES_HOST: "${ES_HOST:-http://elasticsearch:9200}"
     depends_on:
-      mlflow:
+      mlflow-server:
         condition: service_started
       logstash:
         condition: service_started
       elasticsearch:
         condition: service_started
 
-  postgres:
+  mlops-postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: "${POSTGRES_USER:-mlflow}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-mlflow123}"
-      POSTGRES_DB: "${POSTGRES_DB:-mlflow}"
+      POSTGRES_USER: "${MLOPS_POSTGRES_USER:-mlflow}"
+      POSTGRES_PASSWORD: "${MLOPS_POSTGRES_PASSWORD:-mlflow123}"
+      POSTGRES_DB: "${MLOPS_POSTGRES_DB:-mlflow}"
     ports:
-      - "5432:5432"
+      - "${MLOPS_POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlflow} -d ${POSTGRES_DB:-mlflow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${MLOPS_POSTGRES_USER:-mlflow} -d ${MLOPS_POSTGRES_DB:-mlflow}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -53,17 +58,17 @@ services:
     entrypoint: >
       /bin/sh -c "
       until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123}; do sleep 2; done &&
-      mc mb --ignore-existing local/${MINIO_BUCKET:-mlflow-artifacts}
+      mc mb --ignore-existing local/${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts} || true
       "
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
-      MINIO_BUCKET: "${MINIO_BUCKET:-mlflow-artifacts}"
+      MLFLOW_ARTIFACT_BUCKET: "${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}"
 
-  mlflow:
+  mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.13.0
     depends_on:
-      postgres:
+      mlops-postgres:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
@@ -73,12 +78,16 @@ services:
       AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minioadmin}"
       AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-minioadmin123}"
       MLFLOW_S3_ENDPOINT_URL: "${MLFLOW_S3_ENDPOINT_URL:-http://minio:9000}"
-      MLFLOW_BACKEND_STORE_URI: "${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://mlflow:mlflow123@postgres:5432/mlflow}"
+      MLFLOW_BACKEND_STORE_URI: "${MLFLOW_BACKEND_STORE_URI:-}"
       MLFLOW_ARTIFACT_ROOT: "${MLFLOW_ARTIFACT_ROOT:-s3://mlflow-artifacts}"
+      MLOPS_POSTGRES_USER: "${MLOPS_POSTGRES_USER:-mlflow}"
+      MLOPS_POSTGRES_PASSWORD: "${MLOPS_POSTGRES_PASSWORD:-mlflow123}"
+      MLOPS_POSTGRES_DB: "${MLOPS_POSTGRES_DB:-mlflow}"
     command: >
       /bin/sh -c "
       pip install --no-cache-dir boto3 psycopg2-binary &&
-      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$MLFLOW_BACKEND_STORE_URI --artifacts-destination $$MLFLOW_ARTIFACT_ROOT --serve-artifacts
+      BACKEND_URI=$${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://$${MLOPS_POSTGRES_USER:-mlflow}:$${MLOPS_POSTGRES_PASSWORD:-mlflow123}@mlops-postgres:5432/$${MLOPS_POSTGRES_DB:-mlflow}} &&
+      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$BACKEND_URI --default-artifact-root $$MLFLOW_ARTIFACT_ROOT
       "
 
   elasticsearch:

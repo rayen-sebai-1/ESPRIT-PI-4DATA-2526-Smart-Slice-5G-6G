@@ -26,6 +26,8 @@ models/*.pt
 models/*.pth
 models/*.pkl
 models/*.joblib
+models/*.onnx
+models/onnx/
 
 # -----------------------------------------------------------------------
 # Python artefacts

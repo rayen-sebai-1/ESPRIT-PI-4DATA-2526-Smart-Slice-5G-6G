@@ -1,6 +1,6 @@
 # Infrastructure Layer
 
-The infrastructure layer is the canonical local entry point for the NeuroSlice platform. It wires together the simulators, ingestion pipeline, runtime AIOps services, dashboard stack, observability tooling, and optional MLOps control plane.
+The infrastructure layer is the canonical local entry point for the NeuroSlice platform. It wires together the simulators, ingestion pipeline, runtime AIOps services, dashboard stack, observability tooling, and the optional integrated MLOps control plane.
 
 ## Runtime Modes
 
@@ -79,6 +79,21 @@ Optional `mlops` profile:
 - MLOps API: `http://localhost:8010`
 - MLOps PostgreSQL: `localhost:5433`
 
+## MLOps Data Ownership
+
+The integrated MLOps profile keeps platform and MLOps storage separate:
+
+- `postgres` is used only by `auth-service` and `dashboard-backend`
+- `mlops-postgres` is used only by the MLflow backend store
+- MinIO bucket `mlflow-artifacts` stores MLflow artifacts, model binaries, ONNX, ONNX FP16, preprocessors, scalers, encoders, and reports
+
+The MLflow server is configured with:
+
+- backend store URI: `postgresql+psycopg2://...@mlops-postgres:5432/mlflow`
+- default artifact root: `s3://mlflow-artifacts`
+- S3 endpoint: `http://minio:9000`
+- AWS credentials from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+
 ## Environment Variables
 
 Primary template:
@@ -93,25 +108,40 @@ Key values already wired into Compose:
 - optional MLOps ports and credentials: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`
 - dashboard backend config: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
 
-Current caveats in `docker-compose.yml`:
+## Current Caveats
 
 - platform PostgreSQL is still bound to fixed host port `5432`; `DASHBOARD_POSTGRES_PORT` in `.env.example` is not wired yet
-- `auth-service` and the platform `postgres` service still include development credentials directly in the compose file
+- `auth-service` and the platform `postgres` service still include development credentials directly in the Compose file
 - `dashboard-backend` already reads `DASHBOARD_JWT_SECRET` from `.env`
+- `.env.example` still contains reserved variables for future agentic services, but the related Compose services are commented out
+- runtime AIOps services always mount `../mlops-tier/batch-orchestrator` paths; if generated artifacts are missing locally, the workers fall back to local heuristics
 
-If you need production-style secret management, update the compose file in addition to `.env`.
+If you need production-style secret management, update the Compose file in addition to `.env`.
 
 ## AIOps Artifact Access
 
-The runtime AIOps services always mount local artifacts from `../mlops-tier/batch-orchestrator`, even when the `mlops` profile is disabled:
+The runtime AIOps services mount registry and generated local artifacts from `../mlops-tier/batch-orchestrator`, even when the `mlops` profile is disabled:
 
 - `models/`
 - `data/`
-- `mlruns/`
-- `mlflow.db`
 - `src/`
 
-This keeps the runtime lightweight while still allowing local training artifacts to be reused.
+They read `models/registry.json` and prefer promoted production artifacts in this order: ONNX FP16, ONNX, local model fallback, then heuristic fallback.
+
+## MLOps Verification
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops up --build
+docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
+```
+
+Verify:
+
+- MLflow UI: `http://localhost:5000`
+- MinIO console: `http://localhost:9001`
+- MLOps API: `http://localhost:8010`
+- `../mlops-tier/batch-orchestrator/models/registry.json` contains a `promoted=true`, `stage=production` entry
 
 ## Common Operations
 

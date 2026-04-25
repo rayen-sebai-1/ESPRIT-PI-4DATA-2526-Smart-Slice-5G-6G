@@ -1,13 +1,13 @@
 # Data Folder
 
-This directory contains both the source datasets and the generated preprocessing artifacts used by the NeuroSlice MLOps project.
+This directory contains the committed raw datasets for the NeuroSlice MLOps project and the location where generated preprocessing outputs are created.
 
 ## Layout
 
 - `data/raw/`: committed source CSV files
-- `data/processed/`: generated processed datasets, scalers, encoders, and preprocessing artifacts
+- `data/processed/`: generated preprocessing outputs created by the Make targets and preprocessing scripts
 
-## Current Raw Datasets
+## Current Committed Files
 
 Files currently present in `data/raw/`:
 
@@ -18,28 +18,17 @@ Files currently present in `data/raw/`:
 - `train_dataset.csv`
 - `train_dataset_enriched_timeseries.csv`
 
-## Current Processed Artifacts
+In the current repository snapshot, `data/processed/` is not committed. Its contents are generated locally and ignored by git.
 
-Files currently present in `data/processed/` include:
+## What Gets Generated Under `data/processed/`
 
-- `6g_processed.csv`
-- `congestion_5g_processed.npz`
-- `sla_5g_processed.npz`
-- `sla_6g_processed.npz`
-- `slice_type_5g_processed.npz`
-- `slice_type_6g_processed.npz`
-- `preprocessor_congestion_5g.pkl`
-- `scaler_sla_5g.pkl`
-- `scaler_sla_6g.pkl`
-- `encoders_sla_6g.pkl`
-- `label_encoder_slice_type_5g.pkl`
-- `label_encoder_slice_type_6g.pkl`
+Depending on which preprocessing targets you run, this folder can contain:
 
-These generated artifacts are important in the current repository state because:
-
-- the MLOps API loads several of them directly
-- runtime AIOps services mount this directory through the integrated Compose stack
-- the repository currently keeps these local artifacts alongside the codebase
+- processed `.csv` and `.npz` datasets
+- congestion preprocessors
+- SLA scalers
+- slice label encoders
+- other task-specific preprocessing artifacts used by the prediction API and runtime workers
 
 ## Regenerating Processed Data
 
@@ -62,4 +51,4 @@ make pipeline
 
 ## Practical Note
 
-Earlier documentation treated `data/processed/` as purely disposable output. In the current workspace, those artifacts are part of the local runtime contract and are intentionally present so the platform can run without first rebuilding every preprocessing step.
+Runtime AIOps services mount `batch-orchestrator/data` directly. If you want them to use generated preprocessors instead of falling back to heuristics, you need to create the required `data/processed/` artifacts locally first.

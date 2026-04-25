@@ -31,12 +31,14 @@
 - `/admin/users`
 - `*` -> not found page
 
-Role guards in the router:
+Current route guards in the router:
 
 - all authenticated users can access the dashboard shell
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
 - `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
 - `/admin/users`: `ADMIN`
+
+`NETWORK_MANAGER` currently has dashboard access only in the shipped UI, even though the backend prediction API accepts that role.
 
 ## Local Development
 

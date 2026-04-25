@@ -12,19 +12,20 @@ DATA_SRC_DIR := src/data
 MODEL_SRC_DIR := src/models
 MLFLOW_TRACKING_URI ?= sqlite:///mlflow.db
 MLFLOW_BACKEND_STORE_URI ?= $(MLFLOW_TRACKING_URI)
-MLFLOW_ARTIFACT_ROOT ?= ./mlruns
+MLFLOW_ARTIFACT_ROOT ?= s3://mlflow-artifacts
+MLFLOW_EXPERIMENT_NAME ?= neuroslice-aiops
 AWS_ACCESS_KEY_ID ?=
 AWS_SECRET_ACCESS_KEY ?=
 MLFLOW_S3_ENDPOINT_URL ?=
 MINIO_ROOT_USER ?= minioadmin
 MINIO_ROOT_PASSWORD ?= minioadmin123
-POSTGRES_USER ?= mlflow
-POSTGRES_PASSWORD ?= mlflow123
-POSTGRES_DB ?= mlflow
+MLOPS_POSTGRES_USER ?= mlflow
+MLOPS_POSTGRES_PASSWORD ?= mlflow123
+MLOPS_POSTGRES_DB ?= mlflow
 
-export MLFLOW_TRACKING_URI MLFLOW_BACKEND_STORE_URI MLFLOW_ARTIFACT_ROOT
+export MLFLOW_TRACKING_URI MLFLOW_BACKEND_STORE_URI MLFLOW_ARTIFACT_ROOT MLFLOW_EXPERIMENT_NAME
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY MLFLOW_S3_ENDPOINT_URL
-export MINIO_ROOT_USER MINIO_ROOT_PASSWORD POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB
+export MINIO_ROOT_USER MINIO_ROOT_PASSWORD MLOPS_POSTGRES_USER MLOPS_POSTGRES_PASSWORD MLOPS_POSTGRES_DB
 export API_PORT MLFLOW_PORT
 
 .PHONY: setup lint format security quality data data-sla-5g data-sla-6g data-congestion-5g data-slice-type-5g \
@@ -32,7 +33,7 @@ export API_PORT MLFLOW_PORT
         train-sla-5g train-sla-6g train-congestion-5g train-congestion-6g \
         train-slice-type-5g train-slice-type-6g \
         train-all test model-report mlflow-ui serve docker-build docker-run \
-        docker-compose-up notebook pipeline clean
+        docker-compose-up notebook pipeline pipeline-congestion-5g pipeline-all clean
 
 # ------------------------------------------------------------------------------
 # Environment Setup
@@ -153,9 +154,16 @@ docker-compose-up:
 # ------------------------------------------------------------------------------
 # Full Pipeline
 # ------------------------------------------------------------------------------
-pipeline: setup lint security validate-data data-sla-5g data-sla-6g data-congestion-5g data-slice-type-5g data-slice-type-6g \
-          validate-data-sla-5g validate-data-sla-6g validate-data-congestion-5g validate-data-slice-type-5g validate-data-slice-type-6g \
-          train-congestion-6g train-congestion-5g train-sla-5g train-sla-6g train-slice-type-5g train-slice-type-6g model-report test
+pipeline-congestion-5g: data-congestion-5g validate-data-congestion-5g train-congestion-5g model-report
+
+pipeline: data-congestion-5g validate-data-congestion-5g train-congestion-5g \
+          data-sla-5g validate-data-sla-5g train-sla-5g \
+          data-slice-type-5g validate-data-slice-type-5g train-slice-type-5g \
+          model-report
+
+pipeline-all: data-sla-5g data-sla-6g data-congestion-5g data-slice-type-5g data-slice-type-6g \
+              validate-data-sla-5g validate-data-sla-6g validate-data-congestion-5g validate-data-slice-type-5g validate-data-slice-type-6g \
+              train-congestion-5g train-congestion-6g train-sla-5g train-sla-6g train-slice-type-5g train-slice-type-6g model-report
 
 # ------------------------------------------------------------------------------
 # Cleanup

@@ -17,21 +17,20 @@ x-python-service: &python-service
 x-aiops-mlops-mounts: &aiops-mlops-mounts
   - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
   - ../mlops-tier/batch-orchestrator/data:/mlops/data:ro
-  - ../mlops-tier/batch-orchestrator/mlruns:/mlops/mlruns:ro
-  - ../mlops-tier/batch-orchestrator/mlflow.db:/mlops/mlflow.db:ro
   - ../mlops-tier/batch-orchestrator/src:/mlops/src:ro
 
 x-mlops-project-volumes: &mlops-project-volumes
   - ../mlops-tier/batch-orchestrator/models:/app/models
   - ../mlops-tier/batch-orchestrator/data:/app/data
   - ../mlops-tier/batch-orchestrator/reports:/app/reports
-  - ../mlops-tier/batch-orchestrator/mlruns:/app/mlruns
 
 x-mlops-runtime-env: &mlops-runtime-env
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
   MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://minio:9000}
   MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
+  MLFLOW_ARTIFACT_ROOT: ${MLFLOW_ARTIFACT_ROOT:-s3://mlflow-artifacts}
+  MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-neuroslice-aiops}
   LOG_MONITORING_MODE: ${MLOPS_LOG_MONITORING_MODE:-logstash}
   LOGSTASH_HTTP_URL: http://logstash:8081/predictions
   ES_HOST: http://elasticsearch:9200
@@ -172,7 +171,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123}; do sleep 2; done &&
-      mc mb --ignore-existing local/${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}
+      mc mb --ignore-existing local/${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts} || true
       "
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -208,7 +207,7 @@ services:
       pip install --no-cache-dir boto3 psycopg2-binary &&
       BACKEND_URI=$${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://$${MLOPS_POSTGRES_USER:-mlflow}:$${MLOPS_POSTGRES_PASSWORD:-mlflow123}@mlops-postgres:5432/$${MLOPS_POSTGRES_DB:-mlflow}} &&
       ARTIFACT_ROOT=$${MLFLOW_ARTIFACT_ROOT:-s3://$${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}} &&
-      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$BACKEND_URI --artifacts-destination $$ARTIFACT_ROOT --serve-artifacts
+      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$BACKEND_URI --default-artifact-root $$ARTIFACT_ROOT
       "
     healthcheck:
       test:
@@ -428,8 +427,6 @@ services:
       MODEL_FORMAT: onnx_fp16
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
       SLICE_MODEL_NAME: slice-type-lgbm-5g
-      MLFLOW_DB_PATH: /mlops/mlflow.db
-      MLRUNS_DIR: /mlops/mlruns
       SLICE_LABEL_ENCODER_PATH: /mlops/data/processed/label_encoder_slice_type_5g.pkl
       SLICE_MISMATCH_CONFIDENCE_THRESHOLD: ${SLICE_MISMATCH_CONFIDENCE_THRESHOLD:-0.8}
     depends_on:
@@ -482,8 +479,6 @@ services:
       MODEL_FORMAT: onnx_fp16
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
       SLA_MODEL_NAME: sla-xgboost-5g
-      MLFLOW_DB_PATH: /mlops/mlflow.db
-      MLRUNS_DIR: /mlops/mlruns
       SLA_SCALER_PATH: /mlops/data/processed/scaler_sla_5g.pkl
       SLA_RISK_THRESHOLD: ${SLA_RISK_THRESHOLD:-0.5}
     depends_on:
@@ -578,46 +573,46 @@ services:
       redis:
         condition: service_healthy
 
-  root-cause:
-    build:
-      context: ../agentic-ai-tier/root-cause
-      dockerfile: Dockerfile
-    ports:
-      - "${RCA_AGENT_PORT:-7005}:7005"
-    environment:
-      PORT: "7005"
-      # Inside containers, localhost is the container itself. Default to host gateway for local Ollama.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      RCA_OLLAMA_MODEL: ${RCA_OLLAMA_MODEL:-qwen2.5:3b-instruct}
-      RCA_AGENT_MAX_RETRIES: ${RCA_AGENT_MAX_RETRIES:-3}
-      RCA_ENABLE_HEURISTIC_FALLBACK: ${RCA_ENABLE_HEURISTIC_FALLBACK:-true}
-      INFLUXDB_URL: http://influxdb:8086
-      INFLUXDB_ORG: neuroslice
-      INFLUXDB_BUCKET: telemetry
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    depends_on:
-      redis:
-        condition: service_healthy
-      influxdb:
-        condition: service_started
+#  root-cause:
+#    build:
+  #     context: ../agentic-ai-tier/root-cause
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "${RCA_AGENT_PORT:-7005}:7005"
+  #   environment:
+  #     PORT: "7005"
+  #     # Inside containers, localhost is the container itself. Default to host gateway for local Ollama.
+  #     OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  #     RCA_OLLAMA_MODEL: ${RCA_OLLAMA_MODEL:-qwen2.5:3b-instruct}
+  #     RCA_AGENT_MAX_RETRIES: ${RCA_AGENT_MAX_RETRIES:-3}
+  #     RCA_ENABLE_HEURISTIC_FALLBACK: ${RCA_ENABLE_HEURISTIC_FALLBACK:-true}
+  #     INFLUXDB_URL: http://influxdb:8086
+  #     INFLUXDB_ORG: neuroslice
+  #     INFLUXDB_BUCKET: telemetry
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     influxdb:
+  #       condition: service_started
 
-  copilot-agent:
-    build:
-      context: ../agentic-ai-tier/copilot-agent
-      dockerfile: Dockerfile
-    ports:
-      - "${COPILOT_AGENT_PORT:-7006}:7006"
-    environment:
-      PORT: "7006"
-      # Inside containers, localhost is the container itself. Default to host gateway for local Ollama.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${COPILOT_OLLAMA_MODEL:-qwen2.5:3b-instruct}
-      OLLAMA_TIMEOUT_SECONDS: ${COPILOT_OLLAMA_TIMEOUT_SECONDS:-60}
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
+  # copilot-agent:
+  #   build:
+  #     context: ../agentic-ai-tier/copilot-agent
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "${COPILOT_AGENT_PORT:-7006}:7006"
+  #   environment:
+  #     PORT: "7006"
+  #     # Inside containers, localhost is the container itself. Default to host gateway for local Ollama.
+  #     OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  #     OLLAMA_MODEL: ${COPILOT_OLLAMA_MODEL:-qwen2.5:3b-instruct}
+  #     OLLAMA_TIMEOUT_SECONDS: ${COPILOT_OLLAMA_TIMEOUT_SECONDS:-60}
+  #     REDIS_URL: redis://redis:6379/0
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
 
   api-bff-service:
     build:

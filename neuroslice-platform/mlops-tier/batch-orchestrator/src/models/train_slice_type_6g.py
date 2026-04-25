@@ -5,6 +5,7 @@ Integrates with MLflow to track parameters, evaluation metrics, and SHAP summary
 """
 
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +15,7 @@ import xgboost as xgb
 import mlflow
 import shap
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
 
 # Configuration
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -22,7 +23,7 @@ NPZ_PATH = ROOT_DIR / "data" / "processed" / "slice_type_6g_processed.npz"
 LABEL_ENCODER_PATH = ROOT_DIR / "data" / "processed" / "label_encoder_slice_type_6g.pkl"
 ARTIFACTS_DIR = ROOT_DIR / "artifacts"
 LOCAL_MODEL_PATH = ROOT_DIR / "models" / "slice_type_6g_model.ubj"
-MLFLOW_EXPERIMENT_NAME = "slice-type-6g"
+MLFLOW_EXPERIMENT_NAME = get_experiment_name()
 MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
@@ -80,9 +81,9 @@ def main():
 
     # 3. Initialize MLflow Experiment
     check_existing_runs()
-    experiment_id = get_or_create_experiment(MLFLOW_EXPERIMENT_NAME)
+    use_mlflow_experiment(MLFLOW_EXPERIMENT_NAME)
 
-    with mlflow.start_run(experiment_id=experiment_id, run_name="xgboost_multi_classifier"):
+    with mlflow.start_run(run_name="xgboost_multi_classifier"):
         print("Starting MLflow Run...")
         mlflow.log_params(params)
 
@@ -141,17 +142,37 @@ def main():
         # Log xgboost explicitly or via scikit-learn
         LOCAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         model.save_model(LOCAL_MODEL_PATH.as_posix())
-        mlflow.xgboost.log_model(
-             xgb_model=model,
-             artifact_path="model",
-             registered_model_name="slice-type-6g"
-        )
+        # Use save_model + log_artifacts to stay compatible with older MLflow servers.
+        with tempfile.TemporaryDirectory(prefix="mlflow-model-") as tmp_dir:
+            local_model_dir = Path(tmp_dir) / "model"
+            mlflow.xgboost.save_model(xgb_model=model, path=local_model_dir.as_posix())
+            mlflow.log_artifacts(local_model_dir.as_posix(), artifact_path="model")
+
+        registered_model_name = "slice-type-6g"
+        if registered_model_name:
+            active_run = mlflow.active_run()
+            if active_run is not None:
+                model_uri = f"runs:/{active_run.info.run_id}/model"
+                try:
+                    mlflow.register_model(model_uri, registered_model_name)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] Model registration skipped for {registered_model_name}: {exc}")
+            else:
+                print("[WARN] No active MLflow run; skipping model registration.")
         finalize_model_lifecycle(
             model_name="slice_type_6g",
             model_family="xgboost_classifier",
             artifact_format="xgboost_ubj",
             metrics=metrics,
             local_artifact_path=LOCAL_MODEL_PATH,
+            task_type="multiclass_classification",
+            experiment_name=MLFLOW_EXPERIMENT_NAME,
+            preprocessor_path=LABEL_ENCODER_PATH,
+            input_schema={
+                "features": [str(name) for name in feature_names],
+                "shape": [None, int(X_test.shape[1])],
+                "dtype": "float32",
+            },
             model=model,
             export_kind="xgboost",
             export_basename="slice_type_6g",

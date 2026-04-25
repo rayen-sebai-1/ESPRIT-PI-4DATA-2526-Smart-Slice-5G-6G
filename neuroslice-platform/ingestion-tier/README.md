@@ -20,7 +20,7 @@ The ingestion tier receives simulator telemetry, converts heterogeneous payloads
   - `GET /metrics`
   - `POST /events`
 - publishes accepted payloads to Redis stream `stream:raw.ves`
-- simulates malformed request rejection for a small share of traffic
+- rejects a simulated malformed share of traffic at roughly `5%`
 
 ### `adapter-netconf`
 
@@ -31,7 +31,7 @@ The ingestion tier receives simulator telemetry, converts heterogeneous payloads
   - `POST /telemetry`
 - flattens hierarchical payloads into section records
 - publishes records to Redis stream `stream:raw.netconf`
-- deliberately injects a small schema mismatch by renaming `forwardingLatencyMs` to `delay_ms` in some payloads
+- deliberately injects a small schema mismatch by renaming `forwardingLatencyMs` to `delay_ms` in roughly `3%` of payloads
 
 ### `normalizer`
 

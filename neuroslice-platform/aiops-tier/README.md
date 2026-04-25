@@ -23,7 +23,7 @@ Runtime outputs:
 - `slice-classifier` -> stream/topic `events.slice.classification`, state prefix `aiops:slice_classification`, Influx measurement `aiops_slice_classification`
 - `sla-assurance` -> stream/topic `events.sla`, state prefix `aiops:sla`, Influx measurement `aiops_sla`
 
-All three workers can also mirror outputs to Kafka and InfluxDB when enabled, which is the default in `infrastructure/docker-compose.yml`.
+All three workers can also mirror outputs to Kafka and InfluxDB. That is enabled by default in `infrastructure/docker-compose.yml`.
 
 ## Model Loading Strategy
 
@@ -31,9 +31,9 @@ The current runtime follows this order:
 
 1. read `MODEL_REGISTRY_PATH` with `shared/model_registry_client.py`
 2. look for the latest promoted entry for the configured `MODEL_NAME`
-3. prefer `onnx_fp16` artifacts when present
-4. fall back to the service-specific local artifact path
-5. fall back again to heuristic behavior if no artifact can be loaded
+3. prefer `onnx_fp16` artifacts when present and loadable
+4. fall back to service-specific local artifact paths or local MLflow metadata
+5. fall back again to heuristic behavior if no usable artifact can be loaded
 
 Current shared discovery variables:
 
@@ -49,14 +49,12 @@ Service-specific fallbacks remain active:
 - `slice-classifier`: `SLICE_MODEL_NAME`, `SLICE_MODEL_PATH`, `MLFLOW_DB_PATH`, `MLRUNS_DIR`, `SLICE_LABEL_ENCODER_PATH`
 - `sla-assurance`: `SLA_MODEL_NAME`, `SLA_MODEL_PATH`, `MLFLOW_DB_PATH`, `MLRUNS_DIR`, `SLA_SCALER_PATH`
 
-## Current Defaults
+## Current Workspace State
 
-- `congestion-detector`: `MODEL_NAME=congestion_5g`
-- `slice-classifier`: `MODEL_NAME=slice_type_5g`, `SLICE_MODEL_NAME=slice-type-lgbm-5g`
-- `sla-assurance`: `MODEL_NAME=sla_5g`, `SLA_MODEL_NAME=sla-xgboost-5g`
-- `MODEL_FORMAT=onnx_fp16`
-
-The current committed `mlops-tier/batch-orchestrator/models/registry.json` is empty, so fallback loading remains the normal path in this workspace.
+- `mlops-tier/batch-orchestrator/models/registry.json` is tracked and currently contains generated metadata.
+- That registry currently has no promoted entries, so automatic promoted-model loading does not happen in this workspace.
+- The repo does not commit the generated runtime artifacts that the workers prefer, such as `data/processed/*`, `models/*.pt`, `models/*.pth`, `models/*.pkl`, `mlruns/`, and local MLflow state.
+- In a fresh clone, the workers therefore fall back to explicit local paths only if you generate those artifacts yourself, otherwise they continue in heuristic mode.
 
 ## Runtime Mounts
 

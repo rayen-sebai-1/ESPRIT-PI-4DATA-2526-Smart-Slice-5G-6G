@@ -49,7 +49,7 @@ The simulation tier generates synthetic multi-domain 5G/6G telemetry and exposes
 - `peak_hour`: elevated traffic plus RAN congestion
 - `urllc_misrouting`: URLLC path and QoS mismatch
 - `edge_degradation`: edge overload and latency amplification
-- `cascading_incident`: chained RAN, edge, and core incident
+- `cascading_incident`: chained RAN, edge, and core incidents
 
 ## Shared State and Telemetry Flow
 

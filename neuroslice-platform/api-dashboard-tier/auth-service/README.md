@@ -10,6 +10,8 @@
 - rotates refresh tokens through persisted `auth.user_sessions` records
 - supports logout, revocation, soft delete, and audit logging
 
+In the integrated platform this service stays internal. Browsers reach it through Kong at `/api/auth/*`.
+
 ## Routes
 
 Direct internal service routes:
@@ -35,14 +37,20 @@ Browser-facing routes through Kong:
 - `PATCH /api/auth/users/{userId}`
 - `DELETE /api/auth/users/{userId}`
 
-## Roles Seeded by Migrations
+## Roles and Management Rules
+
+Roles seeded by migrations:
 
 - `ADMIN`
 - `NETWORK_OPERATOR`
 - `NETWORK_MANAGER`
 - `DATA_MLOPS_ENGINEER`
 
-Only `ADMIN` can manage users.
+Current management rules:
+
+- only `ADMIN` can list, create, update, or delete users
+- assignable roles are the three non-admin roles only
+- admin accounts cannot be demoted, deactivated, or deleted through the current service logic
 
 ## Database Tables
 
@@ -83,6 +91,8 @@ The bootstrap is designed to be idempotent for repeated container starts.
 - `INITIAL_ADMIN_EMAIL`
 - `INITIAL_ADMIN_PASSWORD`
 - `INITIAL_ADMIN_ROLE`
+
+`INITIAL_ADMIN_ROLE` is supported by the seed script and defaults to `ADMIN` when omitted.
 
 ## Local Commands
 

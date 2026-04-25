@@ -54,3 +54,62 @@ def test_resolve_artifact_path_prefers_registry_relative_onnx_file(tmp_path):
     )
 
     assert resolved == artifact_path.resolve()
+
+
+def test_promoted_model_supports_new_production_schema(tmp_path):
+    models_dir = tmp_path / "models"
+    onnx_dir = models_dir / "onnx"
+    onnx_dir.mkdir(parents=True)
+    artifact_path = onnx_dir / "congestion_5g_fp16.onnx"
+    artifact_path.write_text("stub", encoding="utf-8")
+
+    registry_path = models_dir / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-04-25T00:00:00+00:00",
+                "models": [
+                    {
+                        "model_name": "congestion_5g",
+                        "version": 4,
+                        "stage": "production",
+                        "promoted": True,
+                        "format": "onnx_fp16",
+                        "onnx_fp16_uri": "s3://mlflow-artifacts/1/run/artifacts/onnx/congestion_5g_fp16.onnx",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    client = ModelRegistryClient(registry_path=registry_path)
+    entry = client.get_promoted_model("congestion_5g")
+    resolved = client.resolve_artifact_path(entry)
+
+    assert entry["version"] == 4
+    assert resolved == artifact_path.resolve()
+
+
+def test_resolve_artifact_path_prefers_fp16_then_onnx_then_local(tmp_path):
+    models_dir = tmp_path / "models"
+    onnx_dir = models_dir / "onnx"
+    onnx_dir.mkdir(parents=True)
+    raw_onnx = onnx_dir / "sla_5g.onnx"
+    raw_onnx.write_text("stub", encoding="utf-8")
+    local_artifact = models_dir / "sla_5g_model.ubj"
+    local_artifact.write_text("stub", encoding="utf-8")
+
+    registry_path = models_dir / "registry.json"
+    registry_path.write_text(json.dumps({"generated_at": None, "models": []}), encoding="utf-8")
+
+    client = ModelRegistryClient(registry_path=registry_path)
+    resolved = client.resolve_artifact_path(
+        {
+            "onnx_uri": "s3://mlflow-artifacts/1/run/artifacts/onnx/sla_5g.onnx",
+            "artifact_uri": "s3://mlflow-artifacts/1/run/artifacts/models/sla_5g_model.ubj",
+            "local_artifact_path": "sla_5g_model.ubj",
+        }
+    )
+
+    assert resolved == raw_onnx.resolve()

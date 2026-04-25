@@ -59,11 +59,7 @@ class SliceModelLoader:
         if promoted_entry:
             discovered_version = str(promoted_entry.get("version", ""))
 
-            if (
-                self.cfg.model_format == "onnx_fp16"
-                and promoted_entry.get("onnx_fp16_path")
-                and onnx_enabled
-            ):
+            if self.cfg.model_format == "onnx_fp16" and onnx_enabled:
                 onnx_path = registry_client.resolve_artifact_path(
                     promoted_entry,
                     preferred_format="onnx_fp16",

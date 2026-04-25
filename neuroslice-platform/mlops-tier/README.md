@@ -1,6 +1,6 @@
 # MLOps Tier
 
-The MLOps tier owns NeuroSlice offline preprocessing, training, validation, model lifecycle metadata, and the prediction API. The active project in this repository is `batch-orchestrator/`.
+The MLOps tier owns NeuroSlice offline preprocessing, training, validation, lifecycle metadata, and the prediction API. The active project in this repository is `batch-orchestrator/`.
 
 ## Supported Modes
 
@@ -44,22 +44,44 @@ Published URLs:
 
 ## Artifact Flow
 
+Production-like ownership is split deliberately:
+
+- platform `postgres`: auth-service and dashboard-backend only
+- `mlops-postgres`: MLflow backend metadata only
+- MinIO bucket `mlflow-artifacts`: model binaries, ONNX, ONNX FP16, preprocessors, scalers, encoders, reports, and MLflow run artifacts
+
 The current lifecycle is:
 
 1. preprocess and validate data
-2. train models
-3. export ONNX FP16 artifacts when available
-4. persist metadata to MLflow
-5. write lifecycle records to `batch-orchestrator/models/registry.json`
-6. let runtime AIOps services discover local promoted artifacts through read-only mounts
+2. train models in the shared MLflow experiment `neuroslice-aiops`
+3. log parameters, metrics, model artifacts, and preprocessing artifacts to MLflow/MinIO
+4. export ONNX and ONNX FP16 artifacts when conversion succeeds
+5. record ONNX export failures in MLflow without failing the whole training run
+6. append lifecycle records to `batch-orchestrator/models/registry.json`
+7. promote only quality-gate-passing models and mark the best promoted version as `stage=production`
+8. let runtime AIOps services discover promoted artifacts through the registry, preferring ONNX FP16, then ONNX, then local model fallbacks, then heuristics
 
-Important note for this workspace: `models/registry.json` currently contains no promoted entries, so runtime AIOps services still rely on their local fallback artifact paths.
+## Verification
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops up --build
+docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
+```
+
+Then verify:
+
+- MLflow UI at `http://localhost:5000` shows runs under `neuroslice-aiops`
+- MinIO console at `http://localhost:9001` contains bucket `mlflow-artifacts`
+- MLOps API health responds at `http://localhost:8010/health`
+- `batch-orchestrator/models/registry.json` contains a `promoted=true`, `stage=production` entry
+- AIOps services can read the production entry and prefer `onnx_fp16_uri`/`onnx_fp16_path` when present
 
 ## Development Notes
 
-- Host-side dependencies are pinned broadly enough for modern Python 3.13 environments.
-- The Docker image for `batch-orchestrator` still runs on `python:3.10-slim`.
-- Do not run the standalone MLOps compose file and the integrated `mlops` profile at the same time unless you intentionally remap ports.
+- The Docker image for `batch-orchestrator` runs on `python:3.10-slim`.
+- The standalone batch-orchestrator Compose file includes Kibana, while the integrated platform `mlops` profile does not.
+- Do not run the standalone MLOps Compose file and the integrated `mlops` profile at the same time unless you intentionally remap ports.
 
 ## Common Commands
 

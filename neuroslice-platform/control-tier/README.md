@@ -4,7 +4,7 @@ The control tier is intended to host closed-loop automation, remediation policy 
 
 ## Current Status
 
-This tier is scaffold-only in the current repository state.
+This tier is still scaffold-only in the current repository state.
 
 - no service directories are committed under `control-tier/`
 - no Compose services are defined for it in `infrastructure/docker-compose.yml`
