@@ -97,22 +97,22 @@ validate-data-slice-type-6g:
 # Training
 # ------------------------------------------------------------------------------
 train-sla-5g:
-	$(PYTHON) $(MODEL_SRC_DIR)/train_sla_5g.py
+	$(PYTHON) -m src.models.train_sla_5g
 
 train-sla-6g:
-	$(PYTHON) $(MODEL_SRC_DIR)/train_sla_6g.py
+	$(PYTHON) -m src.models.train_sla_6g
 
 train-congestion-5g:
-	$(PYTHON) $(MODEL_SRC_DIR)/train_congestion_5g.py
+	$(PYTHON) -m src.models.train_congestion_5g
 
 train-congestion-6g:
-	$(PYTHON) $(MODEL_SRC_DIR)/train_congestion_6g.py
+	$(PYTHON) -m src.models.train_congestion_6g
 
 train-slice-type-5g:
-	$(PYTHON) $(MODEL_SRC_DIR)/train_slice_type_5g.py
+	$(PYTHON) -m src.models.train_slice_type_5g
 
 train-slice-type-6g:
-	$(PYTHON) $(MODEL_SRC_DIR)/train_slice_type_6g.py
+	$(PYTHON) -m src.models.train_slice_type_6g
 
 train-all: train-sla-5g train-sla-6g train-congestion-5g train-congestion-6g train-slice-type-5g train-slice-type-6g
 
