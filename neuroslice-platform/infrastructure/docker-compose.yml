@@ -578,6 +578,47 @@ services:
       redis:
         condition: service_healthy
 
+  root-cause:
+    build:
+      context: ../agentic-ai-tier/root-cause
+      dockerfile: Dockerfile
+    ports:
+      - "${RCA_AGENT_PORT:-7005}:7005"
+    environment:
+      PORT: "7005"
+      # Inside containers, localhost is the container itself. Default to host gateway for local Ollama.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      RCA_OLLAMA_MODEL: ${RCA_OLLAMA_MODEL:-qwen2.5:3b-instruct}
+      RCA_AGENT_MAX_RETRIES: ${RCA_AGENT_MAX_RETRIES:-3}
+      RCA_ENABLE_HEURISTIC_FALLBACK: ${RCA_ENABLE_HEURISTIC_FALLBACK:-true}
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: neuroslice
+      INFLUXDB_BUCKET: telemetry
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+
+  copilot-agent:
+    build:
+      context: ../agentic-ai-tier/copilot-agent
+      dockerfile: Dockerfile
+    ports:
+      - "${COPILOT_AGENT_PORT:-7006}:7006"
+    environment:
+      PORT: "7006"
+      # Inside containers, localhost is the container itself. Default to host gateway for local Ollama.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${COPILOT_OLLAMA_MODEL:-qwen2.5:3b-instruct}
+      OLLAMA_TIMEOUT_SECONDS: ${COPILOT_OLLAMA_TIMEOUT_SECONDS:-60}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
   api-bff-service:
     build:
       context: ..
