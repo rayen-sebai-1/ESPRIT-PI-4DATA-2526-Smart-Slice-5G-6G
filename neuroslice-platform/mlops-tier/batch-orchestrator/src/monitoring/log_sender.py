@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import datetime
+import http.client
 import json
 import os
-import urllib.request
+import urllib.parse
 from typing import Any, Dict
 
 from elasticsearch import Elasticsearch
@@ -44,14 +45,22 @@ def log_prediction(
 
 def _send_to_logstash(document: Dict[str, Any]) -> None:
     payload = json.dumps(document).encode("utf-8")
-    request = urllib.request.Request(
-        _logstash_http_url(),
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=5):  # noqa: S310
-        return
+    target_url = _validated_logstash_http_url()
+    parsed = urllib.parse.urlsplit(target_url)
+    request_path = parsed.path or "/"
+    if parsed.query:
+        request_path = f"{request_path}?{parsed.query}"
+
+    connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection = connection_class(parsed.netloc, timeout=5)
+    try:
+        connection.request("POST", request_path, body=payload, headers={"Content-Type": "application/json"})
+        response = connection.getresponse()
+        if response.status >= 400:
+            raise RuntimeError(f"Logstash HTTP send failed with status {response.status}")
+        response.read()
+    finally:
+        connection.close()
 
 
 def _send_to_elasticsearch(document: Dict[str, Any]) -> None:
@@ -65,6 +74,16 @@ def _monitoring_mode() -> str:
 
 def _logstash_http_url() -> str:
     return os.getenv("LOGSTASH_HTTP_URL", DEFAULT_LOGSTASH_HTTP_URL)
+
+
+def _validated_logstash_http_url() -> str:
+    value = _logstash_http_url()
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("LOGSTASH_HTTP_URL must use http or https")
+    if not parsed.netloc:
+        raise ValueError("LOGSTASH_HTTP_URL must include a host")
+    return value
 
 
 def _es_host() -> str:

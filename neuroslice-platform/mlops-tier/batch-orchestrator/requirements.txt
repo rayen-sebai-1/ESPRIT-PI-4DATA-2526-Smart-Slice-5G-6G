@@ -12,9 +12,10 @@ seaborn>=0.13.0
 shap>=0.45.0
 imbalanced-learn>=0.12.0
 
-# Deep learning – keep whatever torch is already installed in the venv;
-# pinning loosely so CPU or CUDA builds both work.
-torch>=2.3.0
+# Keep PyPI as primary index and add CUDA wheels as extra for torch packages.
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch
+torchvision
 
 # Experiment tracking & model registry
 mlflow>=2.13.0
