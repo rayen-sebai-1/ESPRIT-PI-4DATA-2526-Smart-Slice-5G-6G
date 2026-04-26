@@ -1,5 +1,7 @@
 ﻿# Dashboard Backend
 
+Last verified: 2026-04-26.
+
 `dashboard-backend` is the protected dashboard domain API. It validates authenticated sessions against the shared PostgreSQL database, stores dashboard-owned metadata, and delegates operational views to a pluggable provider layer.
 
 ## Responsibilities

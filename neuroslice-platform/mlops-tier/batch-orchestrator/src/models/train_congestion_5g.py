@@ -18,6 +18,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
 
 from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
+from src.mlops.lifecycle import run_model_lifecycle
 
 warnings.filterwarnings("ignore")
 
@@ -341,7 +342,7 @@ def train():
             else:
                 print("[WARN] No active MLflow run; skipping model registration.")
 
-        finalize_model_lifecycle(
+        lifecycle_entry = finalize_model_lifecycle(
             model_name="congestion_5g",
             model_family="pytorch_lstm",
             artifact_format="torchscript",
@@ -365,6 +366,22 @@ def train():
             dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
             onnx_fixed_sequence_length=30,
             onnx_opset_version=18,
+        )
+
+        if lifecycle_entry.get("onnx_export_status") != "success":
+            raise RuntimeError(
+                "Cannot run lifecycle for congestion_5g because ONNX export failed: "
+                f"{lifecycle_entry.get('onnx_export_reason') or 'unknown reason'}"
+            )
+
+        active_run = mlflow.active_run()
+        if active_run is None:
+            raise RuntimeError("No active MLflow run; cannot execute deployment lifecycle.")
+
+        run_model_lifecycle(
+            model_name="congestion_5g",
+            run_id=active_run.info.run_id,
+            onnx_path="models/congestion_5g.onnx",
         )
 
         print(f"[INFO] Final model saved to {MODEL_PATH.as_posix()}")

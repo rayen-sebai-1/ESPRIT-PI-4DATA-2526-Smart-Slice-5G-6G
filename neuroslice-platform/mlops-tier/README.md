@@ -1,5 +1,7 @@
 ﻿# MLOps Tier
 
+Last verified: 2026-04-26.
+
 The MLOps tier owns NeuroSlice offline preprocessing, training, MLflow tracking, model registry metadata, ONNX export, FP16 conversion, promotion, and the prediction API. The active project is `batch-orchestrator/`.
 
 ## Runtime Modes
@@ -33,6 +35,7 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - `mlflow-server`: tracking UI and registry API
 - `elasticsearch`: prediction/log analytics backend for MLOps logging
 - `logstash`: prediction log ingestion
+- `kibana`: Elasticsearch UI for prediction/log inspection
 - `mlops-api`: FastAPI prediction and health API
 
 Published URLs:
@@ -41,6 +44,10 @@ Published URLs:
 - MinIO API: `http://localhost:9000`
 - MinIO console: `http://localhost:9001`
 - MLOps API: `http://localhost:8010`
+- Elasticsearch: `http://localhost:9200`
+- Kibana: `http://localhost:5601`
+
+In the integrated profile, Logstash listens inside Docker Compose at `http://logstash:8081/predictions`; it is not published on the host.
 
 ## Model Lifecycle
 
@@ -116,7 +123,7 @@ Then verify:
 
 - The Docker image for `batch-orchestrator` runs on `python:3.10-slim`.
 - The host requirements file also supports local Python development.
-- The standalone batch-orchestrator Compose file includes Kibana, while the integrated platform `mlops` profile does not.
+- Both the standalone batch-orchestrator Compose file and the integrated platform `mlops` profile include Kibana.
 - Do not run standalone MLOps Compose and the integrated `mlops` profile together unless you intentionally remap ports.
 - Generated artifacts under `models/`, `data/processed/`, and `reports/model_training_summary.md` are runtime outputs.
 

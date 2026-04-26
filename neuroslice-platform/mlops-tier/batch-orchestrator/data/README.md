@@ -1,5 +1,7 @@
 ﻿# Data Folder
 
+Last verified: 2026-04-26.
+
 This directory contains committed raw datasets for the NeuroSlice MLOps project and the generated preprocessing outputs used by training, promotion, and runtime services.
 
 ## Layout

@@ -1,5 +1,7 @@
 ﻿# Smart Slice 5G/6G
 
+Last verified: 2026-04-26.
+
 This repository contains the current NeuroSlice workspace: an end-to-end local 5G/6G network-slicing platform with simulation, ingestion, online AIOps, a dashboard/API stack, observability, agentic assistance services, and an offline MLOps project.
 
 ## Repository Layout
@@ -69,8 +71,11 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - Grafana: `http://localhost:3000`
 - InfluxDB: `http://localhost:8086`
 - MLflow UI: `http://localhost:5000` with `mlops` profile
+- MinIO API: `http://localhost:9000` with `mlops` profile
 - MinIO console: `http://localhost:9001` with `mlops` profile
 - MLOps API: `http://localhost:8010` with `mlops` profile
+- Elasticsearch: `http://localhost:9200` with `mlops` profile
+- Kibana: `http://localhost:5601` with `mlops` profile
 
 Local development admin account:
 

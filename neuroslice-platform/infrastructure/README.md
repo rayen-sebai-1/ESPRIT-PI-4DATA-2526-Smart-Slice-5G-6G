@@ -1,5 +1,7 @@
 ﻿# Infrastructure Layer
 
+Last verified: 2026-04-26.
+
 The infrastructure layer is the canonical local entry point for NeuroSlice. It wires simulators, ingestion, runtime AIOps, dashboard services, agentic services, observability, and the optional integrated MLOps stack.
 
 ## Runtime Modes
@@ -31,6 +33,29 @@ Validate Compose configuration:
 cd neuroslice-platform/infrastructure
 docker compose config
 ```
+
+## PostgreSQL Initialization Notes
+
+Fresh local setup:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose up -d --build
+```
+
+If your local PostgreSQL volume was initialized with old or mismatched roles/users:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose down -v
+docker compose up -d --build
+```
+
+Important behavior:
+
+- PostgreSQL init scripts in `infrastructure/postgres-init` run only on first volume initialization.
+- If `postgres_data` already exists, updating init scripts or DB credentials does not retroactively recreate roles/databases.
+- For dashboard/auth DB recovery after credential mismatches, recreate volumes with `docker compose down -v`.
 
 ## Default Services
 
@@ -65,6 +90,7 @@ The `mlops` profile starts:
 - `mlflow-server`
 - `elasticsearch`
 - `logstash`
+- `kibana`
 - `mlops-api`
 
 The `mlops-worker` profile runs the offline training/promotion pipeline manually.
@@ -94,6 +120,10 @@ Optional `mlops` profile:
 - MinIO console: `http://localhost:9001`
 - MLOps API: `http://localhost:8010`
 - MLOps PostgreSQL: `localhost:5433`
+- Elasticsearch: `http://localhost:9200`
+- Kibana: `http://localhost:5601`
+
+The integrated Logstash HTTP input is internal to Docker Compose at `http://logstash:8081/predictions`.
 
 ## MLOps Data Ownership
 
@@ -143,7 +173,7 @@ Primary variables are wired through Compose and optional `.env` files:
 - simulation: `SITE_ID`, `TICK_INTERVAL_SEC`, `SIM_SPEED`
 - AIOps: `CONGESTION_THRESHOLD`, `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`, `SLA_RISK_THRESHOLD`, `MODEL_POLL_INTERVAL_SEC`
 - ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`, `RCA_AGENT_PORT`, `COPILOT_AGENT_PORT`
-- MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`
+- MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`, `KIBANA_PORT`
 - dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
 - agentic: `OLLAMA_BASE_URL`, `RCA_OLLAMA_MODEL`, `COPILOT_OLLAMA_MODEL`
 

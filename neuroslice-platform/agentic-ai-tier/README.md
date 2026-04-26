@@ -1,5 +1,4 @@
 # Agentic AI Tier
-
 The agentic AI tier provides LLM-driven operator assistance and manual RCA workflows on top of NeuroSlice telemetry and runtime AIOps context.
 
 ## Current Status
@@ -15,6 +14,7 @@ Integrated Compose services:
 
 - `copilot-agent` (default host port `7006`)
 - `root-cause` (default host port `7005`)
+
 
 ## Implemented Services
 
