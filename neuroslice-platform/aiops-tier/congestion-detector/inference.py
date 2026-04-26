@@ -27,6 +27,24 @@ class CongestionInferencer:
             lambda: deque(maxlen=self.sequence_length)
         )
 
+    def update_bundle(self, bundle: CongestionModelBundle) -> None:
+        old_sequence = self.sequence_length
+        self.bundle = bundle
+        self.sequence_length = max(2, bundle.sequence_length)
+
+        if self.sequence_length != old_sequence:
+            previous = self._buffers
+            self._buffers = defaultdict(lambda: deque(maxlen=self.sequence_length))
+            for key, values in previous.items():
+                self._buffers[key].extend(list(values)[-self.sequence_length :])
+
+        logger.info(
+            "Updated congestion model bundle: version=%s format=%s source=%s",
+            bundle.model_version,
+            bundle.model_format,
+            bundle.model_source,
+        )
+
     def infer(self, raw_event: Dict[str, Any]) -> CongestionOutputEvent | None:
         event = CanonicalTelemetryEvent.model_validate(raw_event)
 

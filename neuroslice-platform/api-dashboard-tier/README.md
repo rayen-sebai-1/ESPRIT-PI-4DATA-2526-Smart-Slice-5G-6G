@@ -1,4 +1,4 @@
-# API Dashboard Tier
+﻿# API Dashboard Tier
 
 The API dashboard tier is the user-facing access layer for NeuroSlice. It combines a public telemetry BFF with a protected dashboard stack built from auth, backend, gateway, and frontend services.
 
@@ -35,7 +35,7 @@ Served directly by `api-bff-service` on `http://localhost:8000`:
 - runtime AIOps query endpoints
 - server-sent events stream
 - fault and scenario proxy endpoints
-- feature-view export endpoints for MLOps-oriented datasets
+- feature-view export endpoints for the MLOps project
 
 ### Protected Dashboard Stack
 
@@ -49,24 +49,21 @@ Direct service ports remain internal in Compose:
 - `auth-service`: `8001`
 - `dashboard-backend`: `8002`
 
-## Frontend Surface
+## Current Role Behavior
 
-Current routes in `react-dashboard`:
+Backend API role checks today:
 
-- `/login`
-- `/dashboard/national`
-- `/dashboard/region`
-- `/dashboard/region/:regionId`
-- `/sessions`
-- `/predictions`
-- `/admin/users`
+- dashboard views: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`
+- prediction APIs and model catalog: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`
+- prediction rerun actions: `ADMIN`, `NETWORK_OPERATOR`
 
-Role access today:
+Current React router exposure:
 
-- `ADMIN`: full access
-- `NETWORK_OPERATOR`: dashboards, sessions, predictions
-- `NETWORK_MANAGER`: dashboards only
-- `DATA_MLOPS_ENGINEER`: predictions only
+- `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
+- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
+- `/admin/users`: `ADMIN`
+
+That means `NETWORK_MANAGER` is allowed by the backend prediction API but does not currently get a predictions route in the shipped frontend.
 
 ## Provider Modes
 
@@ -129,3 +126,13 @@ npm run dev
 ```
 
 Vite proxies `/api/*` to `http://localhost:8008` by default.
+
+## Verification
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8008/api/auth/login -i
+curl http://localhost:5173
+```
+
+The login endpoint should reject unauthenticated or malformed requests through Kong, while the React app should load and call `/api/auth/*` and `/api/dashboard/*` through the gateway.

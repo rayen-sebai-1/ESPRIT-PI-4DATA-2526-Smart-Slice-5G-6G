@@ -1,27 +1,34 @@
-# Control Tier
+﻿# Control Tier
 
-The control tier is intended to host closed-loop automation, remediation policy execution, and operator action workflows driven by NeuroSlice events.
+The control tier is reserved for closed-loop automation, remediation policy execution, and operator action workflows driven by NeuroSlice events.
 
 ## Current Status
 
-This tier is scaffold-only in the current repository state.
+This tier is scaffold-only in the current workspace.
 
-- no service directories are committed under `control-tier/`
-- no Compose services are defined for it in `infrastructure/docker-compose.yml`
-- no alert-management API, policy engine, or action worker is implemented yet
+- no service directories are implemented under `control-tier/`
+- no Compose services are defined for this tier
+- no alert-management API, policy engine, action worker, or remediation executor is implemented yet
 
-Today, this folder contains only this README.
+Today this folder contains only this README.
 
-## Expected Upstream Inputs
+## Expected Inputs
+
+Future control services are expected to consume:
 
 - normalized telemetry from `stream:norm.telemetry`
-- runtime AIOps streams `events.anomaly`, `events.sla`, and `events.slice.classification`
+- AIOps streams `events.anomaly`, `events.sla`, and `events.slice.classification`
+- latest AIOps Redis state under `aiops:*`
 - active fault state from `faults:active`
-- operator workflows from `api-dashboard-tier`
+- operator requests from the dashboard/API stack
+- root-cause and copilot recommendations from `agentic-ai-tier`
 
-## Likely Future Outputs
+## Expected Outputs
 
-- remediation or action streams
+Future outputs may include:
+
+- remediation or intent streams
 - alert lifecycle state
 - approval and override APIs
-- audit trails for automated decisions
+- policy execution audit trails
+- rollback and safety guard metadata

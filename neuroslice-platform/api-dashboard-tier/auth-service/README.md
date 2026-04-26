@@ -1,4 +1,4 @@
-# Auth Service
+﻿# Auth Service
 
 `auth-service` is the PostgreSQL-backed authentication and user-administration service for the protected NeuroSlice dashboard stack.
 
@@ -9,6 +9,8 @@
 - issues JWT access tokens
 - rotates refresh tokens through persisted `auth.user_sessions` records
 - supports logout, revocation, soft delete, and audit logging
+
+In the integrated platform this service stays internal. Browsers reach it through Kong at `/api/auth/*`.
 
 ## Routes
 
@@ -35,14 +37,20 @@ Browser-facing routes through Kong:
 - `PATCH /api/auth/users/{userId}`
 - `DELETE /api/auth/users/{userId}`
 
-## Roles Seeded by Migrations
+## Roles and Management Rules
+
+Roles seeded by migrations:
 
 - `ADMIN`
 - `NETWORK_OPERATOR`
 - `NETWORK_MANAGER`
 - `DATA_MLOPS_ENGINEER`
 
-Only `ADMIN` can manage users.
+Current management rules:
+
+- only `ADMIN` can list, create, update, or delete users
+- assignable roles are the three non-admin roles only
+- admin accounts cannot be demoted, deactivated, or deleted through the current service logic
 
 ## Database Tables
 
@@ -84,6 +92,8 @@ The bootstrap is designed to be idempotent for repeated container starts.
 - `INITIAL_ADMIN_PASSWORD`
 - `INITIAL_ADMIN_ROLE`
 
+`INITIAL_ADMIN_ROLE` is supported by the seed script and defaults to `ADMIN` when omitted.
+
 ## Local Commands
 
 Run migrations manually:
@@ -107,3 +117,14 @@ Import legacy users:
 ```bash
 python scripts/migrate_legacy_users.py --source /path/to/legacy-users.json
 ```
+
+## Verification
+
+With the Compose stack running:
+
+```bash
+curl http://localhost:8001/health
+curl -i http://localhost:8008/api/auth/me
+```
+
+`/health` should succeed on the internal service port. `/api/auth/me` should be reached through Kong and return an authentication error until a valid access token is supplied.

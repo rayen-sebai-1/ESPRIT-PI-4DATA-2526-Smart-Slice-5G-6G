@@ -1,4 +1,4 @@
-# React Dashboard
+﻿# React Dashboard
 
 `react-dashboard` is the protected React frontend for the NeuroSlice operations dashboard.
 
@@ -31,12 +31,14 @@
 - `/admin/users`
 - `*` -> not found page
 
-Role guards in the router:
+Current route guards in the router:
 
 - all authenticated users can access the dashboard shell
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
 - `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
 - `/admin/users`: `ADMIN`
+
+`NETWORK_MANAGER` currently has dashboard access only in the shipped UI, even though the backend prediction API accepts that role.
 
 ## Local Development
 
@@ -70,3 +72,12 @@ The Docker image:
 - starts `npm run dev -- --host 0.0.0.0 --port 5173`
 
 This is a development-oriented container, not a production static build image.
+
+## Verification
+
+```bash
+npm run build
+curl http://localhost:5173
+```
+
+When the platform is running, browser network calls should target `/api/auth/*` and `/api/dashboard/*`; Vite forwards them to Kong at `http://localhost:8008`.

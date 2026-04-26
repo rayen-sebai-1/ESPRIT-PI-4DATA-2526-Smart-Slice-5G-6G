@@ -5,9 +5,11 @@ with focal loss and Optuna-based hyperparameter tuning, and logs to MLflow.
 """
 
 import warnings
+import tempfile
 from pathlib import Path
 
 import mlflow
+import mlflow.pytorch
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,7 +17,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
 
 warnings.filterwarnings("ignore")
 
@@ -28,7 +30,9 @@ MODEL_DIR = ROOT_DIR / "models"
 MODEL_PATH = MODEL_DIR / "congestion_5g_lstm.pth"
 TRACED_MODEL_PATH = MODEL_DIR / "congestion_5g_lstm_traced.pt"
 TEMP_MODEL_PATH = ROOT_DIR / "best_temp_model.pt"
-MLFLOW_EXPERIMENT_NAME = "Congestion_Forecasting_5G"
+PREPROCESSOR_PATH = ROOT_DIR / "data" / "processed" / "preprocessor_congestion_5g.pkl"
+REGISTERED_MODEL_NAME = "congestion-lstm-5g"
+MLFLOW_EXPERIMENT_NAME = get_experiment_name()
 MLFLOW_TRACKING_URI = configure_mlflow_tracking()
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -164,13 +168,28 @@ def evaluate(model, dataloader, criterion):
 
 
 def find_optimal_threshold(probs, labels):
-    from sklearn.metrics import roc_curve
+    from sklearn.metrics import f1_score, precision_recall_curve
     if len(np.unique(labels)) <= 1:
         return 0.5
-    fpr, tpr, thresholds = roc_curve(labels, probs)
-    youden_j = tpr - fpr
-    optimal_idx = np.argmax(youden_j)
-    return thresholds[optimal_idx]
+
+    precision, recall, thresholds = precision_recall_curve(labels, probs)
+    if len(thresholds) == 0:
+        return 0.5
+
+    candidates = []
+    for idx, threshold in enumerate(thresholds):
+        p = float(precision[idx])
+        r = float(recall[idx])
+        if p >= 0.50 and r >= 0.70:
+            candidates.append((2 * p * r / max(p + r, 1e-12), float(threshold)))
+    if candidates:
+        return max(candidates, key=lambda item: item[0])[1]
+
+    threshold_scores = []
+    for threshold in thresholds:
+        preds = (np.asarray(probs) >= threshold).astype(int)
+        threshold_scores.append((f1_score(labels, preds, zero_division=0), float(threshold)))
+    return max(threshold_scores, key=lambda item: item[0])[1]
 
 
 def train():
@@ -191,7 +210,7 @@ def train():
     input_dim = X_train.shape[2]
 
     # Setup MLflow
-    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+    use_mlflow_experiment(MLFLOW_EXPERIMENT_NAME)
 
     # Fast setup instead of extensive search to make the script run quickly
     # Hardcoding best params based on notebook's fine tuning output
@@ -304,7 +323,23 @@ def train():
         except Exception as e:
             print(f"Failed to trace model: {e}")
 
-        mlflow.log_artifact(MODEL_PATH.as_posix(), artifact_path="offline_artifacts")
+        # Use save_model + log_artifacts to stay compatible with older MLflow servers.
+        model.to("cpu").eval()
+        with tempfile.TemporaryDirectory(prefix="mlflow-model-") as tmp_dir:
+            local_model_dir = Path(tmp_dir) / "model"
+            mlflow.pytorch.save_model(model, path=local_model_dir.as_posix())
+            mlflow.log_artifacts(local_model_dir.as_posix(), artifact_path="model")
+
+        if REGISTERED_MODEL_NAME:
+            active_run = mlflow.active_run()
+            if active_run is not None:
+                model_uri = f"runs:/{active_run.info.run_id}/model"
+                try:
+                    mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+            else:
+                print("[WARN] No active MLflow run; skipping model registration.")
 
         finalize_model_lifecycle(
             model_name="congestion_5g",
@@ -312,13 +347,24 @@ def train():
             artifact_format="torchscript",
             metrics=metrics,
             local_artifact_path=TRACED_MODEL_PATH if TRACED_MODEL_PATH.exists() else MODEL_PATH,
+            task_type="binary_classification",
+            experiment_name=MLFLOW_EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
+            preprocessor_path=PREPROCESSOR_PATH,
+            input_schema={
+                "features": [str(name) for name in data["feature_names"]],
+                "shape": [None, int(X_test.shape[1]), int(X_test.shape[2])],
+                "dtype": "float32",
+            },
             model=model.to("cpu").eval(),
             export_kind="pytorch",
             export_basename="congestion_5g",
             example_input=X_test[:1],
             input_names=["input"],
             output_names=["logits"],
-            dynamic_axes={"input": {0: "batch", 1: "sequence"}, "logits": {0: "batch"}},
+            dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+            onnx_fixed_sequence_length=30,
+            onnx_opset_version=18,
         )
 
         print(f"[INFO] Final model saved to {MODEL_PATH.as_posix()}")

@@ -6,12 +6,14 @@ import logging
 import os
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
 
 import joblib
 import xgboost as xgb
 
 from config import SlaAssuranceConfig
+from shared.model_hot_reload import current_promoted_snapshot
 from shared.model_registry_client import ModelRegistryClient
 from shared.onnx_runtime import ONNXClassifierAdapter, load_session, onnxruntime_available
 
@@ -28,6 +30,8 @@ class SlaModelBundle:
     model_format: str
     fallback_mode: bool
     onnxruntime_enabled: bool
+    metadata_mtime_ns: int = 0
+    model_mtime_ns: int = 0
 
 
 class SlaModelLoader:
@@ -39,7 +43,10 @@ class SlaModelLoader:
         model_source = "heuristic"
         discovered_version = ""
         model_format = "heuristic"
+        metadata_mtime_ns = 0
+        model_mtime_ns = 0
         onnx_enabled = onnxruntime_available()
+        promoted_snapshot = current_promoted_snapshot(self.cfg.model_registry_path, self.cfg.registry_model_name)
 
         scaler = None
         if os.path.exists(self.cfg.scaler_path):
@@ -51,19 +58,27 @@ class SlaModelLoader:
         else:
             logger.warning("SLA scaler not found at %s", self.cfg.scaler_path)
 
+        if self.cfg.model_format == "onnx_fp16" and onnx_enabled and promoted_snapshot is not None:
+            try:
+                model = ONNXClassifierAdapter(load_session(promoted_snapshot.model_path.as_posix()))
+                model_source = promoted_snapshot.model_path.as_posix()
+                model_format = "onnx_fp16"
+                discovered_version = promoted_snapshot.version
+                metadata_mtime_ns = promoted_snapshot.metadata_mtime_ns
+                model_mtime_ns = promoted_snapshot.model_mtime_ns
+                logger.info("Loaded promoted SLA ONNX model from %s", promoted_snapshot.model_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not load promoted current SLA ONNX model: %s", exc)
+
         registry_client = ModelRegistryClient(
             registry_path=self.cfg.model_registry_path,
             tracking_uri=self.cfg.mlflow_tracking_uri or None,
         )
         promoted_entry = registry_client.get_promoted_model(self.cfg.registry_model_name)
-        if promoted_entry:
+        if model is None and promoted_entry:
             discovered_version = str(promoted_entry.get("version", ""))
 
-            if (
-                self.cfg.model_format == "onnx_fp16"
-                and promoted_entry.get("onnx_fp16_path")
-                and onnx_enabled
-            ):
+            if self.cfg.model_format == "onnx_fp16" and onnx_enabled:
                 onnx_path = registry_client.resolve_artifact_path(
                     promoted_entry,
                     preferred_format="onnx_fp16",
@@ -102,7 +117,7 @@ class SlaModelLoader:
             if model is not None:
                 model_format = "legacy_mlflow_registry"
 
-        model_version = self.cfg.model_version.strip() or discovered_version or "heuristic"
+        model_version = discovered_version or self.cfg.model_version.strip() or self._derive_version(model_source)
         loaded = model is not None and scaler is not None
         fallback_mode = model_format != "onnx_fp16"
 
@@ -128,6 +143,8 @@ class SlaModelLoader:
             model_format=model_format,
             fallback_mode=fallback_mode,
             onnxruntime_enabled=onnx_enabled,
+            metadata_mtime_ns=metadata_mtime_ns,
+            model_mtime_ns=model_mtime_ns,
         )
 
     def _load_from_local_registry(
@@ -180,6 +197,14 @@ class SlaModelLoader:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed loading SLA model from registry metadata: %s", exc)
             return None, "heuristic", ""
+
+    @staticmethod
+    def _derive_version(path: str) -> str:
+        if not path or not os.path.exists(path):
+            return "heuristic"
+        stat = os.stat(path)
+        ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
+        return f"{os.path.basename(path)}@{ts}"
 
     @staticmethod
     def _load_xgb_classifier(path: str) -> Optional[xgb.XGBClassifier]:

@@ -14,10 +14,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
+COPY Makefile MLproject ./
 COPY src/ ./src/
 COPY data/ ./data/
 COPY models/ ./models/
-COPY mlruns/ ./mlruns/
+COPY reports/ ./reports/
+COPY tests/ ./tests/
 
 ENV API_PORT=8010
 

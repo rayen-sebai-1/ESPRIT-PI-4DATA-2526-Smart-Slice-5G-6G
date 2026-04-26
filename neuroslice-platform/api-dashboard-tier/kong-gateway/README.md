@@ -1,4 +1,4 @@
-# Kong Gateway
+﻿# Kong Gateway
 
 `kong-gateway` is the browser-facing API gateway for the protected NeuroSlice dashboard stack.
 
@@ -8,6 +8,8 @@
 - routes auth requests to `auth-service`
 - routes dashboard requests to `dashboard-backend`
 - keeps the public telemetry BFF separate from the protected dashboard flow
+
+Kong is currently doing routing, CORS, and rate limiting only. Authentication and role checks are still enforced by `auth-service` and `dashboard-backend`.
 
 ## Configuration Sources
 
@@ -19,7 +21,7 @@
 `kong.yml` currently maps:
 
 - `POST /api/auth/login` -> `auth-service:8001/auth/login`
-- `/api/auth/*` -> `auth-service:8001/auth/*`
+- other `/api/auth/*` routes -> `auth-service:8001/auth/*`
 - `/api/auth/users*` -> `auth-service:8001/users*`
 - `/api/dashboard/sessions*` -> `dashboard-backend:8002/sessions*`
 - `/api/dashboard/predictions*` -> `dashboard-backend:8002/predictions*`
@@ -42,9 +44,13 @@ Route-level rate limits:
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose exec kong-gateway kong health
+curl -i http://localhost:8008/api/auth/me
 ```
+
+`kong health` validates the gateway process. The auth probe validates that gateway routing is active and should return an authentication error unless a valid access token is provided.
 
 ## Current Scope
 
-- There is no secondary gateway folder in this repository.
-- Health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong.
+- there is no second gateway configuration in this repository
+- health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong
+- JWT validation is not implemented in Kong; protected services validate tokens themselves

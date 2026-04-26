@@ -1,0 +1,15 @@
+{
+  "model_name": "sla_5g",
+  "version": 4,
+  "run_id": "9be6a1b728ec4cb7ae7e0d7fbd46bad5",
+  "metrics": {
+    "val_accuracy": 0.9425360139306633,
+    "val_precision": 0.8028245518739815,
+    "val_recall": 1.0,
+    "val_f1": 0.8906297077432962,
+    "val_roc_auc": 0.9900774492096104
+  },
+  "created_at": "2026-04-25T23:45:14+00:00",
+  "artifact_path": "promoted/sla_5g/current/model_fp16.onnx",
+  "stage": "production"
+}

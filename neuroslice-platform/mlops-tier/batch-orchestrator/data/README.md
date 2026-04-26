@@ -1,13 +1,13 @@
-# Data Folder
+﻿# Data Folder
 
-This directory contains both the source datasets and the generated preprocessing artifacts used by the NeuroSlice MLOps project.
+This directory contains committed raw datasets for the NeuroSlice MLOps project and the generated preprocessing outputs used by training, promotion, and runtime services.
 
 ## Layout
 
 - `data/raw/`: committed source CSV files
-- `data/processed/`: generated processed datasets, scalers, encoders, and preprocessing artifacts
+- `data/processed/`: generated preprocessing outputs created by Make targets and preprocessing scripts
 
-## Current Raw Datasets
+## Raw Datasets
 
 Files currently present in `data/raw/`:
 
@@ -18,35 +18,29 @@ Files currently present in `data/raw/`:
 - `train_dataset.csv`
 - `train_dataset_enriched_timeseries.csv`
 
-## Current Processed Artifacts
+## Generated `data/processed/` Artifacts
 
-Files currently present in `data/processed/` include:
+Depending on which preprocessing targets run, this folder can contain:
 
-- `6g_processed.csv`
-- `congestion_5g_processed.npz`
-- `sla_5g_processed.npz`
-- `sla_6g_processed.npz`
-- `slice_type_5g_processed.npz`
-- `slice_type_6g_processed.npz`
+- processed `.csv` and `.npz` datasets
+- congestion preprocessors
+- SLA scalers
+- slice label encoders
+- task-specific artifacts used by the prediction API and AIOps workers
+
+Common runtime files:
+
 - `preprocessor_congestion_5g.pkl`
 - `scaler_sla_5g.pkl`
-- `scaler_sla_6g.pkl`
-- `encoders_sla_6g.pkl`
 - `label_encoder_slice_type_5g.pkl`
-- `label_encoder_slice_type_6g.pkl`
 
-These generated artifacts are important in the current repository state because:
-
-- the MLOps API loads several of them directly
-- runtime AIOps services mount this directory through the integrated Compose stack
-- the repository currently keeps these local artifacts alongside the codebase
+These files are generated locally and should be treated as runtime artifacts.
 
 ## Regenerating Processed Data
 
 From `mlops-tier/batch-orchestrator/`:
 
 ```bash
-make data
 make data-sla-5g
 make data-sla-6g
 make data-congestion-5g
@@ -54,12 +48,18 @@ make data-slice-type-5g
 make data-slice-type-6g
 ```
 
-Run the full data and training pipeline:
+Run the default 5G pipeline:
 
 ```bash
 make pipeline
 ```
 
-## Practical Note
+Run the wider 5G/6G path:
 
-Earlier documentation treated `data/processed/` as purely disposable output. In the current workspace, those artifacts are part of the local runtime contract and are intentionally present so the platform can run without first rebuilding every preprocessing step.
+```bash
+make pipeline-all
+```
+
+## Runtime Note
+
+AIOps services mount `batch-orchestrator/data` at `/mlops/data:ro`. Model inference can use generated preprocessors, scalers, and label encoders when they exist. If they are missing, services keep running and use service-specific fallback behavior.
