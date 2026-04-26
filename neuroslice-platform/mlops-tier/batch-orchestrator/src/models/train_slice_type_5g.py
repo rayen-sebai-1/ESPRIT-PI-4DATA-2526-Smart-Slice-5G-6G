@@ -1,6 +1,6 @@
 """LightGBM multiclass model for Slice-Type prediction on the 5G dataset.
 
-MLflow experiment : slice-type-5g
+MLflow experiment : neuroslice-aiops
 Registry name    : slice-type-lgbm-5g
 Target classes   : loaded dynamically from the LabelEncoder (dataset uses integer types 1/2/3)
 Primary metrics  : val_accuracy, val_f1 (weighted)
@@ -8,6 +8,7 @@ Quality gate     : val_accuracy >= 0.80
 """
 
 import argparse
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -26,14 +27,14 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
 
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-EXPERIMENT_NAME = "slice-type-5g"
+EXPERIMENT_NAME = get_experiment_name()
 ROOT_DIR = Path(__file__).resolve().parents[2]
 PROCESSED_NPZ = ROOT_DIR / "data" / "processed" / "slice_type_5g_processed.npz"
 LABEL_ENCODER_PATH = ROOT_DIR / "data" / "processed" / "label_encoder_slice_type_5g.pkl"
@@ -139,7 +140,7 @@ def train(
     # -------------------------------------------------------------------
     # 3. MLflow run
     # -------------------------------------------------------------------
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    use_mlflow_experiment(EXPERIMENT_NAME)
     with mlflow.start_run():
         # Log hyperparameters
         mlflow.log_params(
@@ -252,11 +253,22 @@ def train(
         # ---------------------------------------------------------------
         LOCAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, LOCAL_MODEL_PATH)
-        mlflow.lightgbm.log_model(
-            model,
-            artifact_path="model",
-            registered_model_name=REGISTERED_MODEL_NAME,
-        )
+        # Use save_model + log_artifacts to stay compatible with older MLflow servers.
+        with tempfile.TemporaryDirectory(prefix="mlflow-model-") as tmp_dir:
+            local_model_dir = Path(tmp_dir) / "model"
+            mlflow.lightgbm.save_model(lgb_model=model, path=local_model_dir.as_posix())
+            mlflow.log_artifacts(local_model_dir.as_posix(), artifact_path="model")
+
+        if REGISTERED_MODEL_NAME:
+            active_run = mlflow.active_run()
+            if active_run is not None:
+                model_uri = f"runs:/{active_run.info.run_id}/model"
+                try:
+                    mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+            else:
+                print("[WARN] No active MLflow run; skipping model registration.")
 
         finalize_model_lifecycle(
             model_name="slice_type_5g",
@@ -264,6 +276,16 @@ def train(
             artifact_format="lightgbm_joblib",
             metrics=metrics,
             local_artifact_path=LOCAL_MODEL_PATH,
+            task_type="multiclass_classification",
+            experiment_name=EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
+            preprocessor_path=LABEL_ENCODER_PATH,
+            input_schema={
+                "features": [str(name) for name in feature_names],
+                "classes": [str(name) for name in class_names],
+                "shape": [None, int(X_test.shape[1])],
+                "dtype": "float32",
+            },
             model=model,
             export_kind="lightgbm",
             export_basename="slice_type_5g",

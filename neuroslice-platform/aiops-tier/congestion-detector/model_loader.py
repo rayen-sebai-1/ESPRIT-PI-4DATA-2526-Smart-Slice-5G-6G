@@ -5,14 +5,13 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 import joblib
 
 from config import CongestionConfig
-from shared.model_registry_client import ModelRegistryClient
-from shared.onnx_runtime import load_session, onnxruntime_available
+from shared.model_hot_reload import current_promoted_snapshot, promoted_current_paths
+from shared.onnx_runtime import onnxruntime_available
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +27,8 @@ class CongestionModelBundle:
     model_format: str
     fallback_mode: bool
     onnxruntime_enabled: bool
+    metadata_mtime_ns: int = 0
+    model_mtime_ns: int = 0
 
 
 class CongestionModelLoader:
@@ -41,49 +42,34 @@ class CongestionModelLoader:
         model_source = "heuristic"
         model_format = "heuristic"
         discovered_version = ""
+        metadata_mtime_ns = 0
+        model_mtime_ns = 0
         onnx_enabled = onnxruntime_available()
+        promoted_snapshot = current_promoted_snapshot(self.cfg.model_registry_path, self.cfg.registry_model_name)
+        promoted_model_path, _ = promoted_current_paths(self.cfg.model_registry_path, self.cfg.registry_model_name)
 
         # Make mlops source importable so joblib can resolve class symbols.
         if os.path.isdir("/mlops") and "/mlops" not in sys.path:
             sys.path.insert(0, "/mlops")
 
-        registry_client = ModelRegistryClient(
-            registry_path=self.cfg.model_registry_path,
-            tracking_uri=self.cfg.mlflow_tracking_uri or None,
-        )
-        promoted_entry = registry_client.get_promoted_model(self.cfg.registry_model_name)
-        if promoted_entry:
-            discovered_version = str(promoted_entry.get("version", ""))
-            if (
-                self.cfg.model_format == "onnx_fp16"
-                and promoted_entry.get("onnx_fp16_path")
-                and onnx_enabled
-            ):
-                onnx_path = registry_client.resolve_artifact_path(
-                    promoted_entry,
-                    preferred_format="onnx_fp16",
-                )
-                if onnx_path is not None:
-                    try:
-                        model = load_session(onnx_path.as_posix())
-                        model_source = onnx_path.as_posix()
-                        model_format = "onnx_fp16"
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Could not load promoted congestion ONNX model: %s", exc)
-
-        try:
-            import torch
-
-            if model is None and self.cfg.model_path and os.path.exists(self.cfg.model_path):
-                model = torch.jit.load(self.cfg.model_path)
-                model.eval()
-                model_source = self.cfg.model_path
-                model_format = "legacy_explicit_path"
-                logger.info("Loaded congestion model from %s", self.cfg.model_path)
-            elif model is None:
-                logger.warning("Congestion model file not found at %s", self.cfg.model_path)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not load congestion model: %s", exc)
+        if self.cfg.model_format == "onnx_fp16" and onnx_enabled and promoted_snapshot is not None:
+            try:
+                model = self._load_onnx_session(promoted_snapshot.model_path.as_posix())
+                model_source = promoted_snapshot.model_path.as_posix()
+                model_format = "onnx_fp16"
+                discovered_version = promoted_snapshot.version
+                metadata_mtime_ns = promoted_snapshot.metadata_mtime_ns
+                model_mtime_ns = promoted_snapshot.model_mtime_ns
+                logger.info("Loaded promoted congestion ONNX model from %s", promoted_snapshot.model_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not load promoted current congestion ONNX model: %s", exc)
+        elif not onnx_enabled:
+            logger.warning("ONNX Runtime is unavailable; congestion service will use heuristic fallback")
+        elif promoted_snapshot is None:
+            logger.warning(
+                "Promoted congestion ONNX model not found at %s",
+                promoted_model_path,
+            )
 
         try:
             if os.path.exists(self.cfg.preprocessor_path):
@@ -96,12 +82,13 @@ class CongestionModelLoader:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not load congestion preprocessor: %s", exc)
 
-        model_version = self.cfg.model_version.strip() or discovered_version or self._derive_version(model_source)
+        model_version = discovered_version or self.cfg.model_version.strip() or "heuristic"
 
         loaded = model is not None
         fallback_mode = model_format != "onnx_fp16"
         logger.info(
-            "model_loaded=%s model_format=%s model_version=%s fallback_mode=%s onnxruntime_enabled=%s model_source=%s sequence_length=%d",
+            "model_loaded=%s model_format=%s model_version=%s fallback_mode=%s "
+            "onnxruntime_enabled=%s model_source=%s sequence_length=%d",
             loaded,
             model_format,
             model_version,
@@ -123,12 +110,13 @@ class CongestionModelLoader:
             model_format=model_format,
             fallback_mode=fallback_mode,
             onnxruntime_enabled=onnx_enabled,
+            metadata_mtime_ns=metadata_mtime_ns,
+            model_mtime_ns=model_mtime_ns,
         )
 
     @staticmethod
-    def _derive_version(path: str) -> str:
-        if not path or not os.path.exists(path):
-            return "heuristic"
-        stat = os.stat(path)
-        ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
-        return f"{os.path.basename(path)}@{ts}"
+    def _load_onnx_session(model_path: str) -> Any:
+        import onnxruntime as ort
+
+        return ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+

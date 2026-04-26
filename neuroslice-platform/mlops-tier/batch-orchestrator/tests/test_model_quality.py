@@ -1,31 +1,31 @@
-"""Quality-gate tests: assert MLflow metrics meet minimum thresholds."""
+"""Quality-gate tests for the shared neuroslice-aiops MLflow experiment."""
 
 import pytest
 
-# Quality-gate thresholds (adjust as models are trained)
+EXPERIMENT_NAME = "neuroslice-aiops"
+
 THRESHOLDS = {
-    "congestion-forecast-6g": {"val_mae": 5.0},  # LSTM – primary gate
-    "slice-selection-5g": {"val_accuracy": 0.80},
-    "slice-selection-6g": {"val_accuracy": 0.80},
-    "slice-type-5g": {"val_accuracy": 0.80},
-    "slice-type-6g": {"val_accuracy": 0.80},
-    "sla-adherence-5g": {"val_roc_auc": 0.75},
-    "sla-adherence-6g": {"val_roc_auc": 0.75},
+    "congestion_6g": {"metric": "val_mae", "threshold": 5.0, "mode": "lt"},
+    "slice_type_5g": {"metric": "val_accuracy", "threshold": 0.80, "mode": "gte"},
+    "slice_type_6g": {"metric": "val_accuracy", "threshold": 0.80, "mode": "gte"},
+    "sla_5g": {"metric": "val_roc_auc", "threshold": 0.75, "mode": "gte"},
+    "sla_6g": {"metric": "val_roc_auc", "threshold": 0.75, "mode": "gte"},
 }
 
 
-def _get_latest_run(experiment_name: str):
-    """Return the latest MLflow run for a given experiment name, or None."""
+def _get_latest_run(model_name: str):
+    """Return the latest MLflow run for a registry model name, or None."""
     try:
         from mlflow.tracking import MlflowClient
 
         client = MlflowClient()
-        experiments = client.search_experiments(filter_string=f"name = '{experiment_name}'")
+        experiments = client.search_experiments(filter_string=f"name = '{EXPERIMENT_NAME}'")
         if not experiments:
             return None
         exp_id = experiments[0].experiment_id
         runs = client.search_runs(
             experiment_ids=[exp_id],
+            filter_string=f"tags.neuroslice.model_name = '{model_name}'",
             order_by=["start_time DESC"],
             max_results=1,
         )
@@ -34,86 +34,18 @@ def _get_latest_run(experiment_name: str):
         return None
 
 
-class TestModelQualityGates:
-    """Assert that the latest run metrics pass the minimum bar."""
+@pytest.mark.parametrize("model_name", sorted(THRESHOLDS))
+def test_latest_model_run_passes_quality_gate(model_name):
+    run = _get_latest_run(model_name)
+    if run is None:
+        pytest.skip(f"No MLflow run found for model '{model_name}' in experiment '{EXPERIMENT_NAME}'.")
 
-    def test_congestion_6g_lstm_val_mae(self):
-        """val_mae for the congestion LSTM must be < 5.0."""
-        exp = "congestion-forecast-6g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_mae = run.data.metrics.get("val_mae") or run.data.metrics.get("final_val_mae")
-        assert val_mae is not None, "val_mae metric not logged."
-        threshold = THRESHOLDS[exp]["val_mae"]
-        assert val_mae < threshold, f"Quality gate failed: val_mae={val_mae:.4f} >= threshold={threshold}"
+    rule = THRESHOLDS[model_name]
+    metric_name = rule["metric"]
+    value = run.data.metrics.get(metric_name)
+    assert value is not None, f"{metric_name} metric not logged for {model_name}."
 
-    # ------------------------------------------------------------------
-    # Stub gates for models not yet trained – they will be skipped until
-    # corresponding MLflow experiments exist.
-    # ------------------------------------------------------------------
-    def test_slice_5g_accuracy(self):
-        exp = "slice-selection-5g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_acc = run.data.metrics.get("val_accuracy")
-        assert val_acc is not None
-        assert val_acc >= THRESHOLDS[exp]["val_accuracy"]
-
-    def test_slice_6g_accuracy(self):
-        exp = "slice-selection-6g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_acc = run.data.metrics.get("val_accuracy")
-        assert val_acc is not None
-        assert val_acc >= THRESHOLDS[exp]["val_accuracy"]
-
-    def test_sla_roc_auc(self):
-        exp = "sla-adherence-5g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_auc = run.data.metrics.get("val_roc_auc")
-        assert val_auc is not None
-        assert val_auc >= THRESHOLDS[exp]["val_roc_auc"]
-
-    def test_slice_type_5g_accuracy(self):
-        """val_accuracy for the Slice-Type-5G LightGBM must be >= 0.80."""
-        exp = "slice-type-5g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_acc = run.data.metrics.get("val_accuracy")
-        assert val_acc is not None, "val_accuracy metric not logged."
-        threshold = THRESHOLDS[exp]["val_accuracy"]
-        assert val_acc >= threshold, (
-            f"Quality gate failed: val_accuracy={val_acc:.4f} < threshold={threshold}"
-        )
-
-    def test_slice_type_6g_accuracy(self):
-        """val_accuracy for the Slice-Type-6G XGBoost must be >= 0.80."""
-        exp = "slice-type-6g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_acc = run.data.metrics.get("val_accuracy")
-        assert val_acc is not None, "val_accuracy metric not logged."
-        threshold = THRESHOLDS[exp]["val_accuracy"]
-        assert val_acc >= threshold, (
-            f"Quality gate failed: val_accuracy={val_acc:.4f} < threshold={threshold}"
-        )
-
-    def test_sla_6g_roc_auc(self):
-        """val_roc_auc for the SLA-6G XGBoost must be >= 0.75."""
-        exp = "sla-adherence-6g"
-        run = _get_latest_run(exp)
-        if run is None:
-            pytest.skip(f"No MLflow run found for experiment '{exp}'.")
-        val_auc = run.data.metrics.get("val_roc_auc")
-        assert val_auc is not None, "val_roc_auc metric not logged."
-        threshold = THRESHOLDS[exp]["val_roc_auc"]
-        assert val_auc >= threshold, (
-            f"Quality gate failed: val_roc_auc={val_auc:.4f} < threshold={threshold}"
-        )
+    if rule["mode"] == "lt":
+        assert value < rule["threshold"]
+    else:
+        assert value >= rule["threshold"]

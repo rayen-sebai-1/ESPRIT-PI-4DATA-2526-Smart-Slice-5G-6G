@@ -1,12 +1,13 @@
 """LSTM-based congestion time-series forecasting model for the 6G dataset.
 
-MLflow experiment : congestion-forecast-6g
+MLflow experiment : neuroslice-aiops
 Registry name    : congestion-lstm-6g
 Primary metrics  : val_mae, val_rmse
 Quality gate     : val_mae < 5.0
 """
 
 import warnings
+import tempfile
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -19,14 +20,14 @@ import torch.nn as nn
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from torch.utils.data import DataLoader, Dataset
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
 
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-EXPERIMENT_NAME = "congestion-forecast-6g"
+EXPERIMENT_NAME = get_experiment_name()
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT_DIR / "data" / "processed" / "6g_processed.csv"
 TRACED_MODEL_PATH = ROOT_DIR / "models" / "congestion_6g_lstm_traced.pt"
@@ -157,7 +158,7 @@ def train(
     # -----------------------------------------------------------------------
     # 3. MLflow run
     # -----------------------------------------------------------------------
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    use_mlflow_experiment(EXPERIMENT_NAME)
     with mlflow.start_run():
         # Log hyperparameters
         mlflow.log_params(
@@ -234,11 +235,25 @@ def train(
         # -------------------------------------------------------------------
         # 6. Register model
         # -------------------------------------------------------------------
-        mlflow.pytorch.log_model(
-            model,
-            artifact_path="model",
-            registered_model_name=REGISTERED_MODEL_NAME,
-        )
+        # Use save_model + log_artifacts to stay compatible with older MLflow servers.
+        model.to("cpu").eval()
+        with tempfile.TemporaryDirectory(prefix="mlflow-model-") as tmp_dir:
+            local_model_dir = Path(tmp_dir) / "model"
+            mlflow.pytorch.save_model(model, path=local_model_dir.as_posix())
+            mlflow.log_artifacts(local_model_dir.as_posix(), artifact_path="model")
+
+        if REGISTERED_MODEL_NAME:
+            active_run = mlflow.active_run()
+            if active_run is not None:
+                model_uri = f"runs:/{active_run.info.run_id}/model"
+                try:
+                    mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+            else:
+                print("[WARN] No active MLflow run; skipping model registration.")
+
+        model.to(DEVICE)
 
         final_mae, final_rmse, final_mape = _evaluate(model, val_loader)
         mlflow.log_metrics(
@@ -271,6 +286,14 @@ def train(
                 "val_mape": final_mape,
             },
             local_artifact_path=traced_model_path,
+            task_type="regression_forecast",
+            experiment_name=EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
+            input_schema={
+                "features": ["cpu_utilization", "bandwidth_mbps"],
+                "shape": [None, int(X_val.shape[1]), int(X_val.shape[2])],
+                "dtype": "float32",
+            },
             model=model.to("cpu").eval(),
             export_kind="pytorch",
             export_basename="congestion_6g",

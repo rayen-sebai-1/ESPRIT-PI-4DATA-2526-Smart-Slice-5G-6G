@@ -1,6 +1,6 @@
-# Simulation Tier
+﻿# Simulation Tier
 
-The simulation tier generates synthetic multi-domain 5G/6G telemetry and exposes the fault engine used to drive scenarios and manual fault injection.
+The simulation tier generates synthetic multi-domain 5G/6G telemetry and provides the fault engine used for scenarios and manual fault injection.
 
 ## Components
 
@@ -8,7 +8,7 @@ The simulation tier generates synthetic multi-domain 5G/6G telemetry and exposes
 - `simulator-edge/`: Edge-domain worker for Edge UPF, MEC app, and compute node entities
 - `simulator-ran/`: RAN-domain worker for gNB, cell, and slice telemetry
 - `fault-engine/`: FastAPI control plane for scenarios and injected faults
-- `scenarios/`: committed scenario JSON files mounted into services at `/scenarios`
+- `scenarios/`: committed scenario JSON files mounted into containers at `/scenarios`
 
 ## Runtime Behavior
 
@@ -16,7 +16,8 @@ The simulation tier generates synthetic multi-domain 5G/6G telemetry and exposes
 
 - emits VES-like telemetry to `adapter-ves`
 - models `amf-01`, `smf-01`, and `core-upf-01`
-- consumes `faults:active` and cross-domain signals such as `ran:congestion_score`
+- consumes `faults:active`
+- reacts to cross-domain state such as `ran:congestion_score`
 
 ### `simulator-edge`
 
@@ -27,7 +28,7 @@ The simulation tier generates synthetic multi-domain 5G/6G telemetry and exposes
 ### `simulator-ran`
 
 - emits VES-like telemetry to `adapter-ves`
-- models `2` gNBs, `4` cells, and `12` slice instances across `eMBB`, `URLLC`, and `mMTC`
+- models two gNBs, four cells, and slice instances across `eMBB`, `URLLC`, and `mMTC`
 - publishes `ran:congestion_score` and `core:active_ues`
 
 ### `fault-engine`
@@ -45,13 +46,13 @@ The simulation tier generates synthetic multi-domain 5G/6G telemetry and exposes
 
 ## Built-In Scenarios
 
-- `normal_day`: baseline traffic with no injected faults
+- `normal_day`: baseline traffic
 - `peak_hour`: elevated traffic plus RAN congestion
 - `urllc_misrouting`: URLLC path and QoS mismatch
 - `edge_degradation`: edge overload and latency amplification
-- `cascading_incident`: chained RAN, edge, and core incident
+- `cascading_incident`: chained RAN, edge, and core incidents
 
-## Shared State and Telemetry Flow
+## Shared State
 
 Important Redis keys and streams:
 
@@ -72,7 +73,7 @@ simulator-edge -> adapter-netconf
 
 ## Key Configuration
 
-The simulators and fault engine rely on shared config from `ingestion-tier/shared/config.py`, including:
+The simulators and fault engine rely on shared config from `ingestion-tier/shared/config.py`:
 
 - `REDIS_HOST`
 - `REDIS_PORT`
@@ -88,17 +89,11 @@ The simulators and fault engine rely on shared config from `ingestion-tier/share
 
 ```bash
 cd neuroslice-platform/infrastructure
-docker compose up --build fault-engine simulator-core simulator-edge simulator-ran
+docker compose up --build redis adapter-ves adapter-netconf fault-engine simulator-core simulator-edge simulator-ran
 ```
-
-Recommended dependencies:
-
-- `redis`
-- `adapter-ves`
-- `adapter-netconf`
 
 ## Current Limits
 
-- Only `fault-engine` exposes an HTTP API directly.
+- Only `fault-engine` exposes a public HTTP API.
 - Simulator services are background workers and do not publish host ports.
-- Fault effects are implemented for the currently modeled KPIs only; placeholder fault types in shared enums may not affect every simulator yet.
+- Fault effects are implemented for the currently modeled KPIs only.

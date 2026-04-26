@@ -1,6 +1,6 @@
 """XGBoost-based SLA adherence model for the 6G dataset.
 
-MLflow experiment : sla-adherence-6g
+MLflow experiment : neuroslice-aiops
 Registry name    : sla-xgboost-6g
 Primary metrics  : val_roc_auc, val_f1, val_accuracy
 Quality gate     : val_roc_auc >= 0.75
@@ -13,6 +13,7 @@ Features (14 total):
 """
 
 import argparse
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -33,14 +34,14 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle
+from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
 
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-EXPERIMENT_NAME = "sla-adherence-6g"
+EXPERIMENT_NAME = get_experiment_name()
 ROOT_DIR = Path(__file__).resolve().parents[2]
 PROCESSED_NPZ = ROOT_DIR / "data" / "processed" / "sla_6g_processed.npz"
 SCALER_PATH = ROOT_DIR / "data" / "processed" / "scaler_sla_6g.pkl"
@@ -134,7 +135,7 @@ def train(
     # -------------------------------------------------------------------
     # 3. MLflow run
     # -------------------------------------------------------------------
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    use_mlflow_experiment(EXPERIMENT_NAME)
     with mlflow.start_run():
         mlflow.log_params(
             {
@@ -259,11 +260,22 @@ def train(
         # ---------------------------------------------------------------
         LOCAL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         model.save_model(LOCAL_MODEL_PATH.as_posix())
-        mlflow.xgboost.log_model(
-            model,
-            artifact_path="model",
-            registered_model_name=REGISTERED_MODEL_NAME,
-        )
+        # Use save_model + log_artifacts to stay compatible with older MLflow servers.
+        with tempfile.TemporaryDirectory(prefix="mlflow-model-") as tmp_dir:
+            local_model_dir = Path(tmp_dir) / "model"
+            mlflow.xgboost.save_model(xgb_model=model, path=local_model_dir.as_posix())
+            mlflow.log_artifacts(local_model_dir.as_posix(), artifact_path="model")
+
+        if REGISTERED_MODEL_NAME:
+            active_run = mlflow.active_run()
+            if active_run is not None:
+                model_uri = f"runs:/{active_run.info.run_id}/model"
+                try:
+                    mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+            else:
+                print("[WARN] No active MLflow run; skipping model registration.")
 
         finalize_model_lifecycle(
             model_name="sla_6g",
@@ -271,6 +283,15 @@ def train(
             artifact_format="xgboost_ubj",
             metrics=metrics,
             local_artifact_path=LOCAL_MODEL_PATH,
+            task_type="binary_classification",
+            experiment_name=EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
+            preprocessor_path=SCALER_PATH,
+            input_schema={
+                "features": [str(name) for name in feature_names],
+                "shape": [None, int(X_test.shape[1])],
+                "dtype": "float32",
+            },
             model=model,
             export_kind="xgboost",
             export_basename="sla_6g",

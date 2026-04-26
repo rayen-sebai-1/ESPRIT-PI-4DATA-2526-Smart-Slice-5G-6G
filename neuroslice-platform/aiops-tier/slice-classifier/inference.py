@@ -18,6 +18,15 @@ class SliceInferencer:
         self.cfg = cfg
         self.bundle = bundle
 
+    def update_bundle(self, bundle: SliceModelBundle) -> None:
+        self.bundle = bundle
+        logger.info(
+            "Updated slice model bundle: version=%s format=%s source=%s",
+            bundle.model_version,
+            bundle.model_format,
+            bundle.model_source,
+        )
+
     def infer(self, raw_event: Dict[str, Any]) -> SliceClassificationEvent | None:
         event = CanonicalTelemetryEvent.model_validate(raw_event)
         feature_vec = self._feature_vector(event)

@@ -1,4 +1,4 @@
-# Dashboard Backend
+﻿# Dashboard Backend
 
 `dashboard-backend` is the protected dashboard domain API. It validates authenticated sessions against the shared PostgreSQL database, stores dashboard-owned metadata, and delegates operational views to a pluggable provider layer.
 
@@ -34,9 +34,16 @@ Browser-facing equivalents are exposed by Kong under `/api/dashboard/*`.
 
 ## Role Access
 
+Backend API role checks:
+
 - dashboard views: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`
-- prediction views: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`
+- prediction views and model catalog: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`
 - rerun actions: `ADMIN`, `NETWORK_OPERATOR`
+
+Current UI difference:
+
+- the backend accepts `NETWORK_MANAGER` on prediction endpoints
+- the shipped React router does not currently expose a `/predictions` route to `NETWORK_MANAGER`
 
 ## Provider Modes
 
@@ -73,6 +80,10 @@ The service also reads these auth tables through a read model:
 - `JWT_SECRET_KEY`
 - `DASHBOARD_DATA_PROVIDER`
 - `API_BFF_BASE_URL` when `DASHBOARD_DATA_PROVIDER=bff`
+- `MLOPS_API_BASE_URL`
+- `MLFLOW_TRACKING_URI`
+
+Only `DASHBOARD_DATA_PROVIDER` and `API_BFF_BASE_URL` are currently used by the provider implementations. The other MLOps-related environment values are already wired in Compose for future expansion.
 
 ## Local Commands
 
@@ -84,3 +95,14 @@ alembic upgrade head
 ```
 
 The container startup script already waits for PostgreSQL, runs migrations, and then starts Uvicorn.
+
+## Verification
+
+With the Compose stack running:
+
+```bash
+curl http://localhost:8002/health
+curl -i http://localhost:8008/api/dashboard/national
+```
+
+`/health` should succeed on the internal service port. Dashboard API calls through Kong should require a valid dashboard access token.

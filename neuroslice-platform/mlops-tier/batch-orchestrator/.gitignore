@@ -26,6 +26,8 @@ models/*.pt
 models/*.pth
 models/*.pkl
 models/*.joblib
+models/*.onnx
+models/onnx/
 
 # -----------------------------------------------------------------------
 # Python artefacts
@@ -51,3 +53,16 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated MLOps runtime outputs
+models/registry.json
+models/promoted/
+models/onnx/
+models/**/*.onnx
+models/**/*.pth
+models/**/*.pt
+models/**/*.pkl
+models/**/*.joblib
+models/**/*.ubj
+data/processed/
+reports/model_training_summary.md

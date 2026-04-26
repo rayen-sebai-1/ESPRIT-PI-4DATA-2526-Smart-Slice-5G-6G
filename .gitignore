@@ -1,2 +1,19 @@
 .claude/
 infrastructure/.env
+
+# -----------------------------------------------------------------------
+# NeuroSlice generated MLOps runtime outputs
+# -----------------------------------------------------------------------
+neuroslice-platform/mlops-tier/batch-orchestrator/mlruns/
+neuroslice-platform/mlops-tier/batch-orchestrator/mlflow.db
+neuroslice-platform/mlops-tier/batch-orchestrator/models/registry.json
+neuroslice-platform/mlops-tier/batch-orchestrator/models/promoted/
+neuroslice-platform/mlops-tier/batch-orchestrator/models/onnx/
+neuroslice-platform/mlops-tier/batch-orchestrator/models/**/*.onnx
+neuroslice-platform/mlops-tier/batch-orchestrator/models/**/*.pth
+neuroslice-platform/mlops-tier/batch-orchestrator/models/**/*.pt
+neuroslice-platform/mlops-tier/batch-orchestrator/models/**/*.pkl
+neuroslice-platform/mlops-tier/batch-orchestrator/models/**/*.joblib
+neuroslice-platform/mlops-tier/batch-orchestrator/models/**/*.ubj
+neuroslice-platform/mlops-tier/batch-orchestrator/data/processed/
+neuroslice-platform/mlops-tier/batch-orchestrator/reports/model_training_summary.md
