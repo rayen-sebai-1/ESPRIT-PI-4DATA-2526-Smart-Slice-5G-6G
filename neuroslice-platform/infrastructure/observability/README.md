@@ -4,13 +4,13 @@ This folder contains production-oriented observability assets for Smart Slice AI
 
 ## What This Setup Delivers
 
-- Normalized Logstash ingestion with canonical fields:
+- Normalized Logstash ingestion with ECS v8 canonical fields:
   - `service.name`
-  - `ml.model`
+  - `ml.model`, `ml.model_version`, `ml.model_type`
   - `ml.prediction`
   - `ml.confidence`
-  - top-level compatibility fields: `model`, `prediction`, `confidence`
-- Raw inbound body preserved under `payload.raw`
+  - `ecs.version`, `event.category`, `event.type`, `event.action`, `event.ingested`
+- Raw inbound JSON preserved in `event.original`
 - Parsed event body preserved under `payload.*`
 - Elasticsearch template + ILM policy for `smart-slice-predictions*`
 - Kibana data view, visualizations, and dashboard provisioning script
@@ -20,6 +20,9 @@ This folder contains production-oriented observability assets for Smart Slice AI
 ```json
 {
   "@timestamp": "2026-04-26T20:00:00.000Z",
+  "ecs": {
+    "version": "8.11"
+  },
   "service": {
     "name": "congestion-detector"
   },
@@ -31,14 +34,21 @@ This folder contains production-oriented observability assets for Smart Slice AI
   "event": {
     "dataset": "smart_slice.predictions",
     "kind": "event",
-    "module": "smart_slice"
+    "module": "smart_slice",
+    "category": "web",
+    "type": "info",
+    "action": "ml-prediction",
+    "ingested": "2026-04-26T20:00:01.234Z",
+    "original": "{...original raw JSON body...}"
+  },
+  "observer": {
+    "name": "neuroslice-logstash",
+    "type": "logstash",
+    "version": "8.13.4"
   },
   "message": "congestion-detector predicted anomaly (confidence=0.920)",
   "payload": {
-    "raw": "{...original raw HTTP body...}",
-    "service": {
-      "name": "congestion-detector"
-    },
+    "service": "congestion-detector",
     "model": "congestion_5g",
     "prediction": "anomaly",
     "confidence": 0.92
@@ -104,13 +114,14 @@ To add dedicated dropdown filters in Kibana UI:
 
 ## 5) Verification Checklist
 
-- `curl http://localhost:8081` returns `ok`
+- `curl -X POST http://localhost:8081 -H "Content-Type: application/json" -d '{"test":true}'` returns `ok`
 - New documents have:
+  - `ecs.version`
   - `service.name`
-  - `ml.model`
-  - `ml.prediction`
-  - `ml.confidence`
-  - `payload.raw`
+  - `ml.model`, `ml.prediction`, `ml.confidence`
+  - `event.original` (raw JSON string)
+  - `event.ingested`, `event.action`
+  - `payload.*` (parsed input fields)
 - Kibana Discover data view pattern: `smart-slice-predictions*`
 - Dashboard panels are populated when prediction events arrive
 
