@@ -1,75 +1,117 @@
-# AIOps Tier
+﻿# AIOps Tier
 
-The AIOps tier contains the online inference workers that consume normalized telemetry and emit runtime predictions, anomaly events, and latest-state summaries.
+The AIOps tier contains online inference workers that consume normalized telemetry and emit runtime prediction events and latest-state summaries.
 
 ## Implemented Services
 
-- `congestion-detector/`
-- `slice-classifier/`
-- `sla-assurance/`
-- `shared/`
+- `congestion-detector/`: congestion anomaly scoring
+- `slice-classifier/`: slice type classification and mismatch detection
+- `sla-assurance/`: SLA risk scoring
+- `shared/`: Redis, model registry, ONNX Runtime, and hot-reload helpers
 
-All current services are background workers. They do not expose public HTTP APIs in the integrated runtime.
+All services are background workers in the integrated runtime. They do not expose public HTTP APIs.
 
-## Runtime Contract
+## Runtime Streams
 
 Shared input:
 
 - Redis stream `stream:norm.telemetry`
 
-Runtime outputs:
+Outputs:
 
-- `congestion-detector` -> stream/topic `events.anomaly`, state prefix `aiops:congestion`, Influx measurement `aiops_congestion`
-- `slice-classifier` -> stream/topic `events.slice.classification`, state prefix `aiops:slice_classification`, Influx measurement `aiops_slice_classification`
-- `sla-assurance` -> stream/topic `events.sla`, state prefix `aiops:sla`, Influx measurement `aiops_sla`
+- `congestion-detector` -> `events.anomaly`, Redis state prefix `aiops:congestion`, Influx measurement `aiops_congestion`
+- `slice-classifier` -> `events.slice.classification`, Redis state prefix `aiops:slice_classification`, Influx measurement `aiops_slice_classification`
+- `sla-assurance` -> `events.sla`, Redis state prefix `aiops:sla`, Influx measurement `aiops_sla`
 
-All three workers can also mirror outputs to Kafka and InfluxDB. That is enabled by default in `infrastructure/docker-compose.yml`.
+Kafka and InfluxDB mirroring are enabled by default in `infrastructure/docker-compose.yml`.
 
-## Model Loading Strategy
+## Production Model Loading
 
-The current runtime follows this order:
+The production model source is the promoted-current ONNX FP16 artifact created by the MLOps lifecycle:
 
-1. read `MODEL_REGISTRY_PATH` with `shared/model_registry_client.py`
-2. look for the latest promoted entry for the configured `MODEL_NAME`
-3. prefer `onnx_fp16` artifacts when present and loadable
-4. fall back to service-specific local artifact paths or local MLflow metadata
-5. fall back again to heuristic behavior if no usable artifact can be loaded
+```text
+/mlops/models/promoted/{MODEL_NAME}/current/model_fp16.onnx
+/mlops/models/promoted/{MODEL_NAME}/current/metadata.json
+```
 
-Current shared discovery variables:
+Configured model names:
 
-- `MODEL_REGISTRY_PATH`
-- `MODEL_POLL_INTERVAL_SEC`
-- `MODEL_NAME`
-- `MODEL_FORMAT`
-- `MLFLOW_TRACKING_URI`
+- `congestion-detector`: `MODEL_NAME=congestion_5g`
+- `slice-classifier`: `MODEL_NAME=slice_type_5g`
+- `sla-assurance`: `MODEL_NAME=sla_5g`
 
-Service-specific fallbacks remain active:
+Model format:
 
-- `congestion-detector`: `CONGESTION_MODEL_PATH`, `CONGESTION_PREPROCESSOR_PATH`
-- `slice-classifier`: `SLICE_MODEL_NAME`, `SLICE_MODEL_PATH`, `MLFLOW_DB_PATH`, `MLRUNS_DIR`, `SLICE_LABEL_ENCODER_PATH`
-- `sla-assurance`: `SLA_MODEL_NAME`, `SLA_MODEL_PATH`, `MLFLOW_DB_PATH`, `MLRUNS_DIR`, `SLA_SCALER_PATH`
+- `MODEL_FORMAT=onnx_fp16`
 
-## Current Workspace State
+All services use ONNX Runtime for promoted-current models. `congestion-detector` no longer loads the legacy TorchScript `.pt` model in normal runtime. If promoted ONNX is unavailable, it stays in heuristic fallback mode instead of silently loading `.pt`.
 
-- `mlops-tier/batch-orchestrator/models/registry.json` is tracked and currently contains generated metadata.
-- That registry currently has no promoted entries, so automatic promoted-model loading does not happen in this workspace.
-- The repo does not commit the generated runtime artifacts that the workers prefer, such as `data/processed/*`, `models/*.pt`, `models/*.pth`, `models/*.pkl`, `mlruns/`, and local MLflow state.
-- In a fresh clone, the workers therefore fall back to explicit local paths only if you generate those artifacts yourself, otherwise they continue in heuristic mode.
+## Hot Reload
+
+Each service starts a background reload task:
+
+1. read `current/metadata.json`
+2. compare metadata version and file timestamps with the loaded bundle
+3. load a new ONNX Runtime session from `current/model_fp16.onnx` when the version or model file changes
+4. replace the in-memory model bundle without restarting the container
+
+Reload interval:
+
+- `MODEL_POLL_INTERVAL_SEC`, default `60`
+
+Successful reload logs include:
+
+```text
+Hot-reloaded congestion model to version=...
+Hot-reloaded SLA model to version=...
+Hot-reloaded slice model to version=...
+```
 
 ## Runtime Mounts
 
-In the integrated Compose stack, the workers read the MLOps project through these read-only mounts:
+The integrated Compose stack mounts MLOps outputs read-only:
 
-- `/mlops/models`
-- `/mlops/data`
-- `/mlops/mlruns`
-- `/mlops/mlflow.db`
-- `/mlops/src`
+- `../mlops-tier/batch-orchestrator/models:/mlops/models:ro`
+- `../mlops-tier/batch-orchestrator/data:/mlops/data:ro`
+- `../mlops-tier/batch-orchestrator/src:/mlops/src:ro`
 
-That means runtime AIOps behavior depends directly on local artifacts generated by `mlops-tier/batch-orchestrator`.
+Required promoted model paths:
+
+- `/mlops/models/promoted/congestion_5g/current/model_fp16.onnx`
+- `/mlops/models/promoted/sla_5g/current/model_fp16.onnx`
+- `/mlops/models/promoted/slice_type_5g/current/model_fp16.onnx`
+
+Preprocessing artifacts, when present:
+
+- `CONGESTION_PREPROCESSOR_PATH=/mlops/data/processed/preprocessor_congestion_5g.pkl`
+- `SLA_SCALER_PATH=/mlops/data/processed/scaler_sla_5g.pkl`
+- `SLICE_LABEL_ENCODER_PATH=/mlops/data/processed/label_encoder_slice_type_5g.pkl`
+
+## Fallback Behavior
+
+- If promoted ONNX cannot be loaded, workers continue serving heuristic outputs.
+- `fallbackMode=false` when a promoted ONNX FP16 model is loaded successfully.
+- `fallbackMode=true` only when no usable runtime model is loaded or inference falls back to heuristic behavior.
+
+## Verification
+
+```bash
+cd neuroslice-platform/aiops-tier
+PYTHONDONTWRITEBYTECODE=1 pytest tests/test_model_registry_client.py -q
+```
+
+Runtime checks:
+
+```bash
+docker compose logs -f congestion-detector
+docker compose logs -f sla-assurance
+docker compose logs -f slice-classifier
+```
+
+Look for `model_format=onnx_fp16`, `fallback_mode=False`, and hot-reload log lines after a new promotion.
 
 ## Current Limits
 
-- Direct MLflow and MinIO downloads are still TODO in `shared/model_registry_client.py`.
-- `misrouting-detector` is intentionally deferred and is not present in this tier.
-- Hot reload logic currently covers registry discovery and version checks; it does not yet pull remote artifacts automatically.
+- `misrouting-detector` is deferred.
+- Services do not download remote MLflow artifacts directly at runtime; they read the local promoted artifacts mounted from the batch orchestrator.
+- Generated promoted models must exist locally for model-backed inference. Otherwise the heuristic path remains active.

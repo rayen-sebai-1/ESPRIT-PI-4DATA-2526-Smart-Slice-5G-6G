@@ -1,4 +1,4 @@
-# Auth Service
+﻿# Auth Service
 
 `auth-service` is the PostgreSQL-backed authentication and user-administration service for the protected NeuroSlice dashboard stack.
 
@@ -117,3 +117,14 @@ Import legacy users:
 ```bash
 python scripts/migrate_legacy_users.py --source /path/to/legacy-users.json
 ```
+
+## Verification
+
+With the Compose stack running:
+
+```bash
+curl http://localhost:8001/health
+curl -i http://localhost:8008/api/auth/me
+```
+
+`/health` should succeed on the internal service port. `/api/auth/me` should be reached through Kong and return an authentication error until a valid access token is supplied.

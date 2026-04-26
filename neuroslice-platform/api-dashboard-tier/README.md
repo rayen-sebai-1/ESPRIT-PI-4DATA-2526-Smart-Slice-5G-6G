@@ -1,4 +1,4 @@
-# API Dashboard Tier
+﻿# API Dashboard Tier
 
 The API dashboard tier is the user-facing access layer for NeuroSlice. It combines a public telemetry BFF with a protected dashboard stack built from auth, backend, gateway, and frontend services.
 
@@ -126,3 +126,13 @@ npm run dev
 ```
 
 Vite proxies `/api/*` to `http://localhost:8008` by default.
+
+## Verification
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8008/api/auth/login -i
+curl http://localhost:5173
+```
+
+The login endpoint should reject unauthenticated or malformed requests through Kong, while the React app should load and call `/api/auth/*` and `/api/dashboard/*` through the gateway.

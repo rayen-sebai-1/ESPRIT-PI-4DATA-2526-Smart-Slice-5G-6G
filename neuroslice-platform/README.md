@@ -1,65 +1,43 @@
-# NeuroSlice Platform
+﻿# NeuroSlice Platform
 
-NeuroSlice is the platform subtree of this repository. It contains the integrated local runtime, all service tiers, and the offline MLOps project used by the runtime AIOps workers.
+`neuroslice-platform/` is the runnable platform subtree. It contains the integrated Docker Compose runtime, all service tiers, and the MLOps project used to train and promote models for online AIOps.
 
-## Platform Snapshot
+## Current Tiers
 
-Implemented tiers in the current workspace:
+Implemented:
 
-- `simulation-tier`: SimPy-based Core, Edge, and RAN simulators plus the fault engine
-- `ingestion-tier`: VES and NETCONF adapters, the normalizer, the telemetry exporter, and shared models/config
-- `aiops-tier`: runtime workers for congestion detection, SLA assurance, and slice classification
-- `api-dashboard-tier`: public BFF, auth service, dashboard backend, Kong gateway, and React frontend
-- `infrastructure`: the integrated Compose runtime plus Redis, Kafka, PostgreSQL, InfluxDB, and Grafana wiring
-- `mlops-tier/batch-orchestrator`: preprocessing, training, lifecycle metadata, prediction API, tests, notebooks, and reports
+- `simulation-tier`: Core, Edge, and RAN simulators plus `fault-engine`
+- `ingestion-tier`: VES adapter, NETCONF adapter, normalizer, telemetry exporter, shared models/config
+- `aiops-tier`: `congestion-detector`, `slice-classifier`, `sla-assurance`, and shared model-loading utilities
+- `api-dashboard-tier`: BFF, auth service, dashboard backend, Kong gateway, and React dashboard
+- `agentic-ai-tier`: `root-cause` and `copilot-agent`
+- `mlops-tier/batch-orchestrator`: offline data, training, MLflow, ONNX/FP16 export, promotion, API, tests, and reports
+- `infrastructure`: integrated Compose stack
 
-Placeholder-only tiers:
+Scaffold-only:
 
 - `control-tier`
-- `agentic-ai-tier`
 
-Deferred runtime service:
+Deferred:
 
-- `aiops-tier/misrouting-detector`
+- `misrouting-detector` is not implemented as an online AIOps worker.
 
-## Runtime Topology
+## Default Runtime
 
-Default `docker compose up --build` in `infrastructure/` starts:
+`docker compose up --build` from `infrastructure/` starts:
 
-- Redis
-- Zookeeper
-- Kafka
-- InfluxDB
-- PostgreSQL
-- Grafana
-- `adapter-ves`
-- `adapter-netconf`
-- `normalizer`
-- `telemetry-exporter`
-- `simulator-core`
-- `simulator-edge`
-- `simulator-ran`
-- `fault-engine`
-- `congestion-detector`
-- `slice-classifier`
-- `sla-assurance`
-- `api-bff-service`
-- `auth-service`
-- `dashboard-backend`
-- `kong-gateway`
-- `react-dashboard`
+- Redis, Zookeeper, Kafka, InfluxDB, PostgreSQL, Grafana
+- `adapter-ves`, `adapter-netconf`, `normalizer`, `telemetry-exporter`
+- `simulator-core`, `simulator-edge`, `simulator-ran`, `fault-engine`
+- `congestion-detector`, `slice-classifier`, `sla-assurance`
+- `api-bff-service`, `auth-service`, `dashboard-backend`, `kong-gateway`, `react-dashboard`
+- `root-cause`, `copilot-agent`
 
 Optional `mlops` profile adds:
 
-- `mlops-postgres`
-- `minio`
-- `minio-init`
-- `mlflow-server`
-- `elasticsearch`
-- `logstash`
-- `mlops-api`
+- `mlops-postgres`, `minio`, `minio-init`, `mlflow-server`, `elasticsearch`, `logstash`, `mlops-api`
 
-Optional `mlops-worker` runs the offline training pipeline on demand.
+Optional `mlops-worker` profile runs the offline pipeline manually.
 
 ## End-to-End Data Flow
 
@@ -80,18 +58,31 @@ stream:norm.telemetry
 
 telemetry-norm -> telemetry-exporter -> InfluxDB
 
-api-bff-service
-  -> Redis state and streams
-  -> fault-engine proxy
-
+api-bff-service -> Redis state, streams, and fault-engine
 react-dashboard -> kong-gateway -> auth-service / dashboard-backend
+root-cause / copilot-agent -> Redis, InfluxDB, Ollama/LangChain tools
 ```
+
+## Model Deployment Flow
+
+The offline MLOps pipeline exports ONNX and FP16 ONNX artifacts, promotes quality-gate-passing models, and updates production pointers under:
+
+```text
+mlops-tier/batch-orchestrator/models/promoted/{model_name}/current/
+```
+
+Runtime AIOps services mount that directory as `/mlops/models/promoted/...` and load `current/model_fp16.onnx` with ONNX Runtime. Services poll `current/metadata.json` and hot reload when the version or file timestamp changes.
+
+Configured model names in Compose:
+
+- `congestion-detector`: `congestion_5g`
+- `slice-classifier`: `slice_type_5g`
+- `sla-assurance`: `sla_5g`
 
 ## Quick Start
 
 ```bash
 cd neuroslice-platform/infrastructure
-cp .env.example .env
 docker compose up --build
 ```
 
@@ -102,17 +93,19 @@ curl http://localhost:8000/health
 curl http://localhost:7001/health
 curl http://localhost:7002/health
 curl http://localhost:7004/health
+curl http://localhost:7005/health
+curl http://localhost:7006/health
 curl "http://localhost:8000/api/v1/aiops/congestion/latest?limit=20"
 ```
 
-Optional integrated MLOps services:
+Optional MLOps services:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose --profile mlops up --build
 ```
 
-Manual offline pipeline against the integrated stack:
+Manual offline pipeline:
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -125,22 +118,15 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - VES adapter: `http://localhost:7001`
 - NETCONF adapter: `http://localhost:7002`
 - Fault engine: `http://localhost:7004`
+- Root-cause agent: `http://localhost:7005`
+- Copilot agent: `http://localhost:7006`
 - React dashboard: `http://localhost:5173`
 - Kong gateway: `http://localhost:8008`
 - Grafana: `http://localhost:3000`
 - InfluxDB: `http://localhost:8086`
-- MLflow UI: `http://localhost:5000` (`mlops` profile)
-- MinIO console: `http://localhost:9001` (`mlops` profile)
-- MLOps API: `http://localhost:8010` (`mlops` profile)
-
-## Current Workspace Notes
-
-- `control-tier` and `agentic-ai-tier` still contain documentation only.
-- `agentic-ai-tier` has commented Compose stubs and `.env.example` variables reserved for future agent services, but nothing is active.
-- Runtime AIOps workers always mount `mlops-tier/batch-orchestrator/models`, `data`, `mlruns`, `mlflow.db`, and `src` read-only.
-- The tracked `mlops-tier/batch-orchestrator/models/registry.json` now contains generated metadata, but there are still no promoted model entries for runtime auto-discovery.
-- Most generated MLOps artifacts, including `data/processed/`, `models/*.pt`, `models/*.pth`, `mlruns/`, and local MLflow state, are gitignored and may be absent in a fresh clone.
-- Adapters expose Prometheus-format `/metrics`, but the integrated runtime does not currently start a Prometheus service.
+- MLflow UI: `http://localhost:5000` with `mlops` profile
+- MinIO console: `http://localhost:9001` with `mlops` profile
+- MLOps API: `http://localhost:8010` with `mlops` profile
 
 ## Repository Map
 
@@ -156,3 +142,15 @@ neuroslice-platform/
 |   `-- batch-orchestrator/
 `-- simulation-tier/
 ```
+
+## Generated Files
+
+Training and runtime outputs are local artifacts. Important generated paths include:
+
+- `mlops-tier/batch-orchestrator/models/registry.json`
+- `mlops-tier/batch-orchestrator/models/promoted/`
+- `mlops-tier/batch-orchestrator/models/onnx/`
+- `mlops-tier/batch-orchestrator/data/processed/`
+- `mlops-tier/batch-orchestrator/reports/model_training_summary.md`
+
+These files may be present in a running workspace but should be treated as generated runtime outputs, not source code.

@@ -175,9 +175,12 @@ class ModelRegistryClient:
             ]
         if preferred_format == "onnx":
             return [
-                "promoted_fp16_path",
+                "promoted_current_onnx_path",
+                "promoted_onnx_path",
                 "onnx_path",
                 "onnx_uri",
+                "promoted_current_fp16_path",
+                "promoted_fp16_path",
                 "onnx_fp16_path",
                 "onnx_fp16_uri",
                 "local_artifact_path",

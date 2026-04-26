@@ -10,6 +10,7 @@ from src.models.lifecycle import (
     normalize_artifact_uri,
     write_registry_entry,
 )
+from src.mlops.promotion import convert_to_fp16, materialize_promoted_model_for_registry, promote_onnx_artifacts
 
 
 def _entry(model_name: str) -> dict:
@@ -171,6 +172,7 @@ def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_pa
     monkeypatch.setattr("src.models.lifecycle.mlflow.set_tags", lambda tags: None)
     monkeypatch.setattr("src.models.lifecycle.mlflow.set_tag", lambda key, value: None)
     monkeypatch.setattr("src.models.lifecycle.mlflow.log_dict", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "src.models.lifecycle.export_model_to_onnx",
         lambda **kwargs: ONNXExportResult(
@@ -212,8 +214,127 @@ def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_pa
 
     metadata = json.loads(promoted_current_meta.read_text(encoding="utf-8"))
     assert metadata["model_name"] == "sla_5g"
-    assert metadata["version"] == 1
+    assert metadata["deployment_name"] == "sla_5g"
+    assert metadata["version"] == "1"
     assert metadata["run_id"] == "run-xyz"
+    assert metadata["updated_at"]
+    assert metadata["framework"] == "xgboost"
+
+
+def test_promote_onnx_artifacts_writes_versioned_and_current_metadata(tmp_path, monkeypatch):
+    raw_onnx = tmp_path / "model.onnx"
+    fp16_onnx = tmp_path / "model_fp16.onnx"
+    raw_onnx.write_text("raw", encoding="utf-8")
+    fp16_onnx.write_text("fp16", encoding="utf-8")
+    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
+
+    result = promote_onnx_artifacts(
+        model_name="slice_type_5g",
+        version="7",
+        run_id="run-7",
+        metrics={"val_accuracy": 0.93},
+        framework="lightgbm_classifier",
+        raw_onnx_path=raw_onnx,
+        fp16_onnx_path=fp16_onnx,
+        promoted_root=tmp_path / "promoted",
+        created_at="2026-04-26T00:00:00+00:00",
+        updated_at="2026-04-26T01:00:00+00:00",
+        registered_model_name="slice-type-lgbm-5g",
+    )
+
+    assert result.raw_path.exists()
+    assert result.fp16_path.exists()
+    assert result.current_fp16_path.exists()
+    assert result.current_metadata_path.exists()
+
+    metadata = json.loads(result.current_metadata_path.read_text(encoding="utf-8"))
+    assert metadata == {
+        "model_name": "slice-type-lgbm-5g",
+        "deployment_name": "slice_type_5g",
+        "version": "7",
+        "run_id": "run-7",
+        "updated_at": "2026-04-26T01:00:00+00:00",
+        "metrics": {"val_accuracy": 0.93},
+        "created_at": "2026-04-26T00:00:00+00:00",
+        "framework": "lightgbm",
+    }
+
+
+def test_materialize_promoted_model_uses_mlflow_deployment_version(tmp_path, monkeypatch):
+    models_dir = tmp_path / "models"
+    onnx_dir = models_dir / "onnx"
+    onnx_dir.mkdir(parents=True)
+    (onnx_dir / "sla_5g.onnx").write_text("raw", encoding="utf-8")
+    (onnx_dir / "sla_5g_fp16.onnx").write_text("fp16", encoding="utf-8")
+    registry_path = models_dir / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "generated_at": None,
+                "models": [
+                    {
+                        "model_name": "sla_5g",
+                        "version": 2,
+                        "deployment_version": "9",
+                        "stage": "production",
+                        "promoted": True,
+                        "onnx_export_status": "success",
+                        "onnx_path": "onnx/sla_5g.onnx",
+                        "onnx_fp16_path": "onnx/sla_5g_fp16.onnx",
+                        "metrics": {"val_roc_auc": 0.88},
+                        "framework": "xgboost",
+                        "registered_model_name": "sla-xgboost-5g",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
+
+    entry = materialize_promoted_model_for_registry(model_name="sla_5g", registry_path=registry_path)
+
+    assert entry["promoted_artifact_status"] == "ready"
+    assert (models_dir / "promoted" / "sla_5g" / "9" / "model.onnx").exists()
+    metadata = json.loads((models_dir / "promoted" / "sla_5g" / "current" / "metadata.json").read_text())
+    assert metadata["model_name"] == "sla-xgboost-5g"
+    assert metadata["deployment_name"] == "sla_5g"
+    assert metadata["version"] == "9"
+    assert metadata["updated_at"]
+
+
+def test_convert_to_fp16_uses_onnxconverter_common(tmp_path, monkeypatch):
+    source = tmp_path / "model.onnx"
+    target = tmp_path / "model_fp16.onnx"
+    source.write_text("raw", encoding="utf-8")
+
+    class _FakeOnnx:
+        @staticmethod
+        def load(path):
+            assert path == source.as_posix()
+            return "model"
+
+        @staticmethod
+        def save(model, path):
+            assert model == "fp16-model"
+            Path(path).write_text("fp16", encoding="utf-8")
+
+    class _FakeFloat16:
+        @staticmethod
+        def convert_float_to_float16(model):
+            assert model == "model"
+            return "fp16-model"
+
+    import sys
+    import types
+    from pathlib import Path
+
+    monkeypatch.setitem(sys.modules, "onnx", _FakeOnnx)
+    fake_common = types.SimpleNamespace(float16=_FakeFloat16)
+    monkeypatch.setitem(sys.modules, "onnxconverter_common", fake_common)
+
+    assert convert_to_fp16(source, target) == target
+    assert target.read_text(encoding="utf-8") == "fp16"
 
 
 def test_sla_5g_promotion_rule_promotes_on_auc():

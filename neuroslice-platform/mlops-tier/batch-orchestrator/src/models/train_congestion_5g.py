@@ -349,6 +349,7 @@ def train():
             local_artifact_path=TRACED_MODEL_PATH if TRACED_MODEL_PATH.exists() else MODEL_PATH,
             task_type="binary_classification",
             experiment_name=MLFLOW_EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
             preprocessor_path=PREPROCESSOR_PATH,
             input_schema={
                 "features": [str(name) for name in data["feature_names"]],

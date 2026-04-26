@@ -1,6 +1,6 @@
-# Infrastructure Layer
+﻿# Infrastructure Layer
 
-The infrastructure layer is the canonical local entry point for the NeuroSlice platform. It wires together the simulators, ingestion pipeline, runtime AIOps services, dashboard stack, observability tooling, and the optional integrated MLOps control plane.
+The infrastructure layer is the canonical local entry point for NeuroSlice. It wires simulators, ingestion, runtime AIOps, dashboard services, agentic services, observability, and the optional integrated MLOps stack.
 
 ## Runtime Modes
 
@@ -8,7 +8,6 @@ Default platform runtime:
 
 ```bash
 cd neuroslice-platform/infrastructure
-cp .env.example .env
 docker compose up --build
 ```
 
@@ -16,25 +15,24 @@ Platform runtime plus integrated MLOps services:
 
 ```bash
 cd neuroslice-platform/infrastructure
-cp .env.example .env
 docker compose --profile mlops up --build
 ```
 
-Run the offline MLOps worker against the integrated services:
+Run the offline MLOps worker against integrated services:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 ```
 
-Useful validation:
+Validate Compose configuration:
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose config
 ```
 
-## What Starts by Default
+## Default Services
 
 `docker compose up --build` starts:
 
@@ -52,8 +50,24 @@ docker compose config
 - `dashboard-backend`
 - `kong-gateway`
 - `react-dashboard`
+- `root-cause`
+- `copilot-agent`
 
-It does not start the integrated MLOps services unless the `mlops` profile is enabled.
+The integrated MLOps services start only with the `mlops` profile.
+
+## Optional MLOps Services
+
+The `mlops` profile starts:
+
+- `mlops-postgres`
+- `minio`
+- `minio-init`
+- `mlflow-server`
+- `elasticsearch`
+- `logstash`
+- `mlops-api`
+
+The `mlops-worker` profile runs the offline training/promotion pipeline manually.
 
 ## Published URLs
 
@@ -63,6 +77,8 @@ Default runtime:
 - VES adapter: `http://localhost:7001`
 - NETCONF adapter: `http://localhost:7002`
 - Fault engine: `http://localhost:7004`
+- Root-cause agent: `http://localhost:7005`
+- Copilot agent: `http://localhost:7006`
 - React dashboard: `http://localhost:5173`
 - Kong gateway: `http://localhost:8008`
 - Grafana: `http://localhost:3000`
@@ -81,71 +97,59 @@ Optional `mlops` profile:
 
 ## MLOps Data Ownership
 
-The integrated MLOps profile keeps platform and MLOps storage separate:
+Storage is split deliberately:
 
-- `postgres` is used only by `auth-service` and `dashboard-backend`
-- `mlops-postgres` is used only by the MLflow backend store
-- MinIO bucket `mlflow-artifacts` stores MLflow artifacts, model binaries, ONNX, ONNX FP16, preprocessors, scalers, encoders, and reports
+- `postgres`: auth and dashboard application data
+- `mlops-postgres`: MLflow backend metadata
+- MinIO bucket `mlflow-artifacts`: MLflow artifacts, model binaries, ONNX, ONNX FP16, preprocessing artifacts, reports
+- local mounted `batch-orchestrator/models`: promoted-current artifacts consumed by AIOps services
 
-The MLflow server is configured with:
+MLflow server configuration:
 
-- backend store URI: `postgresql+psycopg2://...@mlops-postgres:5432/mlflow`
+- backend store URI: PostgreSQL on `mlops-postgres`
 - default artifact root: `s3://mlflow-artifacts`
 - S3 endpoint: `http://minio:9000`
-- AWS credentials from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-
-## Environment Variables
-
-Primary template:
-
-- `.env.example`
-
-Key values already wired into Compose:
-
-- simulation settings: `SITE_ID`, `TICK_INTERVAL_SEC`, `SIM_SPEED`
-- runtime thresholds: `CONGESTION_THRESHOLD`, `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`, `SLA_RISK_THRESHOLD`, `MODEL_POLL_INTERVAL_SEC`
-- public ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`
-- optional MLOps ports and credentials: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`
-- dashboard backend config: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
-
-## Current Caveats
-
-- platform PostgreSQL is still bound to fixed host port `5432`; `DASHBOARD_POSTGRES_PORT` in `.env.example` is not wired yet
-- `auth-service` and the platform `postgres` service still include development credentials directly in the Compose file
-- `dashboard-backend` already reads `DASHBOARD_JWT_SECRET` from `.env`
-- `.env.example` still contains reserved variables for future agentic services, but the related Compose services are commented out
-- runtime AIOps services always mount `../mlops-tier/batch-orchestrator` paths; if generated artifacts are missing locally, the workers fall back to local heuristics
-
-If you need production-style secret management, update the Compose file in addition to `.env`.
 
 ## AIOps Artifact Access
 
-The runtime AIOps services mount registry and generated local artifacts from `../mlops-tier/batch-orchestrator`, even when the `mlops` profile is disabled:
+Runtime AIOps services mount generated MLOps files read-only:
 
-- `models/`
-- `data/`
-- `src/`
+- `../mlops-tier/batch-orchestrator/models:/mlops/models:ro`
+- `../mlops-tier/batch-orchestrator/data:/mlops/data:ro`
+- `../mlops-tier/batch-orchestrator/src:/mlops/src:ro`
 
-They read `models/registry.json` and prefer promoted production artifacts in this order: ONNX FP16, ONNX, local model fallback, then heuristic fallback.
+Primary production model paths:
 
-## MLOps Verification
+- `/mlops/models/promoted/congestion_5g/current/model_fp16.onnx`
+- `/mlops/models/promoted/sla_5g/current/model_fp16.onnx`
+- `/mlops/models/promoted/slice_type_5g/current/model_fp16.onnx`
 
-```bash
-cd neuroslice-platform/infrastructure
-docker compose --profile mlops up --build
-docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
-```
+Services poll `metadata.json` with `MODEL_POLL_INTERVAL_SEC` and hot reload ONNX Runtime sessions without container restarts.
 
-Verify:
+## Agentic Services
 
-- MLflow UI: `http://localhost:5000`
-- MinIO console: `http://localhost:9001`
-- MLOps API: `http://localhost:8010`
-- `../mlops-tier/batch-orchestrator/models/registry.json` contains a `promoted=true`, `stage=production` entry
+`root-cause` and `copilot-agent` are part of the default Compose runtime. They use Ollama through:
+
+- `OLLAMA_BASE_URL`, default `http://host.docker.internal:11434`
+- `RCA_OLLAMA_MODEL`, default `qwen2.5:3b-instruct`
+- `COPILOT_OLLAMA_MODEL`, default `qwen2.5:3b-instruct`
+
+If Ollama is not running on the host, these services can start but agent calls will fail or degrade depending on the endpoint.
+
+## Environment Variables
+
+Primary variables are wired through Compose and optional `.env` files:
+
+- simulation: `SITE_ID`, `TICK_INTERVAL_SEC`, `SIM_SPEED`
+- AIOps: `CONGESTION_THRESHOLD`, `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`, `SLA_RISK_THRESHOLD`, `MODEL_POLL_INTERVAL_SEC`
+- ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`, `RCA_AGENT_PORT`, `COPILOT_AGENT_PORT`
+- MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`
+- dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
+- agentic: `OLLAMA_BASE_URL`, `RCA_OLLAMA_MODEL`, `COPILOT_OLLAMA_MODEL`
 
 ## Common Operations
 
-Stop the stack:
+Stop containers:
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -161,6 +165,7 @@ docker compose down -v
 
 ## Current Limits
 
-- The default stack uses local-development credentials and should not be treated as production-ready.
-- `mlops-worker` is intentionally manual and does not start during `docker compose --profile mlops up --build`.
-- Prometheus-format adapter metrics are available, but the Compose stack does not currently include a Prometheus service.
+- Local-development credentials are present in Compose and should not be used as production secrets.
+- `mlops-worker` is manual and does not start during `docker compose --profile mlops up --build`.
+- Prometheus-format adapter metrics are available, but there is no Prometheus service in the Compose stack.
+- AIOps model-backed inference requires promoted artifacts to exist locally under `batch-orchestrator/models/promoted/`.

@@ -1,7 +1,7 @@
 {
   "model_name": "sla_5g",
-  "version": 5,
-  "run_id": "fead4028eaf0499889e29fb6da2151ee",
+  "version": 7,
+  "run_id": "c6fe46944e1e493fa1e7e0e8741709fb",
   "metrics": {
     "val_accuracy": 0.9425360139306633,
     "val_precision": 0.8028245518739815,
@@ -9,7 +9,6 @@
     "val_f1": 0.8906297077432962,
     "val_roc_auc": 0.9900774492096104
   },
-  "created_at": "2026-04-25T23:54:06+00:00",
-  "artifact_path": "promoted/sla_5g/current/model_fp16.onnx",
-  "stage": "production"
+  "created_at": "2026-04-26T11:55:13+00:00",
+  "framework": "xgboost"
 }

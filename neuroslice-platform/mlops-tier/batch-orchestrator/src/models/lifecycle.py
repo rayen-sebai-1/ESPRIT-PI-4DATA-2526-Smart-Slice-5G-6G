@@ -29,7 +29,13 @@ except ModuleNotFoundError:
 
     mlflow = _MissingMlflow()
 
-from src.mlops.onnx_export import ONNXExportResult, convert_onnx_to_fp16, export_model_to_onnx
+from src.mlops.onnx_export import ONNXExportResult, export_model_to_onnx
+from src.mlops.promotion import (
+    convert_onnx_to_fp16,
+    infer_framework,
+    latest_registered_model_version,
+    materialize_promoted_model_for_registry,
+)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 MODELS_DIR = ROOT_DIR / "models"
@@ -120,6 +126,7 @@ def finalize_model_lifecycle(
     onnx_fixed_sequence_length: int | None = None,
     onnx_opset_version: int | None = None,
     run_smoke_test: bool | None = None,
+    registered_model_name: str | None = None,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
     """Log artifacts, export ONNX/FP16 when possible, and update registry metadata."""
@@ -127,6 +134,8 @@ def finalize_model_lifecycle(
     active_run = mlflow.active_run()
     run_id = active_run.info.run_id if active_run else ""
     resolved_experiment = experiment_name or get_experiment_name()
+    mlflow_model_version = latest_registered_model_version(registered_model_name, run_id=run_id)
+    framework = infer_framework(export_kind or model_family)
 
     local_path = Path(local_artifact_path) if local_artifact_path else None
     preprocessor_local_path = Path(preprocessor_path) if preprocessor_path else None
@@ -182,7 +191,11 @@ def finalize_model_lifecycle(
         "preprocessor_uri": preprocessor_uri,
         "mlflow_run_id": run_id,
         "experiment_name": resolved_experiment,
+        "registered_model_name": registered_model_name or "",
+        "mlflow_model_version": mlflow_model_version or "",
+        "deployment_version": mlflow_model_version or "",
         "metrics": normalized_metrics,
+        "framework": framework,
         "quality_gate_status": decision["quality_gate_status"],
         "input_schema": dict(input_schema or {}),
         "created_at": utcnow_iso(),
@@ -210,7 +223,10 @@ def finalize_model_lifecycle(
     entry = write_registry_entry(entry, registry_path=resolved_registry_path)
     promoted_entry = None
     try:
-        promoted_entry = _sync_promoted_artifacts_for_model(model_name=model_name, registry_path=resolved_registry_path)
+        promoted_entry = materialize_promoted_model_for_registry(
+            model_name=model_name,
+            registry_path=resolved_registry_path,
+        )
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Could not sync promoted artifacts for {model_name}: {exc}")
 
@@ -228,6 +244,9 @@ def finalize_model_lifecycle(
             "neuroslice.artifact_format": entry["format"],
             "neuroslice.registry_path": str(resolved_registry_path.as_posix()),
             "neuroslice.promoted_current_fp16_path": str(entry.get("promoted_current_fp16_path") or ""),
+            "neuroslice.registered_model_name": registered_model_name or "",
+            "neuroslice.mlflow_model_version": str(entry.get("mlflow_model_version") or ""),
+            "neuroslice.deployment_version": str(entry.get("deployment_version") or entry.get("version") or ""),
         }
     )
     return entry

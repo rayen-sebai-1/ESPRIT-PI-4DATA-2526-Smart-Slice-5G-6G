@@ -1,4 +1,4 @@
-# Kong Gateway
+﻿# Kong Gateway
 
 `kong-gateway` is the browser-facing API gateway for the protected NeuroSlice dashboard stack.
 
@@ -44,9 +44,13 @@ Route-level rate limits:
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose exec kong-gateway kong health
+curl -i http://localhost:8008/api/auth/me
 ```
+
+`kong health` validates the gateway process. The auth probe validates that gateway routing is active and should return an authentication error unless a valid access token is provided.
 
 ## Current Scope
 
 - there is no second gateway configuration in this repository
 - health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong
+- JWT validation is not implemented in Kong; protected services validate tokens themselves

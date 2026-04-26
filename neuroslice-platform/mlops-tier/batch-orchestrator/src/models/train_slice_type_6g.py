@@ -167,6 +167,7 @@ def main():
             local_artifact_path=LOCAL_MODEL_PATH,
             task_type="multiclass_classification",
             experiment_name=MLFLOW_EXPERIMENT_NAME,
+            registered_model_name=registered_model_name,
             preprocessor_path=LABEL_ENCODER_PATH,
             input_schema={
                 "features": [str(name) for name in feature_names],

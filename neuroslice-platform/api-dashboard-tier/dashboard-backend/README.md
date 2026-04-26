@@ -1,4 +1,4 @@
-# Dashboard Backend
+﻿# Dashboard Backend
 
 `dashboard-backend` is the protected dashboard domain API. It validates authenticated sessions against the shared PostgreSQL database, stores dashboard-owned metadata, and delegates operational views to a pluggable provider layer.
 
@@ -95,3 +95,14 @@ alembic upgrade head
 ```
 
 The container startup script already waits for PostgreSQL, runs migrations, and then starts Uvicorn.
+
+## Verification
+
+With the Compose stack running:
+
+```bash
+curl http://localhost:8002/health
+curl -i http://localhost:8008/api/dashboard/national
+```
+
+`/health` should succeed on the internal service port. Dashboard API calls through Kong should require a valid dashboard access token.

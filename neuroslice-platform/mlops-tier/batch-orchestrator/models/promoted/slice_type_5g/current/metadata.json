@@ -1,7 +1,7 @@
 {
   "model_name": "slice_type_5g",
-  "version": 4,
-  "run_id": "eb82224de1d94a92879c08f9d138ab80",
+  "version": 6,
+  "run_id": "3294028e6cd6464ca7fe972d9eeb5348",
   "metrics": {
     "val_accuracy": 0.8925593667546174,
     "val_precision": 0.9106139333844953,
@@ -11,7 +11,6 @@
     "val_f1_class_2": 0.7019906323185011,
     "val_f1_class_3": 1.0
   },
-  "created_at": "2026-04-25T23:54:15+00:00",
-  "artifact_path": "promoted/slice_type_5g/current/model_fp16.onnx",
-  "stage": "production"
+  "created_at": "2026-04-26T11:55:23+00:00",
+  "framework": "lightgbm"
 }

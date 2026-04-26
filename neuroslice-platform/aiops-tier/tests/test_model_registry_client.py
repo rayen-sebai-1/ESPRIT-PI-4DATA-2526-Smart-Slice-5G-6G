@@ -1,6 +1,7 @@
 """Tests for the shared AIOps registry client."""
 
 import json
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -9,6 +10,20 @@ if ROOT_DIR.as_posix() not in sys.path:
     sys.path.insert(0, ROOT_DIR.as_posix())
 
 from shared.model_registry_client import ModelRegistryClient
+from shared.model_hot_reload import current_promoted_snapshot, should_reload_promoted_model
+
+
+def _load_congestion_model_loader_module():
+    service_dir = ROOT_DIR / "congestion-detector"
+    if service_dir.as_posix() not in sys.path:
+        sys.path.insert(0, service_dir.as_posix())
+
+    spec = importlib.util.spec_from_file_location("congestion_model_loader_test", service_dir / "model_loader.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_should_reload_model_when_promoted_version_changes(tmp_path):
@@ -135,3 +150,75 @@ def test_resolve_artifact_path_supports_promoted_current_fp16_path(tmp_path):
     )
 
     assert resolved == fp16_path.resolve()
+
+
+def test_promoted_current_snapshot_detects_metadata_version_change(tmp_path):
+    models_dir = tmp_path / "models"
+    current_dir = models_dir / "promoted" / "sla_5g" / "current"
+    current_dir.mkdir(parents=True)
+    model_path = current_dir / "model_fp16.onnx"
+    metadata_path = current_dir / "metadata.json"
+    registry_path = models_dir / "registry.json"
+
+    model_path.write_text("stub", encoding="utf-8")
+    metadata_path.write_text(json.dumps({"model_name": "sla_5g", "version": 1}), encoding="utf-8")
+    registry_path.write_text(json.dumps({"generated_at": None, "models": []}), encoding="utf-8")
+
+    snapshot = current_promoted_snapshot(registry_path, "sla_5g")
+
+    assert snapshot is not None
+    assert not should_reload_promoted_model(
+        registry_path=registry_path,
+        model_name="sla_5g",
+        current_version="1",
+        current_model_source=snapshot.model_path.as_posix(),
+        current_metadata_mtime_ns=snapshot.metadata_mtime_ns,
+        current_model_mtime_ns=snapshot.model_mtime_ns,
+    )
+
+    metadata_path.write_text(json.dumps({"model_name": "sla_5g", "version": 2}), encoding="utf-8")
+
+    assert should_reload_promoted_model(
+        registry_path=registry_path,
+        model_name="sla_5g",
+        current_version="1",
+        current_model_source=snapshot.model_path.as_posix(),
+        current_metadata_mtime_ns=snapshot.metadata_mtime_ns,
+        current_model_mtime_ns=snapshot.model_mtime_ns,
+    )
+
+
+def test_congestion_loader_uses_promoted_current_onnx(monkeypatch, tmp_path):
+    module = _load_congestion_model_loader_module()
+    models_dir = tmp_path / "models"
+    current_dir = models_dir / "promoted" / "congestion_5g" / "current"
+    current_dir.mkdir(parents=True)
+    model_path = current_dir / "model_fp16.onnx"
+    metadata_path = current_dir / "metadata.json"
+    registry_path = models_dir / "registry.json"
+
+    model_path.write_text("onnx", encoding="utf-8")
+    metadata_path.write_text(json.dumps({"model_name": "congestion_5g", "version": "12"}), encoding="utf-8")
+    registry_path.write_text(json.dumps({"generated_at": None, "models": []}), encoding="utf-8")
+
+    cfg = module.CongestionConfig()
+    cfg.model_registry_path = registry_path.as_posix()
+    cfg.registry_model_name = "congestion_5g"
+    cfg.model_path = "/mlops/models/congestion_5g_lstm_traced.pt"
+    cfg.preprocessor_path = (tmp_path / "missing_preprocessor.pkl").as_posix()
+
+    monkeypatch.setattr(module, "onnxruntime_available", lambda: True)
+    monkeypatch.setattr(
+        module.CongestionModelLoader,
+        "_load_onnx_session",
+        staticmethod(lambda path: {"session_path": path}),
+    )
+
+    bundle = module.CongestionModelLoader(cfg).load()
+
+    assert bundle.loaded is True
+    assert bundle.model == {"session_path": model_path.as_posix()}
+    assert bundle.model_format == "onnx_fp16"
+    assert bundle.model_version == "12"
+    assert bundle.model_source == model_path.as_posix()
+    assert bundle.fallback_mode is False

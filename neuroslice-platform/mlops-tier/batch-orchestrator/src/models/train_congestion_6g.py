@@ -288,6 +288,7 @@ def train(
             local_artifact_path=traced_model_path,
             task_type="regression_forecast",
             experiment_name=EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
             input_schema={
                 "features": ["cpu_utilization", "bandwidth_mbps"],
                 "shape": [None, int(X_val.shape[1]), int(X_val.shape[2])],

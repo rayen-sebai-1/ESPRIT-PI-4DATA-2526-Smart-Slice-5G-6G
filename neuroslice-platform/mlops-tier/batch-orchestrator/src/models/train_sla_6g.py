@@ -285,6 +285,7 @@ def train(
             local_artifact_path=LOCAL_MODEL_PATH,
             task_type="binary_classification",
             experiment_name=EXPERIMENT_NAME,
+            registered_model_name=REGISTERED_MODEL_NAME,
             preprocessor_path=SCALER_PATH,
             input_schema={
                 "features": [str(name) for name in feature_names],
