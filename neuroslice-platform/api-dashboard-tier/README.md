@@ -1,5 +1,7 @@
 ﻿# API Dashboard Tier
 
+Last verified: 2026-04-26.
+
 The API dashboard tier is the user-facing access layer for NeuroSlice. It combines a public telemetry BFF with a protected dashboard stack built from auth, backend, gateway, and frontend services.
 
 ## Components

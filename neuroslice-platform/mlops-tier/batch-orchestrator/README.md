@@ -1,5 +1,7 @@
 ﻿# Batch Orchestrator
 
+Last verified: 2026-04-26.
+
 `batch-orchestrator` is the active NeuroSlice MLOps project. It contains preprocessing, validation, model training, MLflow lifecycle integration, ONNX export, FP16 conversion, model promotion, the prediction API, tests, notebooks, and generated reports.
 
 ## Scope
@@ -33,6 +35,8 @@ Standalone Docker mode:
 cd neuroslice-platform/mlops-tier/batch-orchestrator
 docker compose up --build
 ```
+
+Standalone Docker starts the prediction API, MLflow, PostgreSQL, MinIO, Elasticsearch, Logstash, and Kibana.
 
 Integrated platform mode:
 
@@ -108,6 +112,17 @@ Integrated defaults:
 - artifact root: `s3://mlflow-artifacts`
 - MinIO endpoint: `http://minio:9000`
 - MinIO bucket: `mlflow-artifacts`
+- prediction log store: Elasticsearch at `http://elasticsearch:9200`
+- prediction log ingest: Logstash at `http://logstash:8081/predictions`
+
+Host-visible standalone ports:
+
+- API: `http://localhost:8010`
+- MLflow UI: `http://localhost:5000`
+- MinIO console: `http://localhost:9001`
+- Elasticsearch: `http://localhost:9200`
+- Logstash HTTP input: `http://localhost:8081/predictions`
+- Kibana: `http://localhost:5601`
 
 Training scripts log model binaries, preprocessors/scalers/encoders, ONNX artifacts, FP16 artifacts, metrics, and status reports. ONNX export failures are recorded in MLflow and registry metadata without necessarily failing the whole training run.
 

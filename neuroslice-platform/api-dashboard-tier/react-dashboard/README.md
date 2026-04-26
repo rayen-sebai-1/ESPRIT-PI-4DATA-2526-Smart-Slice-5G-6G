@@ -1,5 +1,7 @@
 ﻿# React Dashboard
 
+Last verified: 2026-04-26.
+
 `react-dashboard` is the protected React frontend for the NeuroSlice operations dashboard.
 
 ## Stack

@@ -1,5 +1,7 @@
 ﻿# Control Tier
 
+Last verified: 2026-04-26.
+
 The control tier is reserved for closed-loop automation, remediation policy execution, and operator action workflows driven by NeuroSlice events.
 
 ## Current Status

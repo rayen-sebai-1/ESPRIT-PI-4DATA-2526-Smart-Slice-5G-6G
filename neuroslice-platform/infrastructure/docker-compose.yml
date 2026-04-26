@@ -103,13 +103,14 @@ services:
     #   docker compose down -v
     # Then rebuild and restart the services.
     environment:
-      POSTGRES_USER: auth_app
-      POSTGRES_PASSWORD: auth_password
-      POSTGRES_DB: neuroslice_dashboard
-      AUTH_DB_USER: auth_app
-      AUTH_DB_PASSWORD: auth_password
-      DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_app}
-      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_password}
+      POSTGRES_USER: ${AUTH_DB_USER:-auth_app}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth_pass}
+      POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      AUTH_DB_USER: ${AUTH_DB_USER:-auth_app}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_pass}
+      DASHBOARD_DB_USER: dashboard_app
+      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD}
+      DASHBOARD_POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
     ports:
       - "5432:5432"
     volumes:
@@ -228,13 +229,17 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
-    expose:
-      - "9200"
+    ports:
+      - target: 9200
+        published: 9200
+        protocol: tcp
+        mode: host
     volumes:
       - es_data:/usr/share/elasticsearch/data
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
+    container_name: infrastructure-logstash
     profiles: ["mlops"]
     depends_on:
       elasticsearch:
@@ -242,10 +247,21 @@ services:
     environment:
       LS_JAVA_OPTS: "-Xms256m -Xmx256m"
       XPACK_MONITORING_ENABLED: "false"
-    expose:
-      - "8081"
+    ports:
+      - "8081:8081"
     volumes:
       - ../mlops-tier/batch-orchestrator/logstash/pipeline:/usr/share/logstash/pipeline:ro
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    profiles: ["mlops"]
+    depends_on:
+      elasticsearch:
+        condition: service_started
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      XPACK_SECURITY_ENABLED: "false"
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
 
   mlops-api:
     build:
@@ -667,7 +683,7 @@ services:
         condition: service_healthy
     environment:
       # Keep this URL aligned with the postgres service credentials above.
-      DATABASE_URL: postgresql+psycopg://auth_app:auth_password@postgres:5432/neuroslice_dashboard
+      DATABASE_URL: postgresql+psycopg://${AUTH_DB_USER:-auth_app}:${AUTH_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
       PORT: "8001"
       JWT_SECRET_KEY: super-secret-key
       JWT_ACCESS_TOKEN_EXPIRES_MINUTES: 15
@@ -702,7 +718,7 @@ services:
       context: ..
       dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://${DASHBOARD_DB_USER:-dashboard_app}:${DASHBOARD_DB_PASSWORD:-dashboard_password}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      DATABASE_URL: postgresql+psycopg://dashboard_app:${DASHBOARD_DB_PASSWORD}@postgres:5432/neuroslice_dashboard
       PORT: "8002"
       JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
       DASHBOARD_DATA_PROVIDER: ${DASHBOARD_DATA_PROVIDER:-temporary_mock}

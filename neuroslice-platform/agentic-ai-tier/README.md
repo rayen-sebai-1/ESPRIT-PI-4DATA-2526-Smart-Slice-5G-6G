@@ -1,5 +1,7 @@
 ﻿# Agentic AI Tier
 
+Last verified: 2026-04-26.
+
 The agentic AI tier provides operator-assistance services on top of NeuroSlice telemetry, Redis state, InfluxDB metrics, and runtime AIOps outputs.
 
 ## Implemented Services

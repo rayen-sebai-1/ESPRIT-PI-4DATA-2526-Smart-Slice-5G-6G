@@ -1,5 +1,7 @@
 ﻿# NeuroSlice Platform
 
+Last verified: 2026-04-26.
+
 `neuroslice-platform/` is the runnable platform subtree. It contains the integrated Docker Compose runtime, all service tiers, and the MLOps project used to train and promote models for online AIOps.
 
 ## Current Tiers
@@ -35,7 +37,7 @@ Deferred:
 
 Optional `mlops` profile adds:
 
-- `mlops-postgres`, `minio`, `minio-init`, `mlflow-server`, `elasticsearch`, `logstash`, `mlops-api`
+- `mlops-postgres`, `minio`, `minio-init`, `mlflow-server`, `elasticsearch`, `logstash`, `kibana`, `mlops-api`
 
 Optional `mlops-worker` profile runs the offline pipeline manually.
 
@@ -125,8 +127,11 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - Grafana: `http://localhost:3000`
 - InfluxDB: `http://localhost:8086`
 - MLflow UI: `http://localhost:5000` with `mlops` profile
+- MinIO API: `http://localhost:9000` with `mlops` profile
 - MinIO console: `http://localhost:9001` with `mlops` profile
 - MLOps API: `http://localhost:8010` with `mlops` profile
+- Elasticsearch: `http://localhost:9200` with `mlops` profile
+- Kibana: `http://localhost:5601` with `mlops` profile
 
 ## Repository Map
 
