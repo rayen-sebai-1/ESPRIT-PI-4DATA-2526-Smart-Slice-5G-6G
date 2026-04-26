@@ -59,6 +59,9 @@ Critical interpretation rules:
 4) If derived_misroutingScore is high, investigate slice_misrouting and inconsistent slice_type signals.
 5) Use faults.active and active_count to separate currently active causes from stale events.
 6) Prefer explanations that connect at least one fault signal with KPI evidence and affected entities.
+7) Tool output is already aggregated for a local 32k-context qwen2.5 model. Use aggregated evidence, not raw telemetry.
+8) Prefer deterministic summary fields: p95, max, last, trend, breach_count, active faults, Redis entity state, and AIOps outputs.
+9) Do not invent unavailable KPI values. If InfluxDB or Redis returns no data, state uncertainty clearly.
 
 Tooling policy (mandatory):
 - You MUST call fetch_influx_kpis and fetch_redis_state before giving any final answer.
@@ -368,70 +371,85 @@ class RCAAgentService:
         if influx is None or redis_state is None:
             return None
 
-        telemetry = influx.get("telemetry", {})
-        faults = influx.get("faults", {})
-        fault_records = faults.get("records", []) if isinstance(faults, dict) else []
-        if not isinstance(fault_records, list):
-            fault_records = []
+        telemetry = influx.get("telemetry", {}) if isinstance(influx, dict) else {}
+        faults = influx.get("faults", {}) if isinstance(influx, dict) else {}
+        telemetry_groups = telemetry.get("groups", []) if isinstance(telemetry, dict) else []
+        if not isinstance(telemetry_groups, list):
+            telemetry_groups = []
 
-        congestion_scores = telemetry.get("derived_congestionScore", [])
-        rb_util = telemetry.get("kpi_rbUtilizationPct", [])
-        packet_loss = telemetry.get("kpi_packetLossPct", [])
-        latency = telemetry.get("kpi_forwardingLatencyMs", [])
-        health_scores = telemetry.get("derived_healthScore", [])
+        def _field_max(field: str) -> Optional[float]:
+            values = []
+            for group in telemetry_groups:
+                if isinstance(group, dict) and group.get("field") == field:
+                    try:
+                        values.append(float(group.get("max") or 0))
+                    except (TypeError, ValueError):
+                        continue
+            return max(values) if values else None
 
-        def _safe_max(values: Any) -> float:
-            if not isinstance(values, list) or not values:
-                return 0.0
-            numeric_values: List[float] = []
-            for value in values:
-                try:
-                    numeric_values.append(float(value))
-                except (TypeError, ValueError):
-                    continue
-            return max(numeric_values) if numeric_values else 0.0
+        def _field_min(field: str) -> Optional[float]:
+            values = []
+            for group in telemetry_groups:
+                if isinstance(group, dict) and group.get("field") == field:
+                    try:
+                        values.append(float(group.get("min") or 0))
+                    except (TypeError, ValueError):
+                        continue
+            return min(values) if values else None
 
-        def _safe_min(values: Any) -> float:
-            if not isinstance(values, list) or not values:
-                return 0.0
-            numeric_values: List[float] = []
-            for value in values:
-                try:
-                    numeric_values.append(float(value))
-                except (TypeError, ValueError):
-                    continue
-            return min(numeric_values) if numeric_values else 0.0
+        def _round_optional(value: Optional[float], digits: int) -> Optional[float]:
+            return round(float(value), digits) if value is not None else None
 
-        peak_congestion = _safe_max(congestion_scores)
-        peak_rb = _safe_max(rb_util)
-        peak_packet_loss = _safe_max(packet_loss)
-        peak_latency = _safe_max(latency)
-        min_health = _safe_min(health_scores)
+        def _field_trends(field: str) -> List[str]:
+            trends = []
+            for group in telemetry_groups:
+                if isinstance(group, dict) and group.get("field") == field and group.get("trend"):
+                    trends.append(str(group.get("trend")))
+            return sorted(set(trends))
 
-        active_fault_types: List[str] = []
-        affected_from_faults: List[str] = []
-        for record in fault_records:
-            if not isinstance(record, dict):
-                continue
-            is_active = int(record.get("active", 0)) == 1
-            fault_type = str(record.get("fault_type", "")).strip()
-            if is_active and fault_type:
-                active_fault_types.append(fault_type)
-            raw_affected = str(record.get("affected_entities", "")).strip()
-            if raw_affected:
-                for item in raw_affected.split(","):
-                    entity = item.strip()
-                    if entity:
-                        affected_from_faults.append(entity)
+        peak_congestion = _field_max("derived_congestionScore")
+        peak_rb = _field_max("kpi_rbUtilizationPct")
+        peak_packet_loss = _field_max("kpi_packetLossPct")
+        peak_latency = _field_max("kpi_forwardingLatencyMs")
+        min_health = _field_min("derived_healthScore")
 
-        active_entities = redis_state.get("active_entities", [])
-        affected_entities = []
-        if isinstance(active_entities, list):
-            affected_entities.extend([str(entity) for entity in active_entities if str(entity).strip()])
-        affected_entities.extend(affected_from_faults)
+        active_faults: List[Dict[str, Any]] = []
+        if isinstance(faults, dict):
+            for key in ("active_faults", "redis_active_faults"):
+                value = faults.get(key, [])
+                if isinstance(value, list):
+                    active_faults.extend([item for item in value if isinstance(item, dict)])
+        if isinstance(redis_state, dict):
+            value = redis_state.get("active_faults", [])
+            if isinstance(value, list):
+                active_faults.extend([item for item in value if isinstance(item, dict)])
+
+        active_fault_types = sorted(
+            {
+                str(fault.get("fault_type")).strip()
+                for fault in active_faults
+                if str(fault.get("fault_type") or "").strip()
+            }
+        )
+
+        affected_entities: List[str] = []
+        for fault in active_faults:
+            raw_affected = fault.get("affected_entities", [])
+            if isinstance(raw_affected, list):
+                affected_entities.extend([str(entity) for entity in raw_affected if str(entity).strip()])
+        if isinstance(redis_state, dict):
+            entities = redis_state.get("entities", {})
+            if isinstance(entities, dict):
+                affected_entities.extend([str(entity_id) for entity_id in entities.keys() if str(entity_id).strip()])
+        telemetry_summary = telemetry.get("summary", {}) if isinstance(telemetry, dict) else {}
+        top_entities = telemetry_summary.get("top_anomalous_entities", []) if isinstance(telemetry_summary, dict) else []
+        if isinstance(top_entities, list):
+            for entity in top_entities:
+                if isinstance(entity, dict) and entity.get("entity_id"):
+                    affected_entities.append(str(entity["entity_id"]))
         affected_entities = sorted(set(affected_entities))
 
-        if "ran_congestion" in active_fault_types and peak_congestion >= 0.8 and peak_rb >= 90:
+        if "ran_congestion" in active_fault_types and (peak_congestion or 0) >= 0.8 and (peak_rb or 0) >= 90:
             root_cause = (
                 "Likely RAN congestion on cell/gnb resources impacting the slice, supported by active ran_congestion "
                 "faults with high radio block utilization and elevated congestion score."
@@ -445,7 +463,7 @@ class RCAAgentService:
                 "Temporarily prioritize URLLC scheduling weights for the impacted slice.",
                 "Re-route edge traffic bursts to alternate cell sectors where capacity is available.",
             ]
-        elif "packet_loss_spike" in active_fault_types and peak_packet_loss >= 3:
+        elif "packet_loss_spike" in active_fault_types and (peak_packet_loss or 0) >= 3:
             root_cause = (
                 "Primary issue appears to be packet loss escalation, likely linked to transient forwarding congestion "
                 "across slice path entities."
@@ -457,6 +475,17 @@ class RCAAgentService:
                 "Inspect UPF and edge transport queues for buffer pressure and drops.",
                 "Enable short-term traffic shaping for bursty flows on this slice.",
                 "Validate QoS profile consistency between RAN and edge forwarding policies.",
+            ]
+        elif telemetry.get("status") == "no_data" or influx.get("status") == "error" or redis_state.get("status") == "error":
+            root_cause = (
+                "RCA confidence is limited because one or more telemetry sources returned no data or an error. "
+                "No unavailable KPI values were inferred."
+            )
+            summary = f"Slice {slice_id} could not be diagnosed confidently from the available summarized evidence."
+            recommended_action = [
+                "Verify InfluxDB and Redis connectivity for the agent containers.",
+                "Confirm normalized telemetry is flowing on stream:norm.telemetry and into the telemetry bucket.",
+                "Repeat the scan after the default 30-minute window contains fresh samples.",
             ]
         else:
             root_cause = (
@@ -472,14 +501,22 @@ class RCAAgentService:
 
         evidence_kpis: Dict[str, Any] = {
             "requestedDomain": domain or "not_provided",
-            "observedDomain": telemetry.get("tags", {}).get("domain"),
             "timeRange": time_range,
+            "telemetryStatus": telemetry.get("status"),
+            "influxStatus": influx.get("status"),
+            "redisStatus": redis_state.get("status"),
             "activeFaultTypes": sorted(set(active_fault_types)),
-            "peakDerivedCongestionScore": round(float(peak_congestion), 4),
-            "peakRbUtilizationPct": round(float(peak_rb), 2),
-            "peakPacketLossPct": round(float(peak_packet_loss), 2),
-            "peakForwardingLatencyMs": round(float(peak_latency), 2),
-            "minDerivedHealthScore": round(float(min_health), 4),
+            "peakDerivedCongestionScore": _round_optional(peak_congestion, 4),
+            "peakRbUtilizationPct": _round_optional(peak_rb, 2),
+            "peakPacketLossPct": _round_optional(peak_packet_loss, 2),
+            "peakForwardingLatencyMs": _round_optional(peak_latency, 2),
+            "minDerivedHealthScore": _round_optional(min_health, 4),
+            "packetLossTrends": _field_trends("kpi_packetLossPct"),
+            "latencyTrends": _field_trends("kpi_forwardingLatencyMs"),
+            "topAnomalousEntities": top_entities[:5] if isinstance(top_entities, list) else [],
+            "topBreachedKpis": telemetry_summary.get("top_breached_kpis", [])[:5]
+            if isinstance(telemetry_summary, dict)
+            else [],
         }
 
         return ManualScanResponse(
