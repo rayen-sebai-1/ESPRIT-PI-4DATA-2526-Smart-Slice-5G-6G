@@ -1,11 +1,13 @@
 """Model loading for congestion-detector."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import joblib
@@ -42,10 +44,22 @@ class CongestionModelLoader:
         model_format = "heuristic"
         discovered_version = ""
         onnx_enabled = onnxruntime_available()
+        promoted_current_path = self._promoted_current_model_path()
+        promoted_metadata = self._read_promoted_metadata(promoted_current_path.parent / "metadata.json")
 
         # Make mlops source importable so joblib can resolve class symbols.
         if os.path.isdir("/mlops") and "/mlops" not in sys.path:
             sys.path.insert(0, "/mlops")
+
+        if self.cfg.model_format == "onnx_fp16" and onnx_enabled and promoted_current_path.exists():
+            try:
+                model = load_session(promoted_current_path.as_posix())
+                model_source = promoted_current_path.as_posix()
+                model_format = "onnx_fp16_promoted_current"
+                discovered_version = str(promoted_metadata.get("version", "") or "")
+                logger.info("Loaded promoted congestion ONNX model from %s", promoted_current_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not load promoted current congestion ONNX model: %s", exc)
 
         registry_client = ModelRegistryClient(
             registry_path=self.cfg.model_registry_path,
@@ -128,3 +142,16 @@ class CongestionModelLoader:
         stat = os.stat(path)
         ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"{os.path.basename(path)}@{ts}"
+
+    def _promoted_current_model_path(self) -> Path:
+        models_dir = Path(self.cfg.model_registry_path).expanduser().resolve().parent
+        return models_dir / "promoted" / self.cfg.registry_model_name / "current" / "model_fp16.onnx"
+
+    @staticmethod
+    def _read_promoted_metadata(path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return {}

@@ -127,6 +127,7 @@ class ModelRegistryClient:
         search_roots = [
             self.registry_path.parent,
             self.registry_path.parent / "onnx",
+            self.registry_path.parent / "promoted",
             self.registry_path.parent.parent,
             self.registry_path.parent.parent / "data" / "processed",
         ]
@@ -163,6 +164,8 @@ class ModelRegistryClient:
     def _candidate_keys(preferred_format: str) -> list[str]:
         if preferred_format == "onnx_fp16":
             return [
+                "promoted_current_fp16_path",
+                "promoted_fp16_path",
                 "onnx_fp16_path",
                 "onnx_fp16_uri",
                 "onnx_path",
@@ -172,6 +175,7 @@ class ModelRegistryClient:
             ]
         if preferred_format == "onnx":
             return [
+                "promoted_fp16_path",
                 "onnx_path",
                 "onnx_uri",
                 "onnx_fp16_path",
@@ -179,7 +183,16 @@ class ModelRegistryClient:
                 "local_artifact_path",
                 "artifact_uri",
             ]
-        return ["local_artifact_path", "artifact_uri", "onnx_fp16_path", "onnx_fp16_uri", "onnx_path", "onnx_uri"]
+        return [
+            "promoted_current_fp16_path",
+            "promoted_fp16_path",
+            "local_artifact_path",
+            "artifact_uri",
+            "onnx_fp16_path",
+            "onnx_fp16_uri",
+            "onnx_path",
+            "onnx_uri",
+        ]
 
     @staticmethod
     def _is_promoted(entry: dict[str, Any]) -> bool:

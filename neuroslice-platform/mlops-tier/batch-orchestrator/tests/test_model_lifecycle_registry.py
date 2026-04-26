@@ -1,5 +1,7 @@
 """Tests for registry metadata, MLflow artifact logging, and promotion rules."""
 
+import json
+
 from src.models.export_onnx import ONNXExportResult
 from src.models.lifecycle import (
     evaluate_promotion,
@@ -135,6 +137,83 @@ def test_finalize_model_lifecycle_logs_artifacts_and_records_onnx_failure(tmp_pa
     assert "converter unavailable" in entry["onnx_export_reason"]
     assert ("reports/onnx_export_status.json" in [item[1] for item in logged_dicts])
     assert len(logged_artifacts) == 2
+
+
+def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_path, monkeypatch):
+    models_dir = tmp_path / "models"
+    models_dir.mkdir(parents=True)
+    onnx_dir = models_dir / "onnx"
+    onnx_dir.mkdir(parents=True)
+
+    raw_onnx = onnx_dir / "sla_5g.onnx"
+    fp16_onnx = onnx_dir / "sla_5g_fp16.onnx"
+    raw_onnx.write_text("raw", encoding="utf-8")
+    fp16_onnx.write_text("fp16", encoding="utf-8")
+
+    artifact_path = tmp_path / "sla_5g_model.ubj"
+    artifact_path.write_text("model", encoding="utf-8")
+    preprocessor_path = tmp_path / "scaler.pkl"
+    preprocessor_path.write_text("preprocessor", encoding="utf-8")
+    registry_path = models_dir / "registry.json"
+
+    class _RunInfo:
+        run_id = "run-xyz"
+
+    class _Run:
+        info = _RunInfo()
+
+    monkeypatch.setattr("src.models.lifecycle.mlflow.active_run", lambda: _Run())
+    monkeypatch.setattr("src.models.lifecycle.mlflow.log_artifact", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.models.lifecycle.mlflow.get_artifact_uri",
+        lambda path="": f"s3://mlflow-artifacts/1/run-xyz/artifacts/{path}",
+    )
+    monkeypatch.setattr("src.models.lifecycle.mlflow.set_tags", lambda tags: None)
+    monkeypatch.setattr("src.models.lifecycle.mlflow.set_tag", lambda key, value: None)
+    monkeypatch.setattr("src.models.lifecycle.mlflow.log_dict", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.models.lifecycle.export_model_to_onnx",
+        lambda **kwargs: ONNXExportResult(
+            status="success",
+            reason="ok",
+            raw_path=raw_onnx,
+            fp16_path=fp16_onnx,
+            validated=True,
+            smoke_test_passed=True,
+        ),
+    )
+
+    entry = finalize_model_lifecycle(
+        model_name="sla_5g",
+        model_family="xgboost_classifier",
+        artifact_format="xgboost_ubj",
+        metrics={"val_roc_auc": 0.9},
+        local_artifact_path=artifact_path,
+        task_type="binary_classification",
+        experiment_name="neuroslice-aiops",
+        preprocessor_path=preprocessor_path,
+        input_schema={"features": ["f1", "f2"]},
+        model=object(),
+        export_kind="xgboost",
+        export_basename="sla_5g",
+        example_input=[[0.1, 0.2]],
+        registry_path=registry_path,
+    )
+
+    promoted_current_fp16 = models_dir / "promoted" / "sla_5g" / "current" / "model_fp16.onnx"
+    promoted_current_meta = models_dir / "promoted" / "sla_5g" / "current" / "metadata.json"
+    promoted_version_fp16 = models_dir / "promoted" / "sla_5g" / "1" / "model_fp16.onnx"
+
+    assert entry["promoted"] is True
+    assert entry["stage"] == "production"
+    assert promoted_current_fp16.exists()
+    assert promoted_version_fp16.exists()
+    assert promoted_current_meta.exists()
+
+    metadata = json.loads(promoted_current_meta.read_text(encoding="utf-8"))
+    assert metadata["model_name"] == "sla_5g"
+    assert metadata["version"] == 1
+    assert metadata["run_id"] == "run-xyz"
 
 
 def test_sla_5g_promotion_rule_promotes_on_auc():

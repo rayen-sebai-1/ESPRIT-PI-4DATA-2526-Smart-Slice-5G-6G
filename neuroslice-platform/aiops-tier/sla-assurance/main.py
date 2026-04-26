@@ -31,23 +31,59 @@ async def _wait_for_redis(max_attempts: int = 30, sleep_sec: float = 2.0):
     raise RuntimeError("Could not connect to Redis")
 
 
+async def _hot_reload_models(
+    *,
+    cfg,
+    loader: SlaModelLoader,
+    inferencer: SlaInferencer,
+) -> None:
+    interval = max(5, int(cfg.model_poll_interval_sec))
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            next_bundle = loader.load()
+            if not next_bundle.loaded:
+                continue
+
+            current = inferencer.bundle
+            if (
+                next_bundle.model_version != current.model_version
+                or next_bundle.model_source != current.model_source
+                or next_bundle.model_format != current.model_format
+            ):
+                inferencer.update_bundle(next_bundle)
+                logger.info(
+                    "Hot-reloaded SLA model to version=%s source=%s",
+                    next_bundle.model_version,
+                    next_bundle.model_source,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SLA model hot-reload check failed: %s", exc)
+
+
 async def main() -> None:
     cfg = get_config()
     logger.info("Starting %s", cfg.service_name)
 
     redis_client = await _wait_for_redis()
 
-    model_bundle = SlaModelLoader(cfg).load()
+    loader = SlaModelLoader(cfg)
+    model_bundle = loader.load()
     inferencer = SlaInferencer(cfg, model_bundle)
 
     publisher = SlaPublisher(cfg, redis_client)
     await publisher.start()
 
     consumer = SlaConsumer(cfg, redis_client, inferencer, publisher)
+    reload_task = asyncio.create_task(_hot_reload_models(cfg=cfg, loader=loader, inferencer=inferencer))
 
     try:
         await consumer.run_forever()
     finally:
+        reload_task.cancel()
+        await asyncio.gather(reload_task, return_exceptions=True)
         await publisher.stop()
 
 

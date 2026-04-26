@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import unquote, urlparse
 
 try:
     import mlflow
@@ -27,11 +29,12 @@ except ModuleNotFoundError:
 
     mlflow = _MissingMlflow()
 
-from src.models.export_onnx import ONNXExportResult, export_model_to_onnx
+from src.mlops.onnx_export import ONNXExportResult, convert_onnx_to_fp16, export_model_to_onnx
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 MODELS_DIR = ROOT_DIR / "models"
 ONNX_DIR = MODELS_DIR / "onnx"
+PROMOTED_DIR = MODELS_DIR / "promoted"
 REGISTRY_PATH = MODELS_DIR / "registry.json"
 REPORT_PATH = ROOT_DIR / "reports" / "model_training_summary.md"
 LOCAL_MLFLOW_DB = ROOT_DIR / "mlflow.db"
@@ -114,6 +117,8 @@ def finalize_model_lifecycle(
     input_names: Sequence[str] | None = None,
     output_names: Sequence[str] | None = None,
     dynamic_axes: Mapping[str, Mapping[int, str]] | None = None,
+    onnx_fixed_sequence_length: int | None = None,
+    onnx_opset_version: int | None = None,
     run_smoke_test: bool | None = None,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -129,6 +134,8 @@ def finalize_model_lifecycle(
     artifact_uri = _log_artifact_and_get_uri(local_path, "models")
     preprocessor_uri = _log_artifact_and_get_uri(preprocessor_local_path, "preprocessing")
 
+    resolved_registry_path = registry_path or REGISTRY_PATH
+
     if export_kind and model is not None and example_input is not None and export_basename:
         onnx_result = export_model_to_onnx(
             model=model,
@@ -140,6 +147,8 @@ def finalize_model_lifecycle(
             output_names=output_names,
             dynamic_axes=dynamic_axes,
             run_smoke_test=_resolve_smoke_test_flag(run_smoke_test),
+            opset_version=onnx_opset_version or int(os.getenv("ONNX_OPSET_VERSION", "18")),
+            pytorch_fixed_sequence_length=onnx_fixed_sequence_length,
         )
     else:
         onnx_result = ONNXExportResult(
@@ -198,7 +207,15 @@ def finalize_model_lifecycle(
         "reason": combined_reason,
     }
 
-    entry = write_registry_entry(entry, registry_path=registry_path or REGISTRY_PATH)
+    entry = write_registry_entry(entry, registry_path=resolved_registry_path)
+    promoted_entry = None
+    try:
+        promoted_entry = _sync_promoted_artifacts_for_model(model_name=model_name, registry_path=resolved_registry_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] Could not sync promoted artifacts for {model_name}: {exc}")
+
+    if promoted_entry and int(promoted_entry.get("version", 0)) == int(entry.get("version", 0)):
+        entry = promoted_entry
 
     mlflow.set_tags(
         {
@@ -209,7 +226,8 @@ def finalize_model_lifecycle(
             "neuroslice.quality_gate_status": entry["quality_gate_status"],
             "neuroslice.onnx_export_status": entry["onnx_export_status"],
             "neuroslice.artifact_format": entry["format"],
-            "neuroslice.registry_path": str((registry_path or REGISTRY_PATH).as_posix()),
+            "neuroslice.registry_path": str(resolved_registry_path.as_posix()),
+            "neuroslice.promoted_current_fp16_path": str(entry.get("promoted_current_fp16_path") or ""),
         }
     )
     return entry
@@ -506,6 +524,155 @@ def _to_registry_relative_path(path: Path | None) -> str | None:
             return resolved.relative_to(ROOT_DIR.resolve()).as_posix()
         except ValueError:
             return resolved.as_posix()
+
+
+def _sync_promoted_artifacts_for_model(*, model_name: str, registry_path: Path) -> dict[str, Any] | None:
+    registry = load_registry(registry_path)
+    models_dir = registry_path.parent.resolve()
+    promoted_root = models_dir / "promoted"
+
+    model_entries = [entry for entry in registry["models"] if str(entry.get("model_name")) == model_name]
+    production_entries = [
+        entry
+        for entry in model_entries
+        if bool(entry.get("promoted")) or str(entry.get("stage", "")).lower() == "production"
+    ]
+    if not production_entries:
+        return None
+
+    successful_entries = [
+        entry for entry in production_entries if str(entry.get("onnx_export_status", "")).lower() == "success"
+    ]
+    selected_entry = max(
+        successful_entries or production_entries,
+        key=lambda item: int(item.get("version", 0)),
+    )
+
+    source_raw = _resolve_local_onnx_artifact(selected_entry, models_dir=models_dir, prefer_fp16=False)
+    source_fp16 = _resolve_local_onnx_artifact(selected_entry, models_dir=models_dir, prefer_fp16=True)
+
+    version = str(selected_entry.get("version", ""))
+    if not version:
+        return None
+
+    version_dir = promoted_root / model_name / version
+    current_dir = promoted_root / model_name / "current"
+    version_dir.mkdir(parents=True, exist_ok=True)
+    current_dir.mkdir(parents=True, exist_ok=True)
+
+    version_raw_path = version_dir / "model.onnx"
+    version_fp16_path = version_dir / "model_fp16.onnx"
+
+    if source_raw and source_raw.exists():
+        _copy_if_different(source_raw, version_raw_path)
+
+    if source_fp16 and source_fp16.exists():
+        _copy_if_different(source_fp16, version_fp16_path)
+    elif version_raw_path.exists():
+        convert_onnx_to_fp16(version_raw_path, version_fp16_path, keep_fp32_io=True)
+
+    if not version_fp16_path.exists():
+        selected_entry["promoted_artifact_status"] = "missing_fp16_artifact"
+        registry_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+        return selected_entry
+
+    current_fp16_path = current_dir / "model_fp16.onnx"
+    _copy_if_different(version_fp16_path, current_fp16_path)
+
+    if version_raw_path.exists():
+        _copy_if_different(version_raw_path, current_dir / "model.onnx")
+
+    metadata = {
+        "model_name": model_name,
+        "version": int(selected_entry.get("version", 0)),
+        "run_id": str(selected_entry.get("mlflow_run_id") or selected_entry.get("run_id") or ""),
+        "metrics": dict(selected_entry.get("metrics") or {}),
+        "created_at": str(selected_entry.get("created_at") or utcnow_iso()),
+        "artifact_path": _to_registry_relative_path(current_fp16_path),
+        "stage": str(selected_entry.get("stage") or "production"),
+    }
+
+    version_metadata_path = version_dir / "metadata.json"
+    current_metadata_path = current_dir / "metadata.json"
+    version_txt_path = current_dir / "version.txt"
+    version_metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    current_metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    version_txt_path.write_text(str(metadata["version"]), encoding="utf-8")
+
+    selected_entry["promoted_artifact_status"] = "ready"
+    selected_entry["promoted_fp16_path"] = _to_registry_relative_path(version_fp16_path)
+    selected_entry["promoted_current_fp16_path"] = _to_registry_relative_path(current_fp16_path)
+    selected_entry["promoted_metadata_path"] = _to_registry_relative_path(version_metadata_path)
+    selected_entry["promoted_current_metadata_path"] = _to_registry_relative_path(current_metadata_path)
+
+    registry["generated_at"] = utcnow_iso()
+    registry_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+    return selected_entry
+
+
+def _resolve_local_onnx_artifact(
+    entry: Mapping[str, Any],
+    *,
+    models_dir: Path,
+    prefer_fp16: bool,
+) -> Path | None:
+    if prefer_fp16:
+        keys = ("onnx_fp16_path", "onnx_fp16_uri", "onnx_path", "onnx_uri")
+    else:
+        keys = ("onnx_path", "onnx_uri", "onnx_fp16_path", "onnx_fp16_uri")
+
+    for key in keys:
+        raw = entry.get(key)
+        resolved = _resolve_local_reference(raw, models_dir=models_dir)
+        if resolved is not None and resolved.exists():
+            return resolved
+    return None
+
+
+def _resolve_local_reference(raw_value: Any, *, models_dir: Path) -> Path | None:
+    if not raw_value:
+        return None
+
+    value = str(raw_value)
+    parsed = urlparse(value)
+
+    if parsed.scheme in {"", None}:
+        candidate = Path(value)
+        if candidate.is_absolute() and candidate.exists():
+            return candidate.resolve()
+
+        local_candidate = (models_dir / candidate).resolve()
+        if local_candidate.exists():
+            return local_candidate
+
+        repo_candidate = (models_dir.parent / candidate).resolve()
+        if repo_candidate.exists():
+            return repo_candidate
+
+        return local_candidate
+
+    if parsed.scheme == "file":
+        file_path = Path(unquote(parsed.path))
+        return file_path.resolve() if file_path.exists() else file_path
+
+    basename = Path(parsed.path).name
+    if not basename:
+        return None
+
+    for root in (models_dir / "onnx", models_dir, models_dir / "promoted"):
+        candidate = (root / basename).resolve()
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _copy_if_different(source: Path, destination: Path) -> None:
+    source_resolved = source.resolve()
+    destination_resolved = destination.resolve() if destination.exists() else destination
+    if source_resolved == destination_resolved:
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_resolved, destination)
 
 
 def _is_number(value: Any) -> bool:

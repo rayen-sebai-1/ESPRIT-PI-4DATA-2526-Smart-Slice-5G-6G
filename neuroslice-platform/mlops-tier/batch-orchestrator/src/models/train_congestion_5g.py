@@ -335,7 +335,7 @@ def train():
             if active_run is not None:
                 model_uri = f"runs:/{active_run.info.run_id}/model"
                 try:
-                    mlflow.register_model(model_uri=model_uri, name=REGISTERED_MODEL_NAME)
+                    mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
                 except Exception as exc:  # noqa: BLE001
                     print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
             else:
@@ -361,7 +361,9 @@ def train():
             example_input=X_test[:1],
             input_names=["input"],
             output_names=["logits"],
-            dynamic_axes={"input": {0: "batch", 1: "sequence"}, "logits": {0: "batch"}},
+            dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+            onnx_fixed_sequence_length=30,
+            onnx_opset_version=18,
         )
 
         print(f"[INFO] Final model saved to {MODEL_PATH.as_posix()}")

@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional, Tuple
 
 import joblib
@@ -39,6 +42,8 @@ class SliceModelLoader:
         discovered_version = ""
         model_format = "heuristic"
         onnx_enabled = onnxruntime_available()
+        promoted_current_path = self._promoted_current_model_path()
+        promoted_metadata = self._read_promoted_metadata(promoted_current_path.parent / "metadata.json")
 
         # Label encoder can exist independently and is used by both model and fallback.
         label_encoder = None
@@ -50,6 +55,16 @@ class SliceModelLoader:
                 logger.warning("Could not load slice label encoder: %s", exc)
         else:
             logger.warning("Slice label encoder not found at %s", self.cfg.label_encoder_path)
+
+        if self.cfg.model_format == "onnx_fp16" and onnx_enabled and promoted_current_path.exists():
+            try:
+                model = ONNXClassifierAdapter(load_session(promoted_current_path.as_posix()))
+                model_source = promoted_current_path.as_posix()
+                model_format = "onnx_fp16_promoted_current"
+                discovered_version = str(promoted_metadata.get("version", "") or "")
+                logger.info("Loaded promoted slice ONNX model from %s", promoted_current_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not load promoted current slice ONNX model: %s", exc)
 
         registry_client = ModelRegistryClient(
             registry_path=self.cfg.model_registry_path,
@@ -105,7 +120,7 @@ class SliceModelLoader:
             if model is not None:
                 model_format = "legacy_mlflow_registry"
 
-        model_version = self.cfg.model_version.strip() or discovered_version or "heuristic"
+        model_version = self.cfg.model_version.strip() or discovered_version or self._derive_version(model_source)
         loaded = model is not None and label_encoder is not None
         fallback_mode = model_format != "onnx_fp16"
 
@@ -180,3 +195,24 @@ class SliceModelLoader:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed loading slice model from registry metadata: %s", exc)
             return None, "heuristic", ""
+
+    def _promoted_current_model_path(self) -> Path:
+        models_dir = Path(self.cfg.model_registry_path).expanduser().resolve().parent
+        return models_dir / "promoted" / self.cfg.registry_model_name / "current" / "model_fp16.onnx"
+
+    @staticmethod
+    def _read_promoted_metadata(path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return {}
+
+    @staticmethod
+    def _derive_version(path: str) -> str:
+        if not path or not os.path.exists(path):
+            return "heuristic"
+        stat = os.stat(path)
+        ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
+        return f"{os.path.basename(path)}@{ts}"

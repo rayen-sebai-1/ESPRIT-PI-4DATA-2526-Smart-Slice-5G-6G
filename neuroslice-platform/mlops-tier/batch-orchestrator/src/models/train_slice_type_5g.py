@@ -264,7 +264,7 @@ def train(
             if active_run is not None:
                 model_uri = f"runs:/{active_run.info.run_id}/model"
                 try:
-                    mlflow.register_model(model_uri=model_uri, name=REGISTERED_MODEL_NAME)
+                    mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
                 except Exception as exc:  # noqa: BLE001
                     print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
             else:

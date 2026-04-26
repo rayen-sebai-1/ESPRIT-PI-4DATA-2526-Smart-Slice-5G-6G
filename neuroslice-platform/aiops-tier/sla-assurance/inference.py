@@ -18,6 +18,15 @@ class SlaInferencer:
         self.cfg = cfg
         self.bundle = bundle
 
+    def update_bundle(self, bundle: SlaModelBundle) -> None:
+        self.bundle = bundle
+        logger.info(
+            "Updated SLA model bundle: version=%s format=%s source=%s",
+            bundle.model_version,
+            bundle.model_format,
+            bundle.model_source,
+        )
+
     def infer(self, raw_event: Dict[str, Any]) -> SlaEvent | None:
         event = CanonicalTelemetryEvent.model_validate(raw_event)
         feature_vec = self._feature_vector(event)

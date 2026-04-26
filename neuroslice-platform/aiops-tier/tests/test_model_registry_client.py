@@ -113,3 +113,25 @@ def test_resolve_artifact_path_prefers_fp16_then_onnx_then_local(tmp_path):
     )
 
     assert resolved == raw_onnx.resolve()
+
+
+def test_resolve_artifact_path_supports_promoted_current_fp16_path(tmp_path):
+    models_dir = tmp_path / "models"
+    promoted_current = models_dir / "promoted" / "sla_5g" / "current"
+    promoted_current.mkdir(parents=True)
+    fp16_path = promoted_current / "model_fp16.onnx"
+    fp16_path.write_text("stub", encoding="utf-8")
+
+    registry_path = models_dir / "registry.json"
+    registry_path.write_text(json.dumps({"generated_at": None, "models": []}), encoding="utf-8")
+
+    client = ModelRegistryClient(registry_path=registry_path)
+    resolved = client.resolve_artifact_path(
+        {
+            "model_name": "sla_5g",
+            "promoted_current_fp16_path": "promoted/sla_5g/current/model_fp16.onnx",
+            "onnx_fp16_uri": "s3://mlflow-artifacts/1/run/artifacts/onnx/sla_5g_fp16.onnx",
+        }
+    )
+
+    assert resolved == fp16_path.resolve()
