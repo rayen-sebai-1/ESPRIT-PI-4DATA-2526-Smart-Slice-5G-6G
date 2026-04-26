@@ -374,7 +374,6 @@ services:
       MODEL_NAME: congestion_5g
       MODEL_FORMAT: onnx_fp16
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
-      CONGESTION_MODEL_PATH: /mlops/models/congestion_5g_lstm_traced.pt
       CONGESTION_PREPROCESSOR_PATH: /mlops/data/processed/preprocessor_congestion_5g.pkl
       CONGESTION_THRESHOLD: ${CONGESTION_THRESHOLD:-0.5}
     depends_on:

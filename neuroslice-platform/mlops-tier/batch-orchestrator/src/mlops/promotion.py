@@ -12,6 +12,16 @@ from urllib.parse import unquote, urlparse
 ROOT_DIR = Path(__file__).resolve().parents[2]
 MODELS_DIR = ROOT_DIR / "models"
 PROMOTED_DIR = MODELS_DIR / "promoted"
+DEFAULT_REGISTERED_MODEL_NAMES = {
+    "congestion_5g": "congestion-lstm-5g",
+    "sla_5g": "sla-xgboost-5g",
+    "slice_type_5g": "slice-type-lgbm-5g",
+}
+DEFAULT_DEPLOYMENT_FRAMEWORKS = {
+    "congestion_5g": "pytorch",
+    "sla_5g": "xgboost",
+    "slice_type_5g": "lightgbm",
+}
 
 
 @dataclass(frozen=True)
@@ -66,6 +76,41 @@ def convert_to_fp16(model_path: Path | str, output_path: Path | str) -> Path:
     model_fp16 = float16.convert_float_to_float16(model)
     onnx.save(model_fp16, target.as_posix())
     return target
+
+
+def promote_model(
+    *,
+    model_name: str,
+    run_id: str,
+    onnx_path: Path | str,
+    fp16_path: Path | str | None = None,
+    version: str | int | None = None,
+    metrics: Mapping[str, Any] | None = None,
+    framework: str | None = None,
+    registered_model_name: str | None = None,
+    promoted_root: Path | str = PROMOTED_DIR,
+) -> PromotionResult:
+    """Promote one exported ONNX model to the local production folder."""
+    resolved_registered_name = registered_model_name or DEFAULT_REGISTERED_MODEL_NAMES.get(model_name)
+    resolved_version = (
+        str(version)
+        if version not in {None, ""}
+        else latest_registered_model_version(resolved_registered_name, run_id=run_id)
+    )
+    if not resolved_version:
+        resolved_version = _next_promoted_version(model_name, promoted_root=promoted_root)
+
+    return promote_onnx_artifacts(
+        model_name=model_name,
+        version=resolved_version,
+        run_id=run_id,
+        metrics=dict(metrics or {}),
+        framework=framework or DEFAULT_DEPLOYMENT_FRAMEWORKS.get(model_name, infer_framework(model_name)),
+        raw_onnx_path=onnx_path,
+        fp16_onnx_path=fp16_path,
+        promoted_root=promoted_root,
+        registered_model_name=resolved_registered_name,
+    )
 
 
 def promote_onnx_artifacts(
@@ -390,6 +435,19 @@ def _copy_if_different(source: Path, destination: Path) -> None:
     shutil.copy2(source_resolved, destination)
 
 
+def _next_promoted_version(model_name: str, *, promoted_root: Path | str) -> str:
+    model_dir = Path(promoted_root) / model_name
+    if not model_dir.exists():
+        return "1"
+
+    versions = [
+        int(path.name)
+        for path in model_dir.iterdir()
+        if path.is_dir() and path.name.isdigit()
+    ]
+    return str((max(versions) if versions else 0) + 1)
+
+
 def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(f"{path.suffix}.tmp")
@@ -412,4 +470,3 @@ def _json_safe_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
         except (TypeError, ValueError):
             continue
     return safe
-

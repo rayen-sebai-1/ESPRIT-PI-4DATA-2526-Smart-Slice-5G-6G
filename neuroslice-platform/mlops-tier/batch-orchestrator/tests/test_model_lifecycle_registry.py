@@ -10,7 +10,7 @@ from src.models.lifecycle import (
     normalize_artifact_uri,
     write_registry_entry,
 )
-from src.mlops.promotion import convert_to_fp16, materialize_promoted_model_for_registry, promote_onnx_artifacts
+from src.mlops.promotion import convert_to_fp16, materialize_promoted_model_for_registry, promote_model, promote_onnx_artifacts
 
 
 def _entry(model_name: str) -> dict:
@@ -258,6 +258,35 @@ def test_promote_onnx_artifacts_writes_versioned_and_current_metadata(tmp_path, 
         "created_at": "2026-04-26T00:00:00+00:00",
         "framework": "lightgbm",
     }
+
+
+def test_promote_model_uses_latest_mlflow_version_for_congestion(tmp_path, monkeypatch):
+    raw_onnx = tmp_path / "congestion_5g.onnx"
+    fp16_onnx = tmp_path / "congestion_5g_fp16.onnx"
+    raw_onnx.write_text("raw", encoding="utf-8")
+    fp16_onnx.write_text("fp16", encoding="utf-8")
+
+    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.mlops.promotion.latest_registered_model_version", lambda *args, **kwargs: "12")
+
+    result = promote_model(
+        model_name="congestion_5g",
+        run_id="run-congestion",
+        onnx_path=raw_onnx,
+        fp16_path=fp16_onnx,
+        metrics={"val_precision": 0.2, "val_recall": 0.9},
+        promoted_root=tmp_path / "promoted",
+    )
+
+    assert result.version == "12"
+    assert result.current_fp16_path.exists()
+    assert (tmp_path / "promoted" / "congestion_5g" / "12" / "model.onnx").exists()
+    metadata = json.loads(result.current_metadata_path.read_text(encoding="utf-8"))
+    assert metadata["model_name"] == "congestion-lstm-5g"
+    assert metadata["deployment_name"] == "congestion_5g"
+    assert metadata["version"] == "12"
+    assert metadata["run_id"] == "run-congestion"
+    assert metadata["framework"] == "pytorch"
 
 
 def test_materialize_promoted_model_uses_mlflow_deployment_version(tmp_path, monkeypatch):
