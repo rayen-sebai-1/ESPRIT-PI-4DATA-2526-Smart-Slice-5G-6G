@@ -575,8 +575,8 @@ services:
 
   root-cause:
     build:
-      context: ../agentic-ai-tier/root-cause
-      dockerfile: Dockerfile
+      context: ../agentic-ai-tier
+      dockerfile: root-cause/Dockerfile
     ports:
       - "${RCA_AGENT_PORT:-7005}:7005"
     environment:
@@ -587,10 +587,13 @@ services:
       RCA_AGENT_MAX_RETRIES: ${RCA_AGENT_MAX_RETRIES:-3}
       RCA_ENABLE_HEURISTIC_FALLBACK: ${RCA_ENABLE_HEURISTIC_FALLBACK:-true}
       INFLUXDB_URL: http://influxdb:8086
-      INFLUXDB_ORG: neuroslice
-      INFLUXDB_BUCKET: telemetry
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-neuroslice}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy
@@ -599,8 +602,8 @@ services:
 
   copilot-agent:
     build:
-      context: ../agentic-ai-tier/copilot-agent
-      dockerfile: Dockerfile
+      context: ../agentic-ai-tier
+      dockerfile: copilot-agent/Dockerfile
     ports:
       - "${COPILOT_AGENT_PORT:-7006}:7006"
     environment:
@@ -609,10 +612,19 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${COPILOT_OLLAMA_MODEL:-qwen2.5:3b-instruct}
       OLLAMA_TIMEOUT_SECONDS: ${COPILOT_OLLAMA_TIMEOUT_SECONDS:-60}
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-neuroslice}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
       REDIS_URL: redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy
+      influxdb:
+        condition: service_started
 
   api-bff-service:
     build:

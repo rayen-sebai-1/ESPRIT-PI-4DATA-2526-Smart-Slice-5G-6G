@@ -4,5 +4,6 @@ pydantic>=2.10.0,<3
 langchain>=0.3.0,<0.4.0
 langchain-community>=0.3.0,<0.4.0
 langchain-ollama>=0.2.0,<0.3.0
+influxdb-client>=1.43.0,<2
 redis>=5.0.0,<6
 sse-starlette>=2.1.2,<3
