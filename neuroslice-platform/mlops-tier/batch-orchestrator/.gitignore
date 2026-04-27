@@ -66,3 +66,4 @@ models/**/*.joblib
 models/**/*.ubj
 data/processed/
 reports/model_training_summary.md
+models/*
