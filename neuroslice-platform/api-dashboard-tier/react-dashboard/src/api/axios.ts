@@ -127,3 +127,4 @@ export const sessionClient = createClient(import.meta.env.VITE_SESSION_API_URL ?
 export const predictionClient = createClient(
   import.meta.env.VITE_PREDICTION_API_URL ?? dashboardApiBaseUrl,
 );
+export const liveClient = createClient("/api/v1/live");

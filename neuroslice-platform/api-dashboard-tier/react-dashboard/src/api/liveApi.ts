@@ -1,4 +1,4 @@
-import { axiosInstance } from './axios';
+import { liveClient } from './axios';
 
 export interface LiveOverview {
     total_entities: number;
@@ -13,23 +13,23 @@ export interface LiveOverview {
 
 export const liveApi = {
     getOverview: async (): Promise<LiveOverview> => {
-        const response = await axiosInstance.get('/api/v1/live/overview');
+        const response = await liveClient.get('/overview');
         return response.data;
     },
     getEntities: async (limit: number = 100): Promise<{ count: number; items: any[] }> => {
-        const response = await axiosInstance.get(`/api/v1/live/entities?limit=${limit}`);
+        const response = await liveClient.get(`/entities?limit=${limit}`);
         return response.data;
     },
     getEntity: async (entityId: string): Promise<any> => {
-        const response = await axiosInstance.get(`/api/v1/live/entities/${entityId}`);
+        const response = await liveClient.get(`/entities/${entityId}`);
         return response.data;
     },
     getEntityAiops: async (entityId: string): Promise<any> => {
-        const response = await axiosInstance.get(`/api/v1/live/entities/${entityId}/aiops`);
+        const response = await liveClient.get(`/entities/${entityId}/aiops`);
         return response.data;
     },
     getFaults: async (): Promise<{ faults: any[] }> => {
-        const response = await axiosInstance.get('/api/v1/live/faults');
+        const response = await liveClient.get('/faults');
         return response.data;
     }
 };
