@@ -247,13 +247,19 @@ async def consume_loop(r: redis.Redis, producer: AIOKafkaProducer) -> None:
                         # Store latest entity state
                         set_entity_state(r, event.entity_id, {
                             "entityId": event.entity_id,
-                            "entityType": event.entity_type,
-                            "domain": event.domain,
+                            "nodeId": event.node_id,
+                            "siteId": event.site_id,
+                            "sliceId": event.slice_id,
+                            "sliceType": event.slice_type.value if event.slice_type else None,
+                            "entityType": event.entity_type.value if event.entity_type else None,
+                            "domain": event.domain.value if event.domain else None,
                             "healthScore": event.derived.health_score,
                             "congestionScore": event.derived.congestion_score,
                             "misroutingScore": event.derived.misrouting_score,
                             "kpis": json.dumps(event.kpis),
+                            "active_faults": [f.fault_id for f in event.faults],
                             "lastUpdated": event.timestamp,
+                            "timestamp": event.timestamp,
                             "scenarioId": event.scenario_id,
                             "severity": event.severity,
                         })

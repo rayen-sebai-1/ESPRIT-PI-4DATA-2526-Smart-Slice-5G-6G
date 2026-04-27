@@ -47,6 +47,8 @@ class SliceInferencer:
             prediction=prediction,
             modelVersion=self.bundle.model_version,
             sourceEventId=event.event_id,
+            domain=event.domain,
+            explanation=None,
             details={
                 "observedSliceType": observed_slice,
                 "mismatch": mismatch,

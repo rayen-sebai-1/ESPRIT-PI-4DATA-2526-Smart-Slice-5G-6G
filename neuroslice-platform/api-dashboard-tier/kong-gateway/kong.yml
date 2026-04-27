@@ -165,3 +165,14 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many protected dashboard requests.
+
+  - name: api-bff-service
+    url: http://api-bff-service:8000
+    routes:
+      - name: api-bff-service-route
+        paths:
+          - /api/v1/live
+        strip_path: false
+        methods:
+          - GET
+          - OPTIONS

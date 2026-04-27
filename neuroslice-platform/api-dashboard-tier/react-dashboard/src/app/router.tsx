@@ -9,6 +9,7 @@ import { SessionsMonitorPage } from "@/pages/SessionsMonitorPage";
 import { PredictionsCenterPage } from "@/pages/PredictionsCenterPage";
 import { UsersManagementPage } from "@/pages/admin/UsersManagementPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { LiveStatePage } from "@/pages/LiveStatePage";
 
 export const router = createBrowserRouter([
   {
@@ -27,7 +28,10 @@ export const router = createBrowserRouter([
           { path: "/dashboard/region/:regionId", element: <RegionalDashboardPage /> },
           {
             element: <ProtectedRoute allowedRoles={["ADMIN", "NETWORK_OPERATOR"]} />,
-            children: [{ path: "/sessions", element: <SessionsMonitorPage /> }],
+            children: [
+              { path: "/sessions", element: <SessionsMonitorPage /> },
+              { path: "/live-state", element: <LiveStatePage /> },
+            ],
           },
           {
             element: (
