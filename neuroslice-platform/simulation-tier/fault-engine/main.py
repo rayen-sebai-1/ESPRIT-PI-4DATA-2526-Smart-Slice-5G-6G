@@ -32,6 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelna
 
 cfg = get_config()
 SCENARIOS_DIR = Path(os.getenv("SCENARIOS_DIR", "/scenarios"))
+SITE_ID = os.getenv("SITE_ID", "TT-SFAX-02")
 
 app = FastAPI(title="neuroslice-sim fault-engine", version="1.0.0")
 
@@ -60,6 +61,7 @@ def _activate_fault(fault_dict: dict) -> str:
     fault_id = fault_dict.get("fault_id") or str(uuid.uuid4())
     fault_dict["fault_id"] = fault_id
     fault_dict["activated_at"] = datetime.now(timezone.utc).isoformat()
+    fault_dict.setdefault("site_id", SITE_ID)
     _active_faults[fault_id] = fault_dict
     try:
         get_r().hset("faults:active", fault_id, json.dumps(fault_dict))

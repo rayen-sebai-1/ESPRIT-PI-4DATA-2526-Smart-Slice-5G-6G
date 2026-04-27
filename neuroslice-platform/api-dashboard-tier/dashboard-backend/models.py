@@ -115,6 +115,38 @@ class AlertAcknowledgement(Base):
     )
 
 
+class MlopsPipelineRun(Base):
+    __tablename__ = "mlops_pipeline_runs"
+    __table_args__ = (
+        Index("ix_dashboard_mlops_pipeline_runs_status_started", "status", "started_at"),
+        {"schema": DASHBOARD_SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    triggered_by_user_id: Mapped[int | None] = mapped_column(
+        BIGINT,
+        ForeignKey(f"{AUTH_SCHEMA}.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    triggered_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    command_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stdout_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stderr_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class AuthRole(AuthReadBase):
     __tablename__ = "roles"
     __table_args__ = {"schema": AUTH_SCHEMA}

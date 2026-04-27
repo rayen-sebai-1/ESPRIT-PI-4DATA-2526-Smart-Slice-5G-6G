@@ -222,15 +222,13 @@ def get_live_overview() -> dict:
     sla_count = 0
     slice_mismatch_count = 0
     
-    # Read active faults (if present)
+    # Read active faults (if present) — stored as a Redis HASH by fault-engine
     active_faults_count = 0
     try:
-        faults_raw = get_r().get("faults:active")
-        if faults_raw:
-            faults = json.loads(faults_raw)
-            active_faults_count = len(faults)
-    except Exception:
-        pass
+        faults_hash = get_r().hgetall("faults:active") or {}
+        active_faults_count = len(faults_hash)
+    except Exception as exc:
+        logger.warning(f"Failed to read faults:active from redis: {exc}")
 
     latest_entities = []
     
@@ -341,14 +339,19 @@ def get_live_entity_aiops(entity_id: str) -> dict:
 
 @app.get("/api/v1/live/faults")
 def get_live_faults() -> dict:
+    """Return active faults — stored as a Redis HASH (fault_id -> fault_json)."""
     try:
-        faults_raw = get_r().get("faults:active")
-        if faults_raw:
-            return {"faults": json.loads(faults_raw)}
-        return {"faults": []}
+        raw = get_r().hgetall("faults:active") or {}
+        faults = []
+        for fault_json in raw.values():
+            try:
+                faults.append(json.loads(fault_json))
+            except Exception as parse_exc:
+                logger.warning(f"Could not parse fault entry: {parse_exc}")
+        return {"faults": faults, "count": len(faults)}
     except Exception as exc:
         logger.warning(f"Failed to read faults from redis: {exc}")
-        return {"faults": []}
+        return {"faults": [], "count": 0}
         
 
 @app.get("/api/v1/live/stream")

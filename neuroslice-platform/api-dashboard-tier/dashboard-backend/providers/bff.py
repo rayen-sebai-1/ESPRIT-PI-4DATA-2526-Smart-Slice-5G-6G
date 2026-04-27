@@ -44,6 +44,12 @@ class BffDashboardProvider(DashboardDataProvider):
         congestion_items = self._get_json("/api/v1/aiops/congestion/latest", limit=500).get("items", [])
         sla_items = self._get_json("/api/v1/aiops/sla/latest", limit=500).get("items", [])
         anomaly_events = self._get_json("/api/v1/aiops/events/recent", stream="events.anomaly", count=200).get("events", [])
+        try:
+            faults_payload = self._get_json("/api/v1/live/faults")
+            active_faults = faults_payload.get("faults", []) or []
+            active_faults_count = len(active_faults) if isinstance(active_faults, list) else 0
+        except Exception:
+            active_faults_count = 0
 
         latencies = []
         for entity in latest_kpis if isinstance(latest_kpis, list) else []:
@@ -72,7 +78,7 @@ class BffDashboardProvider(DashboardDataProvider):
             sla_national_percent=self._average(sla_scores),
             avg_latency_ms=self._average(latencies),
             congestion_rate=self._average(congestion_scores),
-            active_alerts_count=len([score for score in congestion_scores if score >= 70]),
+            active_alerts_count=len([score for score in congestion_scores if score >= 70]) + active_faults_count,
             sessions_count=len(latest_kpis) if isinstance(latest_kpis, list) else 0,
             anomalies_count=len(anomaly_events) if isinstance(anomaly_events, list) else 0,
             generated_at=datetime.now(UTC),

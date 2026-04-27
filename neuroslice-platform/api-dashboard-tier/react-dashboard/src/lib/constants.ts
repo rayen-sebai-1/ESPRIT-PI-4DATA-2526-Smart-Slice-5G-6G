@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  Cpu,
   LogOut,
   Radar,
   RadioTower,
@@ -49,6 +50,12 @@ export const navItems: NavItem[] = [
     roles: ["ADMIN", "NETWORK_OPERATOR", "DATA_MLOPS_ENGINEER"],
   },
   {
+    label: "MLOps Control Center",
+    to: "/mlops",
+    icon: Cpu,
+    roles: ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"],
+  },
+  {
     label: "Gestion utilisateurs",
     to: "/admin/users",
     icon: Users,
@@ -78,7 +85,7 @@ export const roleDefaultRoute: Record<UserRole, string> = {
   ADMIN: "/admin/users",
   NETWORK_OPERATOR: "/dashboard/national",
   NETWORK_MANAGER: "/dashboard/national",
-  DATA_MLOPS_ENGINEER: "/predictions",
+  DATA_MLOPS_ENGINEER: "/mlops",
 };
 
 export const appSections = {

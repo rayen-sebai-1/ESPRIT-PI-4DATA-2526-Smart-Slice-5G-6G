@@ -63,9 +63,49 @@ Current React router exposure:
 
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
 - `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
+- `/mlops`, `/mlops/models`, `/mlops/runs`, `/mlops/artifacts`, `/mlops/promotions`, `/mlops/monitoring`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (read-only for `NETWORK_MANAGER`)
 - `/admin/users`: `ADMIN`
 
 That means `NETWORK_MANAGER` is allowed by the backend prediction API but does not currently get a predictions route in the shipped frontend.
+
+## MLOps Control Center
+
+`/api/dashboard/mlops/*` exposes a read-mostly facade over the MLOps platform:
+
+- `GET /api/dashboard/mlops/overview`
+- `GET /api/dashboard/mlops/models`
+- `GET /api/dashboard/mlops/models/{model_name}`
+- `GET /api/dashboard/mlops/runs`
+- `GET /api/dashboard/mlops/artifacts`
+- `GET /api/dashboard/mlops/promotions`
+- `GET /api/dashboard/mlops/monitoring/predictions`
+- `POST /api/dashboard/mlops/promote`
+- `POST /api/dashboard/mlops/rollback`
+- `GET /api/dashboard/mlops/tools`
+- `GET /api/dashboard/mlops/tools/health`
+- `POST /api/dashboard/mlops/pipeline/run`
+- `GET /api/dashboard/mlops/pipeline/runs`
+- `GET /api/dashboard/mlops/pipeline/runs/{run_id}`
+- `GET /api/dashboard/mlops/pipeline/runs/{run_id}/logs`
+
+`dashboard-backend` reads `models/registry.json` and `models/promoted/*/current/metadata.json` from a read-only volume mount, queries Elasticsearch (when `ES_HOST` is configured) for prediction monitoring, and delegates `promote` / `rollback` to `MLOPS_API_BASE_URL`. No MinIO secrets, MLflow database credentials, or JWT secrets are exposed to the browser.
+
+Role access:
+
+- read endpoints: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
+- `promote`, `rollback`, `pipeline/run`: `ADMIN`, `DATA_MLOPS_ENGINEER`
+
+## MLOps Operations Center
+
+The Operations tab under `/mlops/operations` opens external observability/MLOps UIs (MLflow, MinIO, Kibana, InfluxDB, Grafana, MLOps API), shows their health, lists pipeline run history, and exposes a single button that triggers the offline MLOps pipeline.
+
+The pipeline trigger does **not** run any code in `dashboard-backend`. Instead it:
+
+1. inserts a `dashboard.mlops_pipeline_runs` row with `RUNNING`
+2. delegates to an internal-only `mlops-runner` service (no published port, no public route) that owns the Docker socket and executes the fixed compose command
+3. captures stdout/stderr, redacts secrets, truncates, and stores the result on the same row
+
+`mlops-runner` is the only service in the platform that can spawn the offline pipeline, and it accepts no parameters from the frontend.
 
 ## Provider Modes
 

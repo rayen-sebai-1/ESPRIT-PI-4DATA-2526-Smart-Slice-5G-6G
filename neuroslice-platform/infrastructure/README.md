@@ -92,8 +92,11 @@ The `mlops` profile starts:
 - `logstash`
 - `kibana`
 - `mlops-api`
+- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend`)
 
 The `mlops-worker` profile runs the offline training/promotion pipeline manually.
+
+`mlops-runner` is the only service that owns the Docker socket. It accepts a single `POST /run-pipeline` call from `dashboard-backend` and executes the fixed pipeline command. Toggling `MLOPS_PIPELINE_ENABLED=false` immediately disables the dashboard "Run Offline MLOps Pipeline" button. See `mlops-tier/mlops-runner/README.md`.
 
 ## Published URLs
 
@@ -175,6 +178,7 @@ Primary variables are wired through Compose and optional `.env` files:
 - ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`, `RCA_AGENT_PORT`, `COPILOT_AGENT_PORT`
 - MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`, `KIBANA_PORT`
 - dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
+- MLOps Operations Center (dashboard-backend + mlops-runner): `MLOPS_PIPELINE_ENABLED` (default `false`), `MLOPS_PIPELINE_TIMEOUT_SECONDS` (default `7200`), `MLOPS_RUNNER_TOKEN` (optional shared secret), `MLOPS_TOOLS_*_URL` (default `http://localhost:*` so the browser opens host-published UIs)
 - agentic: `OLLAMA_BASE_URL`, `RCA_OLLAMA_MODEL`, `COPILOT_OLLAMA_MODEL`
 
 ## Common Operations

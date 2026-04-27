@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
+import uuid
 
-from db import check_database_connection
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Response, status
+from sqlalchemy.orm import Session
+
+from db import check_database_connection, get_db
+from mlops import MlopsService, get_mlops_service
+from mlops_ops import MlopsOpsService, background_execute_run
 from schemas import (
     AlertAcknowledgePayload,
     AlertAcknowledgementResponse,
@@ -13,6 +18,19 @@ from schemas import (
     DashboardBookmarkResponse,
     DashboardPreferencesPayload,
     DashboardPreferencesResponse,
+    MlopsActionResponse,
+    MlopsArtifactStatus,
+    MlopsModelHealth,
+    MlopsOverview,
+    MlopsPipelineRunLogsResponse,
+    MlopsPipelineRunResponse,
+    MlopsPredictionMonitoringResponse,
+    MlopsPromoteRequest,
+    MlopsPromotionEvent,
+    MlopsRollbackRequest,
+    MlopsRunSummary,
+    MlopsToolsHealthResponse,
+    MlopsToolsResponse,
     ModelInfo,
     PredictionListResponse,
     PredictionResponse,
@@ -22,11 +40,17 @@ from schemas import (
 )
 from service import DashboardService, get_current_user, get_dashboard_provider, get_dashboard_service, require_roles
 
+
+def get_mlops_ops_service(db: Annotated[Session, Depends(get_db)]) -> MlopsOpsService:
+    return MlopsOpsService(db)
+
 app = FastAPI(title="NeuroSlice Dashboard Backend", version="2.0.0")
 
 dashboard_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER")
 prediction_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
 writer_roles = ("ADMIN", "NETWORK_OPERATOR")
+mlops_reader_roles = ("ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER")
+mlops_writer_roles = ("ADMIN", "DATA_MLOPS_ENGINEER")
 
 
 @app.get("/health")
@@ -213,3 +237,169 @@ def rerun_batch(
     _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*writer_roles))],
 ) -> list[PredictionResponse]:
     return dashboard_service.provider.run_batch(payload)
+
+
+@app.get("/mlops/overview", response_model=MlopsOverview, tags=["mlops"])
+def get_mlops_overview(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsOverview:
+    return mlops.get_overview()
+
+
+@app.get("/mlops/models", response_model=list[MlopsModelHealth], tags=["mlops"])
+def list_mlops_models(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> list[MlopsModelHealth]:
+    return mlops.list_models()
+
+
+@app.get("/mlops/models/{model_name}", response_model=MlopsModelHealth, tags=["mlops"])
+def get_mlops_model(
+    model_name: str,
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsModelHealth:
+    detail = mlops.get_model_detail(model_name)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model introuvable.")
+    return detail
+
+
+@app.get("/mlops/runs", response_model=list[MlopsRunSummary], tags=["mlops"])
+def list_mlops_runs(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[MlopsRunSummary]:
+    return mlops.list_runs(limit=limit)
+
+
+@app.get("/mlops/artifacts", response_model=list[MlopsArtifactStatus], tags=["mlops"])
+def list_mlops_artifacts(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> list[MlopsArtifactStatus]:
+    return mlops.list_artifacts()
+
+
+@app.get("/mlops/promotions", response_model=list[MlopsPromotionEvent], tags=["mlops"])
+def list_mlops_promotions(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[MlopsPromotionEvent]:
+    return mlops.list_promotions(limit=limit)
+
+
+@app.get(
+    "/mlops/monitoring/predictions",
+    response_model=MlopsPredictionMonitoringResponse,
+    tags=["mlops"],
+)
+def get_mlops_prediction_monitoring(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    model: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> MlopsPredictionMonitoringResponse:
+    return mlops.get_prediction_monitoring(model=model, limit=limit)
+
+
+@app.post("/mlops/promote", response_model=MlopsActionResponse, tags=["mlops"])
+def promote_mlops_model(
+    payload: MlopsPromoteRequest,
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> MlopsActionResponse:
+    return mlops.promote_model(payload)
+
+
+@app.post("/mlops/rollback", response_model=MlopsActionResponse, tags=["mlops"])
+def rollback_mlops_model(
+    payload: MlopsRollbackRequest,
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> MlopsActionResponse:
+    return mlops.rollback_model(payload)
+
+
+@app.get("/mlops/tools", response_model=MlopsToolsResponse, tags=["mlops-ops"])
+def list_mlops_tools(
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsToolsResponse:
+    return ops.list_tools()
+
+
+@app.get("/mlops/tools/health", response_model=MlopsToolsHealthResponse, tags=["mlops-ops"])
+def check_mlops_tools_health(
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsToolsHealthResponse:
+    return ops.check_tool_health()
+
+
+@app.post(
+    "/mlops/pipeline/run",
+    response_model=MlopsPipelineRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["mlops-ops"],
+)
+def trigger_mlops_pipeline(
+    background_tasks: BackgroundTasks,
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> MlopsPipelineRunResponse:
+    if not ops.config.pipeline_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="MLOps pipeline runner is disabled (set MLOPS_PIPELINE_ENABLED=true).",
+        )
+
+    run = ops.create_run(current_user)
+    run_id = uuid.UUID(str(run.id))
+    background_tasks.add_task(background_execute_run, run_id)
+    return ops._to_run_response(run)
+
+
+@app.get("/mlops/pipeline/runs", response_model=list[MlopsPipelineRunResponse], tags=["mlops-ops"])
+def list_mlops_pipeline_runs(
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[MlopsPipelineRunResponse]:
+    return ops.list_runs(limit=limit)
+
+
+@app.get(
+    "/mlops/pipeline/runs/{run_id}",
+    response_model=MlopsPipelineRunResponse,
+    tags=["mlops-ops"],
+)
+def get_mlops_pipeline_run(
+    run_id: str,
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsPipelineRunResponse:
+    response = ops.get_run_response(run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run introuvable.")
+    return response
+
+
+@app.get(
+    "/mlops/pipeline/runs/{run_id}/logs",
+    response_model=MlopsPipelineRunLogsResponse,
+    tags=["mlops-ops"],
+)
+def get_mlops_pipeline_run_logs(
+    run_id: str,
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsPipelineRunLogsResponse:
+    response = ops.get_run_logs(run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run introuvable.")
+    return response

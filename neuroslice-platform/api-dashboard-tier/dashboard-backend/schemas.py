@@ -199,3 +199,170 @@ class AlertAcknowledgementResponse(BaseModel):
     alert_key: str
     note: str | None
     acknowledged_at: datetime
+
+
+class MlopsModelMetrics(BaseModel):
+    val_accuracy: float | None = None
+    val_precision: float | None = None
+    val_recall: float | None = None
+    val_f1: float | None = None
+    val_roc_auc: float | None = None
+
+
+class MlopsPromotedModel(BaseModel):
+    deployment_name: str
+    model_name: str | None = None
+    version: str | None = None
+    framework: str | None = None
+    run_id: str | None = None
+    updated_at: str | None = None
+    created_at: str | None = None
+    metrics: dict[str, float] = Field(default_factory=dict)
+    artifact_available: bool = False
+    artifact_files: list[str] = Field(default_factory=list)
+
+
+class MlopsRegistryEntry(BaseModel):
+    model_name: str
+    version: int | str | None = None
+    stage: str | None = None
+    promoted: bool = False
+    framework: str | None = None
+    model_family: str | None = None
+    quality_gate_status: str | None = None
+    promotion_status: str | None = None
+    onnx_export_status: str | None = None
+    created_at: str | None = None
+    run_id: str | None = None
+    metrics: dict[str, float] = Field(default_factory=dict)
+    reason: str | None = None
+
+
+class MlopsModelHealth(BaseModel):
+    deployment_name: str
+    promoted: MlopsPromotedModel | None = None
+    registry: MlopsRegistryEntry | None = None
+    health: Literal["healthy", "degraded", "unknown"] = "unknown"
+    notes: list[str] = Field(default_factory=list)
+
+
+class MlopsRunSummary(BaseModel):
+    model_name: str
+    version: int | str | None = None
+    run_id: str | None = None
+    stage: str | None = None
+    quality_gate_status: str | None = None
+    promotion_status: str | None = None
+    created_at: str | None = None
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class MlopsArtifactStatus(BaseModel):
+    deployment_name: str
+    has_metadata: bool
+    has_onnx: bool
+    has_onnx_fp16: bool
+    files: list[str] = Field(default_factory=list)
+
+
+class MlopsPromotionEvent(BaseModel):
+    model_name: str
+    version: int | str | None = None
+    run_id: str | None = None
+    stage: str | None = None
+    promotion_status: str | None = None
+    promoted: bool = False
+    reason: str | None = None
+    created_at: str | None = None
+
+
+class MlopsOverview(BaseModel):
+    generated_at: str | None
+    registry_available: bool
+    promoted_models_count: int
+    models_with_pass_gate: int
+    models_with_fail_gate: int
+    pending_runs: int
+    promoted_models: list[MlopsModelHealth]
+    sources: dict[str, str]
+
+
+class MlopsPredictionMonitoringPoint(BaseModel):
+    timestamp: str
+    model: str | None = None
+    region: str | None = None
+    risk_level: str | None = None
+    sla_score: float | None = None
+
+
+class MlopsPredictionMonitoringResponse(BaseModel):
+    available: bool
+    source: str
+    total: int
+    items: list[MlopsPredictionMonitoringPoint] = Field(default_factory=list)
+    note: str | None = None
+
+
+class MlopsPromoteRequest(BaseModel):
+    model_name: str
+    version: int | str | None = None
+    run_id: str | None = None
+
+
+class MlopsRollbackRequest(BaseModel):
+    model_name: str
+    target_version: int | str | None = None
+
+
+class MlopsActionResponse(BaseModel):
+    accepted: bool
+    action: str
+    model_name: str
+    detail: str
+    delegated_to: str | None = None
+
+
+PipelineRunStatus = Literal["QUEUED", "RUNNING", "SUCCESS", "FAILED", "TIMEOUT", "DISABLED"]
+
+
+class MlopsToolLink(BaseModel):
+    key: str
+    name: str
+    url: str
+    description: str
+
+
+class MlopsToolsResponse(BaseModel):
+    tools: list[MlopsToolLink]
+
+
+class MlopsToolHealth(BaseModel):
+    name: str
+    url: str
+    status: Literal["UP", "DOWN", "UNKNOWN"]
+    latency_ms: int | None = None
+    detail: str | None = None
+
+
+class MlopsToolsHealthResponse(BaseModel):
+    services: list[MlopsToolHealth]
+
+
+class MlopsPipelineRunResponse(BaseModel):
+    run_id: str
+    triggered_by_user_id: int | None
+    triggered_by_email: str | None
+    status: PipelineRunStatus
+    command_label: str
+    started_at: datetime | None
+    finished_at: datetime | None
+    exit_code: int | None
+    duration_seconds: float | None
+    created_at: datetime
+
+
+class MlopsPipelineRunLogsResponse(BaseModel):
+    run_id: str
+    status: PipelineRunStatus
+    stdout: str
+    stderr: str
