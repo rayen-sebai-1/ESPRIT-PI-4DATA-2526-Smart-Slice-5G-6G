@@ -764,6 +764,10 @@ services:
       dockerfile: api-dashboard-tier/dashboard-backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://dashboard_app:${DASHBOARD_DB_PASSWORD}@postgres:5432/neuroslice_dashboard
+      # Superuser URL lets the Alembic env bootstrap cross-schema grants that
+      # the postgres init script may have missed on a pre-existing volume.
+      POSTGRES_SUPERUSER_URL: postgresql+psycopg://${AUTH_DB_USER:-auth_app}:${AUTH_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
+      DASHBOARD_DB_USER: dashboard_app
       PORT: "8002"
       JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
       DASHBOARD_DATA_PROVIDER: ${DASHBOARD_DATA_PROVIDER:-temporary_mock}
