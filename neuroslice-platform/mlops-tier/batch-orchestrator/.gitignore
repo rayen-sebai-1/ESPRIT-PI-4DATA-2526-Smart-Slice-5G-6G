@@ -65,6 +65,7 @@ models/**/*.pkl
 models/**/*.joblib
 models/**/*.ubj
 data/processed/
-models/
+reports/model_training_summary.md
 reports/model_training_summary.md
 models/*
+!models/.gitkeep
