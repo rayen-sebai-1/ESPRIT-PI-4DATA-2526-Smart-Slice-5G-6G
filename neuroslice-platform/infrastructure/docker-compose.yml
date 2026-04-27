@@ -516,6 +516,38 @@ services:
       timeout: 5s
       retries: 5
 
+  alert-management:
+    build:
+      context: ..
+      dockerfile: control-tier/alert-management/Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVICE_PORT: 7010
+    ports:
+      - "7010:7010"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  policy-control:
+    build:
+      context: ..
+      dockerfile: control-tier/policy-control/Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVICE_PORT: 7011
+    ports:
+      - "7011:7011"
+    depends_on:
+      redis:
+        condition: service_healthy
+      alert-management:
+        condition: service_started
+
   fault-engine:
     build:
       context: ..
