@@ -4,7 +4,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, engine_from_config, pool, text
 
 from models import Base
 
@@ -23,6 +23,34 @@ def get_database_url() -> str:
     return url
 
 
+def _bootstrap_grants() -> None:
+    """Ensure the dashboard_app role has the cross-schema privileges it needs.
+
+    The init script creates these grants on a fresh volume, but if the volume
+    already existed the script was skipped.  We re-run the idempotent grants
+    here via the superuser connection so migrations always work regardless of
+    volume age.
+
+    Requires POSTGRES_SUPERUSER_URL to be set; silently skipped otherwise so
+    that production environments that provision grants externally are unaffected.
+    """
+    superuser_url = os.getenv("POSTGRES_SUPERUSER_URL")
+    if not superuser_url:
+        return
+
+    dashboard_role = os.getenv("DASHBOARD_DB_USER", "dashboard_app")
+    engine = create_engine(superuser_url, poolclass=pool.NullPool)
+    with engine.connect() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS dashboard"))
+        conn.execute(text(f'GRANT USAGE ON SCHEMA auth TO "{dashboard_role}"'))
+        conn.execute(text(f'GRANT USAGE, CREATE ON SCHEMA dashboard TO "{dashboard_role}"'))
+        conn.execute(text(f'GRANT SELECT, REFERENCES ON ALL TABLES IN SCHEMA auth TO "{dashboard_role}"'))
+        conn.execute(text(f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth TO "{dashboard_role}"'))
+        conn.commit()
+    engine.dispose()
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=get_database_url(),
@@ -38,6 +66,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    _bootstrap_grants()
+
     section = config.get_section(config.config_ini_section) or {}
     section["sqlalchemy.url"] = get_database_url()
     connectable = engine_from_config(
@@ -47,6 +77,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        connection.execute(text("CREATE SCHEMA IF NOT EXISTS dashboard"))
+        connection.commit()
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
