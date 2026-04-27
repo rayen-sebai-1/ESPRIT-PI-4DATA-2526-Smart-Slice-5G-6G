@@ -96,6 +96,29 @@ AIOps services mount generated models from the batch orchestrator as read-only p
 - `/mlops/data`
 - `/mlops/src`
 
+`dashboard-backend` mounts `mlops-tier/batch-orchestrator/models` read-only at `/mlops/models` and exposes the MLOps Control Center under `/api/dashboard/mlops/*` (see `api-dashboard-tier/README.md`). The dashboard backend reads `registry.json` and `promoted/*/current/metadata.json` directly, queries Elasticsearch for prediction monitoring, and delegates `promote` / `rollback` calls to `mlops-api` at `MLOPS_API_BASE_URL`. The browser never talks to MLflow, MinIO, Elasticsearch, or the filesystem directly.
+
+## MLOps Runner
+
+`mlops-tier/mlops-runner/` is an internal-only worker that exists so the React dashboard can trigger the offline MLOps pipeline without giving any other service direct access to the Docker socket or arbitrary shell commands. See `mlops-runner/README.md` for the full security model.
+
+- It accepts only `POST /run-pipeline` and `GET /health`.
+- The command is fixed at runtime by `MLOPS_PIPELINE_COMMAND` (default: `docker compose --profile mlops --profile mlops-worker run --rm mlops-worker`).
+- It is not published on the host - only `dashboard-backend` reaches it via the internal Compose network.
+- A kill switch `MLOPS_PIPELINE_ENABLED=false` immediately disables pipeline execution.
+- An optional shared bearer token `MLOPS_RUNNER_TOKEN` blocks all other callers.
+
+Trigger flow from the dashboard:
+
+```text
+React (/mlops/operations) -> Kong /api/dashboard/mlops/pipeline/run
+  -> dashboard-backend POST /mlops/pipeline/run
+    -> create dashboard.mlops_pipeline_runs row (RUNNING)
+    -> background task -> mlops-runner POST /run-pipeline
+      -> docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
+    -> capture stdout/stderr -> redact -> persist on the row
+```
+
 Primary production model paths:
 
 - `/mlops/models/promoted/congestion_5g/current/model_fp16.onnx`

@@ -141,6 +141,29 @@ services:
               error_code: 429
               error_message: Too many protected dashboard requests.
 
+  - name: dashboard-service-mlops
+    url: http://dashboard-backend:8002/mlops
+    routes:
+      - name: dashboard-service-mlops-route
+        paths:
+          - /api/dashboard/mlops
+        strip_path: true
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 60
+              hour: 2000
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many protected MLOps requests.
+
   - name: dashboard-service-root
     url: http://dashboard-backend:8002/dashboard
     routes:

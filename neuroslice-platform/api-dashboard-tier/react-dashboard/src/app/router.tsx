@@ -10,6 +10,14 @@ import { PredictionsCenterPage } from "@/pages/PredictionsCenterPage";
 import { UsersManagementPage } from "@/pages/admin/UsersManagementPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { LiveStatePage } from "@/pages/LiveStatePage";
+import { MlopsLayout } from "@/pages/mlops/MlopsLayout";
+import { MlopsOverviewPage } from "@/pages/mlops/MlopsOverviewPage";
+import { MlopsModelsPage } from "@/pages/mlops/MlopsModelsPage";
+import { MlopsRunsPage } from "@/pages/mlops/MlopsRunsPage";
+import { MlopsArtifactsPage } from "@/pages/mlops/MlopsArtifactsPage";
+import { MlopsPromotionsPage } from "@/pages/mlops/MlopsPromotionsPage";
+import { MlopsMonitoringPage } from "@/pages/mlops/MlopsMonitoringPage";
+import { MlopsOperationsPage } from "@/pages/mlops/MlopsOperationsPage";
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +48,28 @@ export const router = createBrowserRouter([
               />
             ),
             children: [{ path: "/predictions", element: <PredictionsCenterPage /> }],
+          },
+          {
+            element: (
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"]}
+              />
+            ),
+            children: [
+              {
+                path: "/mlops",
+                element: <MlopsLayout />,
+                children: [
+                  { index: true, element: <MlopsOverviewPage /> },
+                  { path: "models", element: <MlopsModelsPage /> },
+                  { path: "runs", element: <MlopsRunsPage /> },
+                  { path: "artifacts", element: <MlopsArtifactsPage /> },
+                  { path: "promotions", element: <MlopsPromotionsPage /> },
+                  { path: "monitoring", element: <MlopsMonitoringPage /> },
+                  { path: "operations", element: <MlopsOperationsPage /> },
+                ],
+              },
+            ],
           },
           {
             element: <ProtectedRoute allowedRoles={["ADMIN"]} />,

@@ -30,6 +30,13 @@ Last verified: 2026-04-26.
 - `/dashboard/region/:regionId`
 - `/sessions`
 - `/predictions`
+- `/mlops`
+- `/mlops/models`
+- `/mlops/runs`
+- `/mlops/artifacts`
+- `/mlops/promotions`
+- `/mlops/monitoring`
+- `/mlops/operations`
 - `/admin/users`
 - `*` -> not found page
 
@@ -38,7 +45,30 @@ Current route guards in the router:
 - all authenticated users can access the dashboard shell
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
 - `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
+- `/mlops/*`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (write actions hidden / disabled for `NETWORK_MANAGER`)
 - `/admin/users`: `ADMIN`
+
+## MLOps Control Center
+
+The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_ENGINEER`, and `NETWORK_MANAGER`. It groups six sub-views:
+
+- vue globale (KPI: modeles promus, quality gate pass/fail, runs en attente, sources)
+- modeles (selection + detail card, metriques cles, actions valider / promouvoir / rollback / rafraichir)
+- runs (derniers runs MLflow lus dans `models/registry.json`)
+- artefacts (etat de `models/promoted/*/current/`)
+- promotions (historique des decisions promote/reject)
+- monitoring (lecture Elasticsearch `smart-slice-predictions`)
+- operations (Operations Center: liens externes, sante des services, lancement du pipeline offline, historique + logs)
+
+Promote and rollback open confirmation modals before sending the action. The buttons are disabled for `NETWORK_MANAGER` because the backend rejects those calls for that role.
+
+The Operations tab adds:
+
+- one-click open buttons for MLflow, MinIO, Kibana, InfluxDB, Grafana, MLOps API (each link uses `target="_blank" rel="noopener noreferrer"` so the dashboard never proxies the third-party UI)
+- `UP|DOWN|UNKNOWN` health badges with latency, refreshed every 30 seconds
+- a confirmation-protected "Run Offline MLOps Pipeline" button (hidden / disabled for `NETWORK_MANAGER`)
+- a runs table with auto-refresh while a run is `RUNNING` or `QUEUED`
+- a logs modal showing redacted stdout/stderr in a monospace block, also auto-refreshing while the run is in progress
 
 `NETWORK_MANAGER` currently has dashboard access only in the shipped UI, even though the backend prediction API accepts that role.
 
@@ -81,5 +111,7 @@ This is a development-oriented container, not a production static build image.
 npm run build
 curl http://localhost:5173
 ```
+
+`npm run build` runs the TypeScript project references (`tsc -b`) and the Vite build, which is the recommended frontend smoke test for MLOps Control Center changes.
 
 When the platform is running, browser network calls should target `/api/auth/*` and `/api/dashboard/*`; Vite forwards them to Kong at `http://localhost:8008`.

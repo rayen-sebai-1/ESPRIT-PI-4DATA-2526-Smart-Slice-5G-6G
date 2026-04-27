@@ -2,8 +2,8 @@
   "model_name": "sla-xgboost-5g",
   "deployment_name": "sla_5g",
   "version": "2",
-  "run_id": "c751037d364b465ab684539c4b6fba1e",
-  "updated_at": "2026-04-27T10:55:08+00:00",
+  "run_id": "d26447906369412fb39aa6a47f52b7ff",
+  "updated_at": "2026-04-27T16:47:08+00:00",
   "metrics": {
     "val_accuracy": 0.9425360139306633,
     "val_precision": 0.8028245518739815,
@@ -11,6 +11,6 @@
     "val_f1": 0.8906297077432962,
     "val_roc_auc": 0.9900774492096104
   },
-  "created_at": "2026-04-27T10:55:08+00:00",
+  "created_at": "2026-04-27T16:47:08+00:00",
   "framework": "xgboost"
 }

@@ -314,6 +314,39 @@ services:
       elasticsearch:
         condition: service_started
 
+  mlops-runner:
+    build:
+      context: ..
+      dockerfile: mlops-tier/mlops-runner/Dockerfile
+    # Internal-only worker that triggers the offline MLOps pipeline.
+    # Not published on the host - dashboard-backend talks to it via the
+    # internal Compose network only.
+    expose:
+      - "8020"
+    environment:
+      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-false}
+      MLOPS_PIPELINE_COMMAND: "docker compose --profile mlops --profile mlops-worker run --rm mlops-worker"
+      MLOPS_PIPELINE_WORKDIR: /workspace/infrastructure
+      MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
+      MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-}
+    volumes:
+      # The runner needs the docker socket to start the worker container,
+      # and the platform tree to use the same docker compose project.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/workspace
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8020/health', timeout=3); sys.exit(0)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   adapter-ves:
     build:
       context: ..
@@ -730,7 +763,7 @@ services:
       # Keep this URL aligned with the postgres service credentials above.
       DATABASE_URL: postgresql+psycopg://${AUTH_DB_USER:-auth_app}:${AUTH_DB_PASSWORD}@postgres:5432/${DASHBOARD_POSTGRES_DB:-neuroslice_dashboard}
       PORT: "8001"
-      JWT_SECRET_KEY: super-secret-key
+      JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
       JWT_ACCESS_TOKEN_EXPIRES_MINUTES: 15
       JWT_REFRESH_TOKEN_EXPIRES_DAYS: 7
       ARGON2_MEMORY_COST: 65536
@@ -770,10 +803,27 @@ services:
       DASHBOARD_DB_USER: dashboard_app
       PORT: "8002"
       JWT_SECRET_KEY: ${DASHBOARD_JWT_SECRET}
-      DASHBOARD_DATA_PROVIDER: ${DASHBOARD_DATA_PROVIDER:-temporary_mock}
+      DASHBOARD_DATA_PROVIDER: ${DASHBOARD_DATA_PROVIDER:-bff}
       API_BFF_BASE_URL: http://api-bff-service:8000
       MLOPS_API_BASE_URL: http://mlops-api:8010
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-server:5000}
+      MLOPS_MODELS_DIR: /mlops/models
+      ES_HOST: ${ES_HOST:-http://elasticsearch:9200}
+      ES_INDEX_NAME: ${ES_INDEX_NAME:-smart-slice-predictions}
+      # MLOps Operations Center
+      MLOPS_TOOLS_MLFLOW_URL: ${MLOPS_TOOLS_MLFLOW_URL:-http://localhost:5000}
+      MLOPS_TOOLS_MINIO_URL: ${MLOPS_TOOLS_MINIO_URL:-http://localhost:9001}
+      MLOPS_TOOLS_KIBANA_URL: ${MLOPS_TOOLS_KIBANA_URL:-http://localhost:5601}
+      MLOPS_TOOLS_INFLUXDB_URL: ${MLOPS_TOOLS_INFLUXDB_URL:-http://localhost:8086}
+      MLOPS_TOOLS_GRAFANA_URL: ${MLOPS_TOOLS_GRAFANA_URL:-http://localhost:3000}
+      MLOPS_TOOLS_MLOPS_API_URL: ${MLOPS_TOOLS_MLOPS_API_URL:-http://localhost:8010}
+      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-false}
+      MLOPS_PIPELINE_COMMAND: "docker compose --profile mlops --profile mlops-worker run --rm mlops-worker"
+      MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
+      MLOPS_RUNNER_URL: http://mlops-runner:8020
+      MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-}
+    volumes:
+      - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
     expose:
       - "8002"
     depends_on:

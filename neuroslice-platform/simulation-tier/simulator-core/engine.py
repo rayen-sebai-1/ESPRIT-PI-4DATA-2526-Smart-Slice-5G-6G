@@ -93,6 +93,18 @@ class CoreSimulationEngine:
                     misrouting = max(misrouting, impacts.get("extra_gbps", 2.0))
                 elif ft == "packet_loss_spike":
                     upf_pl = max(upf_pl, impacts.get("packet_loss", 0.05))
+                elif ft == "edge_overload":
+                    # Edge overload backpressures into core UPF
+                    upf_overload = max(upf_overload, impacts.get("overload", 0.3) * 0.5)
+                elif ft == "ran_congestion":
+                    # RAN congestion increases core load proportionally
+                    upf_overload = max(upf_overload, impacts.get("congestion", 0.4) * 0.6)
+                elif ft == "latency_spike":
+                    # Latency at core hits AMF response paths
+                    amf_deg = max(amf_deg, impacts.get("latency_mult", 2.0) / 10.0)
+                elif ft == "telemetry_drop":
+                    # Telemetry drop manifests as packet loss in observability
+                    upf_pl = max(upf_pl, impacts.get("drop_rate", 0.05))
                 scenario = fault.get("scenario_id", scenario)
 
             self.amf.fault_degradation = amf_deg

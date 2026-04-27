@@ -32,6 +32,7 @@ INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "telemetry")
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+SITE_ID = os.environ.get("SITE_ID", "TT-SFAX-02")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ async def fault_poller(write_api) -> None:
             agg_point = (
                 Point("faults")
                 .tag("type", "aggregate")
+                .tag("site_id", SITE_ID)
                 .field("active_count", float(active_count))
                 .time(now)
             )
@@ -75,6 +77,7 @@ async def fault_poller(write_api) -> None:
                 try:
                     fault = json.loads(fault_json)
                     entities = fault.get("affected_entities", [])
+                    fault_site = fault.get("site_id", SITE_ID)
                     fp = (
                         Point("faults")
                         .tag("type", "fault")
@@ -82,6 +85,7 @@ async def fault_poller(write_api) -> None:
                         .tag("fault_type", fault.get("fault_type", "unknown"))
                         .tag("scenario_id", fault.get("scenario_id", "manual"))
                         .tag("affected_entities", ",".join(entities))
+                        .tag("site_id", fault_site)
                         .field("severity", float(fault.get("severity", 1)))
                         .field("active", 1.0)
                         .time(now)
@@ -138,6 +142,7 @@ async def consume_loop(write_api) -> None:
                 entity_type = event.get("entityType", "")
                 slice_id = event.get("sliceId") or "none"
                 slice_type = event.get("sliceType") or "none"
+                site_id = event.get("siteId") or "unknown"
 
                 point = (
                     Point("telemetry")
@@ -146,6 +151,7 @@ async def consume_loop(write_api) -> None:
                     .tag("entity_type", entity_type)
                     .tag("slice_id", slice_id)
                     .tag("slice_type", slice_type)
+                    .tag("site_id", site_id)
                 )
 
                 # KPI fields
@@ -158,9 +164,12 @@ async def consume_loop(write_api) -> None:
                     if isinstance(v, (int, float)):
                         point.field(f"derived_{k}", float(v))
 
+                # Map severity string → numeric level so it can be charted/aggregated
                 severity = event.get("severity")
                 if severity:
-                    point.field("severity", str(severity))
+                    sev_levels = {"ok": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+                    point.field("severity", float(sev_levels.get(str(severity).lower(), 0)))
+                    point.tag("severity_label", str(severity))
 
                 if timestamp:
                     point.time(timestamp)
