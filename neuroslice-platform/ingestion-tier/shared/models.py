@@ -165,6 +165,10 @@ class ScenarioDefinition(BaseModel):
 
 class EntityState(BaseModel):
     entity_id: str
+    node_id: str = "unknown"
+    site_id: str = "unknown"
+    slice_id: Optional[str] = None
+    slice_type: Optional[SliceType] = None
     entity_type: EntityType
     domain: Domain
     health_score: float = 1.0
@@ -173,6 +177,9 @@ class EntityState(BaseModel):
     kpis: Dict[str, float] = {}
     active_faults: List[str] = []
     last_updated: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 

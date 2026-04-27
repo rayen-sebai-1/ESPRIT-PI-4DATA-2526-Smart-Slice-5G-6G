@@ -49,6 +49,8 @@ class SlaInferencer:
             prediction=prediction,
             modelVersion=self.bundle.model_version,
             sourceEventId=event.event_id,
+            domain=event.domain,
+            explanation=None,
             details={
                 "slaProbability": round(sla_probability, 6),
                 "riskThreshold": self.cfg.sla_risk_threshold,

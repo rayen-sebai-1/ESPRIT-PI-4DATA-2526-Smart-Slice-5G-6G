@@ -208,6 +208,182 @@ def get_entity_kpis(entity_id: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Live State Endpoints (React Dashboard)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/live/overview")
+def get_live_overview() -> dict:
+    """Return an overview of the network from Live State."""
+    entity_ids = list_entity_ids(get_r())
+    
+    total_entities = len(entity_ids)
+    unhealthy_count = 0
+    congestion_count = 0
+    sla_count = 0
+    slice_mismatch_count = 0
+    
+    # Read active faults (if present)
+    active_faults_count = 0
+    try:
+        faults_raw = get_r().get("faults:active")
+        if faults_raw:
+            faults = json.loads(faults_raw)
+            active_faults_count = len(faults)
+    except Exception:
+        pass
+
+    latest_entities = []
+    
+    for eid in entity_ids:
+        state = get_entity_state(get_r(), eid)
+        if not state:
+            continue
+            
+        if isinstance(state.get("kpis"), str):
+            try:
+                state["kpis"] = json.loads(state["kpis"])
+            except Exception:
+                state["kpis"] = {}
+                
+        health = float(state.get("healthScore", 1.0))
+        if health < 0.6:
+            unhealthy_count += 1
+            
+        # Check AIOps risk embedded in entity (optional fallback if workers haven't fired, else check actual keys)
+        # Using AIOps keys for accurate representation
+        cg_state = get_r().hgetall(f"aiops:congestion:{eid}")
+        if cg_state and str(_decode_hash(cg_state).get("prediction")) == "congestion_anomaly":
+            congestion_count += 1
+            
+        sla_state = get_r().hgetall(f"aiops:sla:{eid}")
+        if sla_state and str(_decode_hash(sla_state).get("prediction")) == "sla_at_risk":
+            sla_count += 1
+            
+        sc_state = get_r().hgetall(f"aiops:slice_classification:{eid}")
+        if sc_state:
+            sc_decoded = _decode_hash(sc_state)
+            if sc_decoded.get("details", {}).get("mismatch"):
+                slice_mismatch_count += 1
+                
+        # To avoid making this massively blocking, just add the entity.
+        latest_entities.append(state)
+
+    latest_entities.sort(key=lambda x: str(x.get("timestamp", x.get("lastUpdated", ""))), reverse=True)
+    latest_entities = latest_entities[:10]
+    
+    # Latest aiops events across streams
+    recent_aiops = _read_events_from_stream("events.anomaly", count=5) + \
+                   _read_events_from_stream("events.sla", count=5) + \
+                   _read_events_from_stream("events.slice.classification", count=5)
+    recent_aiops.sort(key=lambda x: str(x.get("timestamp", "")), reverse=True)
+
+    return {
+        "total_entities": total_entities,
+        "active_faults_count": active_faults_count,
+        "unhealthy_entities_count": unhealthy_count,
+        "congestion_alerts_count": congestion_count,
+        "sla_risk_count": sla_count,
+        "slice_mismatch_count": slice_mismatch_count,
+        "latest_entities": latest_entities,
+        "latest_aiops_events": recent_aiops[:10]
+    }
+
+
+@app.get("/api/v1/live/entities")
+def get_live_entities(limit: int = Query(100, le=500)) -> dict:
+    entity_ids = list_entity_ids(get_r())
+    results = []
+    for eid in entity_ids:
+        state = get_entity_state(get_r(), eid)
+        if not state:
+            continue
+        if isinstance(state.get("kpis"), str):
+            try:
+                state["kpis"] = json.loads(state["kpis"])
+            except Exception:
+                state["kpis"] = {}
+        results.append(state)
+    
+    results.sort(key=lambda x: str(x.get("timestamp", x.get("lastUpdated", ""))), reverse=True)
+    results = results[:limit]
+    return {"count": len(results), "items": results}
+
+
+@app.get("/api/v1/live/entities/{entity_id}")
+def get_live_entity(entity_id: str) -> dict:
+    state = get_entity_state(get_r(), entity_id)
+    if not state:
+        raise HTTPException(404, f"Entity '{entity_id}' not found")
+    if isinstance(state.get("kpis"), str):
+        try:
+            state["kpis"] = json.loads(state["kpis"])
+        except Exception:
+            state["kpis"] = {}
+    return state
+
+
+@app.get("/api/v1/live/entities/{entity_id}/aiops")
+def get_live_entity_aiops(entity_id: str) -> dict:
+    r = get_r()
+    res = {}
+    
+    for prefix in ["aiops:congestion", "aiops:sla", "aiops:slice_classification"]:
+        raw = r.hgetall(f"{prefix}:{entity_id}")
+        prop_name = prefix.split(":")[-1]
+        
+        if raw:
+            res[prop_name] = _decode_hash(raw)
+        else:
+            res[prop_name] = None
+            
+    return res
+
+
+@app.get("/api/v1/live/faults")
+def get_live_faults() -> dict:
+    try:
+        faults_raw = get_r().get("faults:active")
+        if faults_raw:
+            return {"faults": json.loads(faults_raw)}
+        return {"faults": []}
+    except Exception as exc:
+        logger.warning(f"Failed to read faults from redis: {exc}")
+        return {"faults": []}
+        
+
+@app.get("/api/v1/live/stream")
+async def stream_live_events() -> StreamingResponse:
+    """Server-Sent Events stream from norm.telemetry for the live dashboard."""
+    consumer_group = "api-live-sse-group"
+    consumer_name = "api-live-sse-01"
+
+    try:
+        ensure_consumer_group(get_r(), cfg.stream_norm_telemetry, consumer_group)
+    except Exception:
+        pass
+
+    async def event_generator():
+        yield "data: {\"status\": \"connected\"}\n\n"
+        while True:
+            try:
+                messages = read_group(
+                    get_r(), cfg.stream_norm_telemetry, consumer_group, consumer_name,
+                    count=10, block_ms=1000,
+                )
+                for msg_id, fields in messages:
+                    raw = fields.get("event")
+                    if raw:
+                        ack_message(get_r(), cfg.stream_norm_telemetry, consumer_group, msg_id)
+                        payload = raw if isinstance(raw, str) else json.dumps(raw)
+                        yield f"data: {payload}\n\n"
+            except Exception as exc:
+                logger.debug("SSE live stream error: %s", exc)
+                yield f"data: {{\"error\": \"{exc}\"}}\n\n"
+            await asyncio.sleep(0.1)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Runtime AIOps outputs
 # ─────────────────────────────────────────────────────────────────────────────
 

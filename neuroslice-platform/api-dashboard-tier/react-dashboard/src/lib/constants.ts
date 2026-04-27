@@ -37,6 +37,12 @@ export const navItems: NavItem[] = [
     roles: ["ADMIN", "NETWORK_OPERATOR"],
   },
   {
+    label: "Live State",
+    to: "/live-state",
+    icon: Radar,
+    roles: ["ADMIN", "NETWORK_OPERATOR"],
+  },
+  {
     label: "Predictions & Models",
     to: "/predictions",
     icon: Radar,

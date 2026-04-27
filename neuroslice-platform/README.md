@@ -1,4 +1,4 @@
-﻿# NeuroSlice Platform
+# NeuroSlice Platform
 
 Last verified: 2026-04-26.
 
@@ -98,6 +98,8 @@ curl http://localhost:7004/health
 curl http://localhost:7005/health
 curl http://localhost:7006/health
 curl "http://localhost:8000/api/v1/aiops/congestion/latest?limit=20"
+curl http://localhost:8000/api/v1/live/overview
+curl "http://localhost:8000/api/v1/live/entities?limit=10"
 ```
 
 Optional MLOps services:
@@ -123,6 +125,7 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - Root-cause agent: `http://localhost:7005`
 - Copilot agent: `http://localhost:7006`
 - React dashboard: `http://localhost:5173`
+- React live-state overview: `http://localhost:5173/live-state`
 - Kong gateway: `http://localhost:8008`
 - Grafana: `http://localhost:3000`
 - InfluxDB: `http://localhost:8086`

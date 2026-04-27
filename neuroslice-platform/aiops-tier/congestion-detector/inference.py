@@ -70,6 +70,8 @@ class CongestionInferencer:
             prediction=prediction,
             modelVersion=self.bundle.model_version,
             sourceEventId=event.event_id,
+            domain=event.domain,
+            explanation=reason,
             details={
                 "threshold": self.threshold,
                 "modelLoaded": self.bundle.loaded,

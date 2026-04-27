@@ -40,6 +40,8 @@ class CongestionOutputEvent(BaseModel):
     model_version: str = Field(alias="modelVersion")
     source_event_id: str = Field(alias="sourceEventId")
     source_stream: str = Field(default="stream:norm.telemetry", alias="sourceStream")
+    domain: str = "unknown"
+    explanation: Optional[str] = None
     details: Dict[str, Any] = {}
 
     class Config:
