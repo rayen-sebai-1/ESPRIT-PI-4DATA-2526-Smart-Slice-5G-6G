@@ -28,7 +28,7 @@ export const navItems: NavItem[] = [
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
   },
   {
-    label: "Dashboard Regional",
+    label: "Dashboard Entite",
     to: "/dashboard/region",
     icon: RadioTower,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],

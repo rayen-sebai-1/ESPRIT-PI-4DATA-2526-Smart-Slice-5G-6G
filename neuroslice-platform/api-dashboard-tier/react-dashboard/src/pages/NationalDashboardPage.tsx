@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -10,7 +11,9 @@ import {
 } from "lucide-react";
 
 import { getNationalDashboard } from "@/api/dashboardApi";
+import { liveApi } from "@/api/liveApi";
 import { RegionLoadChart } from "@/components/charts/region-load-chart";
+import { NetworkLogsFeed } from "@/components/logs/network-logs-feed";
 import { PageHeader } from "@/components/layout/page-header";
 import { TunisiaNetworkMap } from "@/components/layout/tunisia-network-map";
 import { Card } from "@/components/ui/card";
@@ -19,23 +22,133 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { formatDate, formatNumber, formatPercent, truncateText } from "@/lib/format";
 
+interface LiveEntity {
+  entityId?: string;
+  entityType?: string;
+  domain?: string;
+  sliceId?: string;
+  sliceType?: string;
+  healthScore?: number;
+  congestionScore?: number;
+  severity?: string | number;
+  kpis?: Record<string, unknown> | string;
+  lastUpdated?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
+function asNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function parseKpis(raw: LiveEntity["kpis"]) {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return raw;
+}
+
+function severityWeight(value: unknown) {
+  const text = String(value ?? "").toLowerCase();
+  if (text === "critical") return 35;
+  if (text === "high") return 28;
+  if (text === "medium") return 18;
+  if (text === "low") return 8;
+  return asNumber(value) * 10;
+}
+
+function healthTone(value: number) {
+  if (value < 60) return "danger";
+  if (value < 80) return "warning";
+  return "accent";
+}
+
+function riskTone(value: number) {
+  if (value >= 80) return "danger";
+  if (value >= 60) return "warning";
+  return "accent";
+}
+
 export function NationalDashboardPage() {
   usePageTitle("Dashboard National");
+  const navigate = useNavigate();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard", "national"],
     queryFn: getNationalDashboard,
   });
 
-  const topRiskRegions = useMemo(() => {
-    return [...(data?.regions ?? [])]
-      .sort((left, right) => {
-        const leftScore = left.high_risk_sessions_count * 3 + left.network_load + (100 - left.sla_percent);
-        const rightScore = right.high_risk_sessions_count * 3 + right.network_load + (100 - right.sla_percent);
-        return rightScore - leftScore;
+  const liveOverviewQuery = useQuery({
+    queryKey: ["live", "overview", "national-dashboard"],
+    queryFn: liveApi.getOverview,
+    refetchInterval: 3000,
+  });
+
+  const liveEntitiesQuery = useQuery({
+    queryKey: ["live", "entities", "national-dashboard"],
+    queryFn: () => liveApi.getEntities(500),
+    refetchInterval: 3000,
+  });
+
+  const liveEntities = useMemo<LiveEntity[]>(() => {
+    return (liveEntitiesQuery.data?.items ?? []).filter((item: LiveEntity) => Boolean(item.entityId));
+  }, [liveEntitiesQuery.data?.items]);
+
+  const liveNetworkStats = useMemo(() => {
+    const healthValues = liveEntities.map((item) => asNumber(item.healthScore, 1));
+    const congestionValues = liveEntities.map((item) => asNumber(item.congestionScore, 0));
+    const average = (items: number[]) => items.length
+      ? items.reduce((sum, item) => sum + item, 0) / items.length
+      : 0;
+
+    return {
+      healthPercent: average(healthValues) * 100,
+      congestionPercent: average(congestionValues) * 100,
+      degradedEntities: liveEntities.filter((item) => asNumber(item.healthScore, 1) < 0.6).length,
+    };
+  }, [liveEntities]);
+
+  const topRiskEntities = useMemo(() => {
+    return liveEntities
+      .map((entity) => {
+        const kpis = parseKpis(entity.kpis);
+        const health = asNumber(entity.healthScore, 1);
+        const congestion = asNumber(entity.congestionScore, 0);
+        const packetLoss = asNumber(kpis.packetLossPct);
+        const rbUtilization = asNumber(kpis.rbUtilizationPct);
+        const latency = asNumber(kpis.latencyMs ?? kpis.forwardingLatencyMs);
+        const riskScore = Math.round(
+          Math.max(0, 1 - health) * 100
+          + congestion * 80
+          + packetLoss * 8
+          + Math.max(0, rbUtilization - 80) * 1.5
+          + Math.max(0, latency - 20) * 1.2
+          + severityWeight(entity.severity),
+        );
+        const reasons = [
+          health < 0.6 ? `health ${formatPercent(health * 100, 0)}` : null,
+          congestion > 0.7 ? `congestion ${formatPercent(congestion * 100, 0)}` : null,
+          packetLoss >= 1 ? `loss ${packetLoss.toFixed(2)}%` : null,
+          rbUtilization >= 90 ? `RB ${formatPercent(rbUtilization, 0)}` : null,
+          latency >= 30 ? `${latency.toFixed(1)} ms` : null,
+        ].filter((item): item is string => Boolean(item));
+
+        return { entity, health, congestion, packetLoss, rbUtilization, latency, riskScore, reasons };
       })
+      .sort((left, right) => right.riskScore - left.riskScore)
       .slice(0, 5);
-  }, [data?.regions]);
+  }, [liveEntities]);
 
   if (isLoading) {
     return <div className="py-10 text-sm text-mutedText">Chargement du dashboard national...</div>;
@@ -51,15 +164,21 @@ export function NationalDashboardPage() {
   }
 
   const { overview, regions } = data;
-  const lowestSlaRegion = [...regions].sort((left, right) => left.sla_percent - right.sla_percent)[0];
-  const highestLoadRegion = [...regions].sort((left, right) => right.network_load - left.network_load)[0];
+  const liveOverview = liveOverviewQuery.data;
+  const networkHealth = liveNetworkStats.healthPercent || overview.sla_national_percent;
+  const networkCongestion = liveNetworkStats.congestionPercent || overview.congestion_rate;
+  const activeFaults = liveOverview?.active_faults_count ?? overview.active_alerts_count;
+  const liveAiopsAlerts = (liveOverview?.congestion_alerts_count ?? 0)
+    + (liveOverview?.sla_risk_count ?? 0)
+    + (liveOverview?.slice_mismatch_count ?? 0);
+  const mostRiskyEntity = topRiskEntities[0];
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="National command center"
+        eyebrow="Network operations center"
         title="Dashboard National"
-        description="Vision consolidee des performances reseau, des zones sous tension et de l'exposition au risque sur l'ensemble des regions tunisiennes."
+        description="Supervision temps reel de l'etat global du reseau: entites degradees, faults actifs, congestion, SLA et signaux AIOps."
         actions={
           <button
             className="rounded-2xl border border-border bg-cardAlt/70 px-4 py-3 text-sm text-slate-200 transition hover:border-accent/40 hover:bg-card"
@@ -73,46 +192,46 @@ export function NationalDashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <KpiCard
-          title="SLA National"
-          value={formatPercent(overview.sla_national_percent)}
-          subtitle="Niveau global de conformite reseau"
+          title="Health reseau"
+          value={formatPercent(networkHealth)}
+          subtitle="Moyenne live des health scores"
           icon={<Gauge size={20} />}
-          tone={overview.sla_national_percent < 60 ? "danger" : "accent"}
+          tone={healthTone(networkHealth)}
         />
         <KpiCard
           title="Latence moyenne"
           value={`${overview.avg_latency_ms.toFixed(1)} ms`}
-          subtitle="Moyenne des sessions suivees"
+          subtitle="Signal de performance bout-en-bout"
           icon={<Activity size={20} />}
           tone="neutral"
         />
         <KpiCard
-          title="Congestion rate"
-          value={formatPercent(overview.congestion_rate)}
-          subtitle="Niveau de saturation observe"
+          title="Congestion reseau"
+          value={formatPercent(networkCongestion)}
+          subtitle="Moyenne live des scores congestion"
           icon={<Network size={20} />}
-          tone={overview.congestion_rate >= 60 ? "warning" : "accent"}
+          tone={riskTone(networkCongestion)}
         />
         <KpiCard
-          title="Alertes actives"
-          value={formatNumber(overview.active_alerts_count)}
-          subtitle="Sessions a prioriser cote NOC"
+          title="Faults actifs"
+          value={formatNumber(activeFaults)}
+          subtitle="Incidents ouverts sur le reseau"
           icon={<AlertTriangle size={20} />}
-          tone={overview.active_alerts_count > 10 ? "danger" : "warning"}
+          tone={activeFaults > 0 ? "warning" : "neutral"}
         />
         <KpiCard
-          title="Sessions"
-          value={formatNumber(overview.sessions_count)}
-          subtitle="Sessions reseau suivies"
+          title="Entites live"
+          value={formatNumber(liveOverview?.total_entities ?? liveEntities.length ?? overview.sessions_count)}
+          subtitle={`${formatNumber(liveNetworkStats.degradedEntities)} entites degradees`}
           icon={<RadioTower size={20} />}
           tone="accent"
         />
         <KpiCard
-          title="Anomalies"
-          value={formatNumber(overview.anomalies_count)}
-          subtitle="Anomalies detectees dans le snapshot courant"
+          title="Alertes AIOps"
+          value={formatNumber(liveAiopsAlerts || overview.anomalies_count)}
+          subtitle="Congestion, SLA risk et mismatch"
           icon={<ShieldAlert size={20} />}
-          tone={overview.anomalies_count > 0 ? "danger" : "neutral"}
+          tone={(liveAiopsAlerts || overview.anomalies_count) > 0 ? "danger" : "neutral"}
         />
       </section>
 
@@ -124,41 +243,59 @@ export function NationalDashboardPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <Card className="p-5">
           <div className="mb-5">
-            <h3 className="text-lg font-semibold text-white">Top regions a risque</h3>
+            <h3 className="text-lg font-semibold text-white">Top entites a risque</h3>
             <p className="text-sm text-mutedText">
-              Priorisation operateur combinee entre charge reseau, SLA et volume de sessions a haut
-              risque.
+              Entites avec le plus de signaux problematiques: health faible, congestion,
+              perte paquet, utilisation radio ou latence.
             </p>
           </div>
 
           <div className="space-y-4">
-            {topRiskRegions.map((region) => (
-              <div key={region.region_id} className="rounded-2xl border border-border bg-cardAlt/70 p-4">
+            {topRiskEntities.map(({ entity, health, congestion, riskScore, reasons }) => (
+              <button
+                key={entity.entityId}
+                className="w-full rounded-2xl border border-border bg-cardAlt/70 p-4 text-left transition hover:border-accent/40 hover:bg-card"
+                type="button"
+                onClick={() => navigate(`/dashboard/region/${encodeURIComponent(entity.entityId ?? "")}`)}
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-sm font-medium text-white">{region.name}</div>
+                    <div className="text-sm font-medium text-white">{entity.entityId}</div>
                     <div className="mt-1 text-xs text-mutedText">
-                      {region.code} · {region.sessions_count} sessions · {region.gnodeb_count} gNodeB
+                      {entity.domain ?? "unknown"} - {entity.entityType ?? "unknown"}
+                      {entity.sliceType ? ` - ${entity.sliceType}` : ""}
                     </div>
                   </div>
                   <div className="rounded-full border border-border px-3 py-1 text-xs text-slate-200">
-                    {region.high_risk_sessions_count} high risk
+                    risk {riskScore}
                   </div>
                 </div>
                 <div className="mt-4 space-y-2">
                   <div className="flex justify-between text-xs text-mutedText">
-                    <span>Load</span>
-                    <span>{Math.round(region.network_load)}%</span>
+                    <span>Health</span>
+                    <span>{formatPercent(health * 100, 0)}</span>
                   </div>
                   <div className="h-2 rounded-full bg-white/5">
                     <div
-                      className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-red-500"
-                      style={{ width: `${Math.min(region.network_load, 100)}%` }}
+                      className="h-2 rounded-full bg-gradient-to-r from-emerald-400 to-sky-400"
+                      style={{ width: `${Math.min(Math.max(health * 100, 0), 100)}%` }}
                     />
                   </div>
+                  <div className="flex flex-wrap gap-2 pt-1 text-xs text-mutedText">
+                    <span>Congestion {formatPercent(congestion * 100, 0)}</span>
+                    {reasons.length
+                      ? reasons.map((reason) => <span key={reason}>{reason}</span>)
+                      : <span>surveillance standard</span>}
+                  </div>
                 </div>
-              </div>
+              </button>
             ))}
+            {!topRiskEntities.length ? (
+              <div className="rounded-2xl border border-border bg-cardAlt/70 p-4 text-sm text-mutedText">
+                Aucune entite live disponible pour le classement. Le dashboard reste disponible avec
+                les indicateurs nationaux existants.
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -178,22 +315,21 @@ export function NationalDashboardPage() {
           </div>
           <div className="space-y-4 text-sm leading-6 text-slate-200">
             <p>
-              La zone actuellement la plus sous pression est <strong>{highestLoadRegion?.name}</strong>,
-              avec une charge reseau de {Math.round(highestLoadRegion?.network_load ?? 0)}%.
+              L'entite actuellement la plus prioritaire est{" "}
+              <strong>{mostRiskyEntity?.entity.entityId ?? "N/A"}</strong>, avec un score risque de{" "}
+              {mostRiskyEntity?.riskScore ?? 0}.
             </p>
             <p>
-              Le niveau SLA le plus bas est observe sur <strong>{lowestSlaRegion?.name}</strong>, avec
-              {" "}
-              {formatPercent(lowestSlaRegion?.sla_percent ?? 0)}.
+              Le reseau expose {formatNumber(activeFaults)} fault(s) actif(s) et{" "}
+              {formatNumber(liveNetworkStats.degradedEntities)} entite(s) sous health score critique.
             </p>
             <p>
-              Les actions a prioriser en V1 consistent a surveiller les regions degradees et a
-              cibler d'abord les sessions sous haute pression, en particulier sur Grand Tunis si la
-              tendance actuelle se maintient.
+              Les actions a prioriser cote NOC consistent a ouvrir les entites les plus degradees,
+              verifier les KPI associes, puis correlier les evenements dans le feed reseau national.
             </p>
             <div className="rounded-2xl border border-border bg-cardAlt/70 p-4 text-mutedText">
               {truncateText(
-                "Cette synthese est construite a partir des donnees de supervision actuellement disponibles. Elle pourra etre enrichie plus tard par davantage d'indicateurs operationnels.",
+                "Cette synthese combine les donnees de dashboard existantes avec le live state Redis et les evenements InfluxDB pour donner une lecture operateur globale.",
                 180,
               )}
             </div>
@@ -204,6 +340,16 @@ export function NationalDashboardPage() {
           title="Distribution nationale des slices en attente"
           description="Cet espace est reserve a une future vue de repartition des slices sans modifier la template actuelle."
         />
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Logs reseau (national)</h3>
+          <p className="text-sm text-mutedText">
+            Chronologie live des faults, breaches KPI et predictions AIOps derivees d'InfluxDB.
+          </p>
+        </div>
+        <NetworkLogsFeed scope="national" />
       </section>
     </div>
   );
