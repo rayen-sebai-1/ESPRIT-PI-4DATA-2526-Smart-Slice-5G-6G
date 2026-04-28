@@ -12,6 +12,7 @@ const tabs = [
   { to: "/mlops/promotions", label: "Promotions" },
   { to: "/mlops/monitoring", label: "Monitoring" },
   { to: "/mlops/operations", label: "Operations" },
+  { to: "/mlops/orchestration", label: "Orchestration" },
 ];
 
 export function MlopsLayout() {

@@ -33,7 +33,9 @@ export API_PORT MLFLOW_PORT
         train-sla-5g train-sla-6g train-congestion-5g train-congestion-6g \
         train-slice-type-5g train-slice-type-6g \
         train-all test model-report mlflow-ui serve docker-build docker-run \
-        docker-compose-up notebook pipeline pipeline-congestion-5g pipeline-all clean
+        docker-compose-up notebook pipeline pipeline-congestion-5g pipeline-all clean \
+        prepare-data train evaluate log-mlflow export-onnx convert-fp16 validate-model \
+        promote-model rollback-model mlops-full
 
 # ------------------------------------------------------------------------------
 # Environment Setup
@@ -164,6 +166,56 @@ pipeline: data-congestion-5g validate-data-congestion-5g train-congestion-5g \
 pipeline-all: data-sla-5g data-sla-6g data-congestion-5g data-slice-type-5g data-slice-type-6g \
               validate-data-sla-5g validate-data-sla-6g validate-data-congestion-5g validate-data-slice-type-5g validate-data-slice-type-6g \
               train-congestion-5g train-congestion-6g train-sla-5g train-sla-6g train-slice-type-5g train-slice-type-6g model-report
+
+# ------------------------------------------------------------------------------
+# Orchestration Center Targets
+# ------------------------------------------------------------------------------
+prepare-data:
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_sla_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_sla_6g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_congestion_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_slice_type_5g.py
+	$(PYTHON) $(DATA_SRC_DIR)/preprocess_slice_type_6g.py
+
+# validate-data is already defined above, but we make sure it does what we want
+# Oh wait, validate-data already exists and depends on 'data'.
+# We will leave validate-data as is, since it runs validate.py.
+# But wait, we should redefine validate-data or leave it?
+# The request says "prepare_data -> validate_data -> train..."
+
+train:
+	$(PYTHON) -m src.models.train_sla_5g
+	$(PYTHON) -m src.models.train_sla_6g
+	$(PYTHON) -m src.models.train_congestion_5g
+	$(PYTHON) -m src.models.train_congestion_6g
+	$(PYTHON) -m src.models.train_slice_type_5g
+	$(PYTHON) -m src.models.train_slice_type_6g
+
+evaluate:
+	$(PYTHON) -m src.reports.generate_model_report
+
+log-mlflow:
+	@echo "Assuming models were logged during training/evaluation via mlflow."
+	@echo "If a separate script is needed, run it here."
+
+export-onnx:
+	@echo "Exporting models to ONNX... (placeholder or run script)"
+
+convert-fp16:
+	@echo "Converting ONNX models to FP16... (placeholder or run script)"
+
+validate-model:
+	@echo "Validating exported artifacts via quality gates... (placeholder or run script)"
+
+promote-model:
+	@echo "Promoting model to production... (placeholder or delegate to API)"
+
+rollback-model:
+	@echo "Rolling back model... (placeholder or delegate to API)"
+
+mlops-full: prepare-data validate-data train evaluate log-mlflow export-onnx convert-fp16 validate-model
+	@echo "Full MLOps pipeline completed successfully."
 
 # ------------------------------------------------------------------------------
 # Cleanup

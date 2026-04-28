@@ -28,7 +28,7 @@ class DashboardPreference(Base):
 
     id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{AUTH_SCHEMA}.users.id", ondelete="CASCADE"),
+        BIGINT,
         nullable=False,
     )
     scope: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'me'"))
@@ -59,7 +59,7 @@ class DashboardBookmark(Base):
 
     id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{AUTH_SCHEMA}.users.id", ondelete="CASCADE"),
+        BIGINT,
         nullable=False,
     )
     resource_key: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -92,7 +92,7 @@ class AlertAcknowledgement(Base):
 
     id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{AUTH_SCHEMA}.users.id", ondelete="CASCADE"),
+        BIGINT,
         nullable=False,
     )
     alert_key: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -129,7 +129,6 @@ class MlopsPipelineRun(Base):
     )
     triggered_by_user_id: Mapped[int | None] = mapped_column(
         BIGINT,
-        ForeignKey(f"{AUTH_SCHEMA}.users.id", ondelete="SET NULL"),
         nullable=True,
     )
     triggered_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -137,6 +136,45 @@ class MlopsPipelineRun(Base):
     command_label: Mapped[str] = mapped_column(String(255), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stdout_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stderr_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class MlopsOrchestrationRun(Base):
+    __tablename__ = "mlops_orchestration_runs"
+    __table_args__ = (
+        Index("ix_dashboard_mlops_orchestration_runs_status_started", "status", "started_at"),
+        Index("ix_dashboard_mlops_orchestration_runs_action", "action_key"),
+        {"schema": DASHBOARD_SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    action_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    command_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    parameters_json: Mapped[dict[str, object]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    triggered_by_user_id: Mapped[int | None] = mapped_column(
+        BIGINT,
+        nullable=True,
+    )
+    triggered_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Integer, nullable=True)
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     stdout_log: Mapped[str | None] = mapped_column(Text, nullable=True)
     stderr_log: Mapped[str | None] = mapped_column(Text, nullable=True)
