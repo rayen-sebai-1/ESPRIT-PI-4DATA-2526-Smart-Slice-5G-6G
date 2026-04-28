@@ -1,222 +1,414 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Gauge, Network, Signal, TowerControl, TriangleAlert } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BrainCircuit,
+  Gauge,
+  HeartPulse,
+  Network,
+  Search,
+  ShieldAlert,
+} from "lucide-react";
 
-import { getNationalDashboard, getRegionalDashboard } from "@/api/dashboardApi";
-import { SliceDistributionChart } from "@/components/charts/slice-distribution-chart";
-import { SlaTrendChart } from "@/components/charts/sla-trend-chart";
+import { liveApi } from "@/api/liveApi";
+import { NetworkLogsFeed } from "@/components/logs/network-logs-feed";
 import { PageHeader } from "@/components/layout/page-header";
-import { ServiceBadge } from "@/components/status/service-badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Select } from "@/components/ui/select";
-import { useAuth } from "@/hooks/useAuth";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { formatNumber, formatPacketLoss, formatPercent } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { formatDate, formatNumber, formatPacketLoss, formatPercent } from "@/lib/format";
 
-function buildRecommendations(load: number, packetLoss: number, highRiskSessions: number) {
-  const actions: string[] = [];
+interface LiveEntity {
+  entityId?: string;
+  entityType?: string;
+  domain?: string;
+  siteId?: string;
+  sliceId?: string;
+  sliceType?: string;
+  healthScore?: number;
+  congestionScore?: number;
+  misroutingScore?: number;
+  severity?: string | number;
+  kpis?: Record<string, unknown> | string;
+  lastUpdated?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
 
-  if (load >= 80) {
-    actions.push("Reequilibrer la charge inter-gNodeB sur les cellules les plus sollicitees.");
-  }
-  if (packetLoss >= 1) {
-    actions.push("Verifier le transport et la qualite radio sur les sessions sensibles.");
-  }
-  if (highRiskSessions > 0) {
-    actions.push("Prioriser les sessions a haut risque pour investigation operateur.");
-  }
-  if (!actions.length) {
-    actions.push("Maintenir une surveillance standard avec verification du trend sur 7 jours.");
-  }
+const domainLabels: Record<string, string> = {
+  core: "Core",
+  edge: "Edge",
+  ran: "RAN",
+};
 
-  return actions;
+function asNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function parseKpis(raw: LiveEntity["kpis"]) {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return raw;
+}
+
+function percentFromScore(value: unknown) {
+  return Math.round(asNumber(value, 0) * 1000) / 10;
+}
+
+function entityLabel(entity?: LiveEntity | null) {
+  if (!entity) return "Entity dashboard";
+  return `${entity.entityId ?? "unknown"}${entity.entityType ? ` - ${entity.entityType}` : ""}`;
+}
+
+function healthTone(value: number) {
+  if (value < 60) return "danger";
+  if (value < 80) return "warning";
+  return "accent";
+}
+
+function riskTone(value: number) {
+  if (value >= 80) return "danger";
+  if (value >= 60) return "warning";
+  return "neutral";
 }
 
 export function RegionalDashboardPage() {
-  usePageTitle("Dashboard Regional");
+  usePageTitle("Dashboard Entite");
 
-  const { user } = useAuth();
   const navigate = useNavigate();
   const params = useParams();
+  const routeEntityId = params.regionId ? decodeURIComponent(params.regionId) : "";
+  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [domainFilter, setDomainFilter] = useState("");
 
-  const nationalQuery = useQuery({
-    queryKey: ["dashboard", "national", "regions"],
-    queryFn: getNationalDashboard,
+  const entitiesQuery = useQuery({
+    queryKey: ["live", "entities", "entity-dashboard"],
+    queryFn: () => liveApi.getEntities(500),
+    refetchInterval: 3000,
   });
 
-  const regionId = useMemo(() => {
-    const fromParams = Number(params.regionId);
-    if (Number.isFinite(fromParams) && fromParams > 0) {
-      return fromParams;
+  const entities = useMemo<LiveEntity[]>(() => {
+    return (entitiesQuery.data?.items ?? []).filter((item: LiveEntity) => Boolean(item.entityId));
+  }, [entitiesQuery.data?.items]);
+
+  useEffect(() => {
+    if (!entities.length) return;
+    const routeMatch = entities.find((item) => item.entityId === routeEntityId);
+    const currentStillExists = entities.some((item) => item.entityId === selectedEntityId);
+    if (routeMatch && selectedEntityId !== routeMatch.entityId) {
+      setSelectedEntityId(routeMatch.entityId ?? "");
+      return;
     }
+    if (!selectedEntityId || !currentStillExists) {
+      setSelectedEntityId(entities[0].entityId ?? "");
+    }
+  }, [entities, routeEntityId, selectedEntityId]);
 
-    return nationalQuery.data?.regions[0]?.region_id;
-  }, [params.regionId, nationalQuery.data]);
-
-  const regionalQuery = useQuery({
-    queryKey: ["dashboard", "region", regionId],
-    queryFn: () => getRegionalDashboard(regionId as number),
-    enabled: Boolean(regionId),
+  const entityQuery = useQuery({
+    queryKey: ["live", "entity-dashboard", selectedEntityId],
+    queryFn: () => liveApi.getEntity(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+    refetchInterval: 3000,
   });
 
-  if (nationalQuery.isLoading || regionalQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement du dashboard regional...</div>;
+  const aiopsQuery = useQuery({
+    queryKey: ["live", "entity-dashboard", "aiops", selectedEntityId],
+    queryFn: () => liveApi.getEntityAiops(selectedEntityId),
+    enabled: Boolean(selectedEntityId),
+    refetchInterval: 3000,
+  });
+
+  const selectedEntity = (entityQuery.data as LiveEntity | undefined)
+    ?? entities.find((item) => item.entityId === selectedEntityId)
+    ?? null;
+
+  const kpis = parseKpis(selectedEntity?.kpis);
+  const filteredEntities = entities.filter((item) => {
+    const term = search.trim().toLowerCase();
+    const matchesSearch = !term
+      || String(item.entityId ?? "").toLowerCase().includes(term)
+      || String(item.entityType ?? "").toLowerCase().includes(term)
+      || String(item.sliceId ?? "").toLowerCase().includes(term);
+    const matchesDomain = !domainFilter || item.domain === domainFilter;
+    return matchesSearch && matchesDomain;
+  });
+
+  const healthPercent = percentFromScore(selectedEntity?.healthScore);
+  const congestionPercent = percentFromScore(selectedEntity?.congestionScore);
+  const packetLoss = asNumber(kpis.packetLossPct);
+  const latency = asNumber(kpis.latencyMs ?? kpis.forwardingLatencyMs);
+  const throughput = asNumber(kpis.dlThroughputMbps ?? kpis.throughputMbps);
+  const utilization = asNumber(kpis.rbUtilizationPct ?? kpis.cpuUtilPct ?? kpis.queueDepthPct);
+
+  if (entitiesQuery.isLoading) {
+    return <div className="py-10 text-sm text-mutedText">Chargement du dashboard entite...</div>;
   }
 
-  if (nationalQuery.isError || regionalQuery.isError || !regionalQuery.data) {
+  if (entitiesQuery.isError) {
     return (
       <EmptyState
-        title="Region indisponible"
-        description="Impossible de charger la vue regionale pour le moment. Tu peux reessayer dans quelques instants."
+        title="Live entities indisponibles"
+        description="Le BFF live state n'est pas accessible pour le moment. Verifie api-bff-service et Redis."
       />
     );
   }
 
-  const selectedRegion = regionalQuery.data.region;
-  const recommendations = buildRecommendations(
-    selectedRegion.network_load,
-    regionalQuery.data.packet_loss_avg,
-    selectedRegion.high_risk_sessions_count,
-  );
+  if (!entities.length) {
+    return (
+      <EmptyState
+        title="Aucune entite live"
+        description="Aucune entite n'est encore exposee dans le live state. Lance les simulateurs puis recharge cette page."
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Regional supervision"
-        title={`Dashboard Regional · ${selectedRegion.name}`}
-        description="Suivi detaille de la performance locale: charge reseau, SLA, pertes paquet, congestion et aide predictive."
+        eyebrow="Entity supervision"
+        title={`Dashboard Entite - ${entityLabel(selectedEntity)}`}
+        description="Vue operationnelle par entite reseau: KPIs live, etats AIOps et logs InfluxDB filtres."
         actions={
-          <>
-            <div className="rounded-full border border-border px-3 py-2 text-xs text-slate-200">
-              <ServiceBadge value={selectedRegion.ric_status} />
-            </div>
-            <Select
-              className="min-w-64"
-              value={String(regionId)}
-              onChange={(event) => navigate(`/dashboard/region/${event.target.value}`)}
-            >
-              {nationalQuery.data?.regions.map((region) => (
-                <option key={region.region_id} value={region.region_id}>
-                  {region.name}
-                </option>
-              ))}
-            </Select>
-          </>
+          <Select
+            className="min-w-72"
+            value={selectedEntityId}
+            onChange={(event) => {
+              const nextEntityId = event.target.value;
+              setSelectedEntityId(nextEntityId);
+              navigate(`/dashboard/region/${encodeURIComponent(nextEntityId)}`);
+            }}
+          >
+            {entities.map((entity) => (
+              <option key={entity.entityId} value={entity.entityId}>
+                {entity.entityId} - {domainLabels[String(entity.domain)] ?? entity.domain ?? "unknown"}
+              </option>
+            ))}
+          </Select>
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          title="SLA regional"
-          value={formatPercent(selectedRegion.sla_percent)}
-          subtitle="Conformite qualite de service"
-          icon={<Gauge size={20} />}
-          tone={selectedRegion.sla_percent < 60 ? "danger" : "accent"}
+          title="Health score"
+          value={formatPercent(healthPercent)}
+          subtitle="Etat derive du normaliseur"
+          icon={<HeartPulse size={20} />}
+          tone={healthTone(healthPercent)}
         />
         <KpiCard
-          title="Latency moyenne"
-          value={`${selectedRegion.avg_latency_ms.toFixed(1)} ms`}
-          subtitle="Latence moyenne observee"
-          icon={<Signal size={20} />}
-          tone="neutral"
+          title="Congestion"
+          value={formatPercent(congestionPercent)}
+          subtitle="Score derive live"
+          icon={<Network size={20} />}
+          tone={riskTone(congestionPercent)}
         />
         <KpiCard
           title="Packet loss"
-          value={formatPacketLoss(regionalQuery.data.packet_loss_avg)}
-          subtitle="Moyenne regionale"
-          icon={<Activity size={20} />}
-          tone={regionalQuery.data.packet_loss_avg >= 1 ? "warning" : "neutral"}
+          value={formatPacketLoss(packetLoss)}
+          subtitle="KPI telemetrie"
+          icon={<AlertTriangle size={20} />}
+          tone={packetLoss >= 1 ? "warning" : "neutral"}
         />
         <KpiCard
-          title="Charge reseau"
-          value={formatPercent(selectedRegion.network_load)}
-          subtitle="Volume actuel de la region"
-          icon={<Network size={20} />}
-          tone={selectedRegion.network_load >= 80 ? "danger" : "warning"}
-        />
-        <KpiCard
-          title="gNodeB"
-          value={formatNumber(regionalQuery.data.gnodeb_count)}
-          subtitle="Sites radio suivis"
-          icon={<TowerControl size={20} />}
-          tone="accent"
-        />
-        <KpiCard
-          title="Sessions high risk"
-          value={formatNumber(selectedRegion.high_risk_sessions_count)}
-          subtitle="Sessions a traiter rapidement"
-          icon={<TriangleAlert size={20} />}
-          tone={selectedRegion.high_risk_sessions_count > 0 ? "danger" : "neutral"}
+          title="Latency"
+          value={`${latency.toFixed(1)} ms`}
+          subtitle="latencyMs / forwardingLatencyMs"
+          icon={<Gauge size={20} />}
+          tone={latency >= 30 ? "danger" : latency >= 15 ? "warning" : "neutral"}
         />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
-        <SlaTrendChart
-          data={regionalQuery.data.trend}
-          title="Tendance regionale"
-          description="Evolution combinee du SLA et de la congestion sur les derniers snapshots."
-          lines={[
-            { dataKey: "sla_percent", color: "#4ec3ff", label: "SLA" },
-            { dataKey: "congestion_rate", color: "#f97316", label: "Congestion" },
-          ]}
-        />
-        <SliceDistributionChart
-          data={regionalQuery.data.slice_distribution}
-          title="Distribution des slices"
-          description="Repartition locale des sessions par type de slice reseau."
-        />
-      </section>
+      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <Card className="overflow-hidden">
+          <div className="border-b border-border p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Entites reseau</h3>
+                <p className="text-sm text-mutedText">{formatNumber(filteredEntities.length)} entites affichees</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-mutedText" />
+                  <Input
+                    className="pl-9"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Chercher entite"
+                  />
+                </div>
+                <Select value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}>
+                  <option value="">Tous domaines</option>
+                  <option value="core">Core</option>
+                  <option value="edge">Edge</option>
+                  <option value="ran">RAN</option>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <div className="max-h-[520px] overflow-auto">
+            {filteredEntities.map((entity) => {
+              const active = entity.entityId === selectedEntityId;
+              return (
+                <button
+                  key={entity.entityId}
+                  className={cn(
+                    "grid w-full gap-3 border-t border-border/70 px-5 py-4 text-left transition hover:bg-white/[0.03] md:grid-cols-[1fr_auto]",
+                    active && "bg-accentSoft/50",
+                  )}
+                  type="button"
+                  onClick={() => {
+                    const nextEntityId = entity.entityId ?? "";
+                    setSelectedEntityId(nextEntityId);
+                    navigate(`/dashboard/region/${encodeURIComponent(nextEntityId)}`);
+                  }}
+                >
+                  <div>
+                    <div className="font-medium text-white">{entity.entityId}</div>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-mutedText">
+                      <span>{entity.entityType ?? "unknown"}</span>
+                      <span>{domainLabels[String(entity.domain)] ?? entity.domain ?? "unknown"}</span>
+                      {entity.sliceType ? <span>{entity.sliceType}</span> : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="rounded-full border border-border px-2 py-1 text-mutedText">
+                      H {formatPercent(percentFromScore(entity.healthScore), 0)}
+                    </span>
+                    <span className="rounded-full border border-border px-2 py-1 text-mutedText">
+                      C {formatPercent(percentFromScore(entity.congestionScore), 0)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_0.95fr]">
         <Card className="p-5">
           <div className="mb-5">
-            <h3 className="text-lg font-semibold text-white">Activite IA et recommandations</h3>
+            <h3 className="text-lg font-semibold text-white">Snapshot live</h3>
             <p className="text-sm text-mutedText">
-              Suggestions derivées des KPI actuellement exposes par les services existants.
+              Derniere mise a jour {formatDate(selectedEntity?.lastUpdated ?? selectedEntity?.timestamp ?? null)}
             </p>
           </div>
-          <div className="space-y-3">
-            {recommendations.map((item) => (
-              <div key={item} className="rounded-2xl border border-border bg-cardAlt/70 px-4 py-4 text-sm text-slate-200">
-                {item}
-              </div>
-            ))}
-          </div>
-        </Card>
 
-        <Card className="p-5">
-          <div className="mb-5">
-            <h3 className="text-lg font-semibold text-white">Snapshot exploitation</h3>
-            <p className="text-sm text-mutedText">Lecture metier rapide pour la coordination terrain.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Detail label="Entity ID" value={selectedEntity?.entityId ?? "N/A"} />
+            <Detail label="Entity type" value={selectedEntity?.entityType ?? "N/A"} />
+            <Detail label="Domain" value={domainLabels[String(selectedEntity?.domain)] ?? selectedEntity?.domain ?? "N/A"} />
+            <Detail label="Site" value={selectedEntity?.siteId ?? "N/A"} />
+            <Detail label="Slice ID" value={selectedEntity?.sliceId ?? "N/A"} />
+            <Detail label="Slice type" value={selectedEntity?.sliceType ?? "N/A"} />
+            <Detail label="Throughput" value={`${throughput.toFixed(1)} Mbps`} />
+            <Detail label="Utilization" value={formatPercent(utilization)} />
           </div>
-          <div className="space-y-4 text-sm text-slate-200">
-            <div className="flex items-center justify-between rounded-2xl border border-border bg-cardAlt/70 px-4 py-3">
-              <span>Sessions surveillees</span>
-              <span>{formatNumber(selectedRegion.sessions_count)}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl border border-border bg-cardAlt/70 px-4 py-3">
-              <span>Congestion rate</span>
-              <span>{formatPercent(selectedRegion.congestion_rate)}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl border border-border bg-cardAlt/70 px-4 py-3">
-              <span>Anomalies</span>
-              <span>{formatNumber(selectedRegion.anomalies_count)}</span>
-            </div>
-            {user?.role !== "NETWORK_MANAGER" ? (
-              <button
-                className="w-full rounded-2xl border border-accent/30 bg-accentSoft px-4 py-3 text-sm font-medium text-accent transition hover:bg-accent hover:text-slate-950"
-                onClick={() => navigate(`/sessions?region=${selectedRegion.code}`)}
-                type="button"
-              >
-                Ouvrir les sessions de la region
-              </button>
-            ) : null}
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+            <AiopsPanel
+              title="Congestion"
+              icon={<Activity size={18} />}
+              data={aiopsQuery.data?.congestion}
+              scoreKey="score"
+            />
+            <AiopsPanel
+              title="SLA assurance"
+              icon={<ShieldAlert size={18} />}
+              data={aiopsQuery.data?.sla}
+              scoreKey="score"
+            />
+            <AiopsPanel
+              title="Slice classifier"
+              icon={<BrainCircuit size={18} />}
+              data={aiopsQuery.data?.slice_classification}
+              scoreKey="confidence"
+            />
           </div>
         </Card>
       </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Logs reseau - {selectedEntity?.entityId}</h3>
+          <p className="text-sm text-mutedText">
+            Feed live filtre cote serveur sur l'entite selectionnee.
+          </p>
+        </div>
+        <NetworkLogsFeed
+          key={selectedEntityId}
+          scope="national"
+          defaultFilters={{ entity_id: selectedEntityId, start: "-15m" }}
+        />
+      </section>
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-cardAlt/70 px-4 py-3">
+      <div className="text-xs text-mutedText">{label}</div>
+      <div className="mt-1 break-words text-sm font-medium text-white">{value}</div>
+    </div>
+  );
+}
+
+function AiopsPanel({
+  title,
+  icon,
+  data,
+  scoreKey,
+}: {
+  title: string;
+  icon: ReactNode;
+  data: any;
+  scoreKey: "score" | "confidence";
+}) {
+  const severity = asNumber(data?.severity, 0);
+  return (
+    <div className="rounded-2xl border border-border bg-cardAlt/70 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
+        {icon}
+        {title}
+      </div>
+      {data ? (
+        <div className="space-y-2 text-sm text-mutedText">
+          <div className="flex items-center justify-between gap-3">
+            <span>Prediction</span>
+            <span className="text-right text-white">{data.prediction ?? "unknown"}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span>Score</span>
+            <span className="text-white">{asNumber(data?.[scoreKey], 0).toFixed(4)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span>Severity</span>
+            <span className={cn("rounded-full px-2 py-1 text-xs", severity >= 2 ? "bg-red-500/15 text-red-200" : "bg-emerald-500/15 text-emerald-200")}>
+              S{severity}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-mutedText">No live output yet</div>
+      )}
     </div>
   );
 }

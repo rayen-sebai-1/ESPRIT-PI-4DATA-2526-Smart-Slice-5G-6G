@@ -36,6 +36,9 @@ from shared.redis_client import (
     get_entity_state, ensure_consumer_group, read_group, ack_message,
 )
 
+import network_insights
+import influx_logs
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 
@@ -352,7 +355,136 @@ def get_live_faults() -> dict:
     except Exception as exc:
         logger.warning(f"Failed to read faults from redis: {exc}")
         return {"faults": [], "count": 0}
+
+
+@app.get("/api/v1/live/logs")
+def get_live_network_logs(
+    scope: str = Query("national", description="national | regional"),
+    region_id: Optional[str] = Query(None),
+    start: str = Query("-15m", description="-5m|-15m|-1h|-6h|-24h"),
+    categories: Optional[str] = Query(None, description="Comma-separated category filter"),
+    min_severity: int = Query(0, ge=0, le=3),
+    entity_id: Optional[str] = Query(None),
+    slice_id: Optional[str] = Query(None),
+    domain: Optional[str] = Query(None),
+    slice_type: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+    cursor: Optional[str] = Query(None, description="ISO timestamp; returns older events"),
+) -> dict:
+    """Return live network event logs derived from real InfluxDB measurements."""
+    if scope not in {"national", "regional"}:
+        raise HTTPException(status_code=400, detail="scope must be 'national' or 'regional'")
+    if scope == "regional" and not region_id:
+        raise HTTPException(status_code=400, detail="region_id is required for regional scope")
+
+    parsed_categories = influx_logs.parse_categories(categories)
+    try:
+        influx_logs.validate_categories(parsed_categories)
+        return influx_logs.network_logs(
+            scope=scope,
+            region_id=region_id,
+            start=start,
+            categories=parsed_categories,
+            min_severity=min_severity,
+            entity_id=entity_id,
+            slice_id=slice_id,
+            domain=domain,
+            slice_type=slice_type,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("live network logs failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"InfluxDB unavailable: {exc}")
         
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Network insights — Influx-backed national / regional dashboards
+# ─────────────────────────────────────────────────────────────────────────────
+
+ALLOWED_LOG_CATEGORIES = sorted(network_insights.LOG_CATEGORIES)
+
+
+@app.get("/api/v1/network/regions")
+def get_network_regions() -> dict:
+    """Static taxonomy: the three functional-domain 'regions' (core/edge/ran)."""
+    return {"regions": network_insights.list_regions()}
+
+
+@app.get("/api/v1/network/national")
+def get_network_national(
+    window: str = Query("-15m", description="Time range: -5m|-15m|-1h|-6h|-24h"),
+) -> dict:
+    try:
+        return network_insights.national_overview(window=window)
+    except Exception as exc:
+        logger.exception("national_overview failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"InfluxDB unavailable: {exc}")
+
+
+@app.get("/api/v1/network/region/{region_id}")
+def get_network_region(
+    region_id: str,
+    window: str = Query("-15m", description="Time range: -5m|-15m|-1h|-6h|-24h"),
+) -> dict:
+    region = network_insights.normalize_region(region_id)
+    if not region:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown region '{region_id}'. Allowed: {sorted(network_insights.REGION_IDS)}",
+        )
+    try:
+        return network_insights.region_overview(domain=region, window=window)
+    except Exception as exc:
+        logger.exception("region_overview failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"InfluxDB unavailable: {exc}")
+
+
+@app.get("/api/v1/network/logs")
+def get_network_logs(
+    scope: str = Query("national", description="national | regional"),
+    region_id: Optional[str] = Query(None),
+    window: str = Query("-15m"),
+    categories: Optional[str] = Query(None, description="Comma-separated category filter"),
+    min_severity: int = Query(0, ge=0, le=3),
+    limit: int = Query(200, ge=1, le=500),
+) -> dict:
+    if scope not in {"national", "regional"}:
+        raise HTTPException(status_code=400, detail="scope must be 'national' or 'regional'")
+    if scope == "regional" and not network_insights.normalize_region(region_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"region_id required for regional scope, allowed: {sorted(network_insights.REGION_IDS)}",
+        )
+
+    cats: List[str] = []
+    if categories:
+        for raw in categories.split(","):
+            value = raw.strip().upper()
+            if not value:
+                continue
+            if value not in network_insights.LOG_CATEGORIES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown category '{value}'. Allowed: {ALLOWED_LOG_CATEGORIES}",
+                )
+            cats.append(value)
+
+    try:
+        return network_insights.network_logs(
+            scope=scope,
+            region_id=region_id,
+            window=window,
+            categories=cats or None,
+            min_severity=min_severity,
+            limit=limit,
+        )
+    except Exception as exc:
+        logger.exception("network_logs failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"InfluxDB unavailable: {exc}")
+
 
 @app.get("/api/v1/live/stream")
 async def stream_live_events() -> StreamingResponse:

@@ -227,10 +227,14 @@ async def consume_loop(r: redis.Redis, producer: AIOKafkaProducer) -> None:
         ]:
             try:
                 messages = read_group(r, stream, CONSUMER_GROUP, CONSUMER_NAME, count=50, block_ms=500)
-                for msg_id, fields in messages:
+            except Exception as exc:
+                logger.warning("Consumer read error on %s: %s", stream, exc)
+                continue
+
+            for msg_id, fields in messages:
+                try:
                     raw_payload = fields.get("payload")
                     if not raw_payload:
-                        ack_message(r, stream, CONSUMER_GROUP, msg_id)
                         continue
 
                     payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
@@ -243,16 +247,17 @@ async def consume_loop(r: redis.Redis, producer: AIOKafkaProducer) -> None:
                         # Publish to Kafka
                         kafka_payload = json.dumps({"event": event_json_str}).encode("utf-8")
                         await producer.send_and_wait(KAFKA_TOPIC, kafka_payload)
-                        
-                        # Store latest entity state
+
+                        # Store latest entity state. Tolerate enum-or-str values:
+                        # `model_dump` may have already coerced enums to plain strings.
                         set_entity_state(r, event.entity_id, {
                             "entityId": event.entity_id,
                             "nodeId": event.node_id,
                             "siteId": event.site_id,
                             "sliceId": event.slice_id,
-                            "sliceType": event.slice_type.value if event.slice_type else None,
-                            "entityType": event.entity_type.value if event.entity_type else None,
-                            "domain": event.domain.value if event.domain else None,
+                            "sliceType": getattr(event.slice_type, "value", event.slice_type),
+                            "entityType": getattr(event.entity_type, "value", event.entity_type),
+                            "domain": getattr(event.domain, "value", event.domain),
                             "healthScore": event.derived.health_score,
                             "congestionScore": event.derived.congestion_score,
                             "misroutingScore": event.derived.misrouting_score,
@@ -263,10 +268,15 @@ async def consume_loop(r: redis.Redis, producer: AIOKafkaProducer) -> None:
                             "scenarioId": event.scenario_id,
                             "severity": event.severity,
                         })
-
-                    ack_message(r, stream, CONSUMER_GROUP, msg_id)
-            except Exception as exc:
-                logger.warning("Consumer error on %s: %s", stream, exc)
+                except Exception as exc:
+                    # Per-message guard: never let one bad message poison the batch
+                    # or cause an unbounded pending list. We always ack in `finally`.
+                    logger.warning("Consumer error on %s msg=%s: %s", stream, msg_id, exc)
+                finally:
+                    try:
+                        ack_message(r, stream, CONSUMER_GROUP, msg_id)
+                    except Exception as ack_exc:
+                        logger.warning("Failed to ack %s msg=%s: %s", stream, msg_id, ack_exc)
 
         await asyncio.sleep(0.1)
 
