@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from db import check_database_connection, get_db
 from mlops import MlopsService, get_mlops_service
 from mlops_ops import MlopsOpsService, background_execute_run
+from mlops_orchestration import MlopsOrchestrationService, background_execute_orchestration_run
 from schemas import (
     AlertAcknowledgePayload,
     AlertAcknowledgementResponse,
@@ -21,7 +22,11 @@ from schemas import (
     MlopsActionResponse,
     MlopsArtifactStatus,
     MlopsModelHealth,
+    MlopsOrchestrationRunLogsResponse,
+    MlopsOrchestrationRunRequest,
+    MlopsOrchestrationRunResponse,
     MlopsOverview,
+    MlopsActionDefinition,
     MlopsPipelineRunLogsResponse,
     MlopsPipelineRunResponse,
     MlopsPredictionMonitoringResponse,
@@ -43,6 +48,9 @@ from service import DashboardService, get_current_user, get_dashboard_provider, 
 
 def get_mlops_ops_service(db: Annotated[Session, Depends(get_db)]) -> MlopsOpsService:
     return MlopsOpsService(db)
+
+def get_mlops_orchestration_service(db: Annotated[Session, Depends(get_db)]) -> MlopsOrchestrationService:
+    return MlopsOrchestrationService(db)
 
 app = FastAPI(title="NeuroSlice Dashboard Backend", version="2.0.0")
 
@@ -403,3 +411,77 @@ def get_mlops_pipeline_run_logs(
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run introuvable.")
     return response
+
+
+# ---- Orchestration Center ----
+
+@app.get("/mlops/orchestration/actions", response_model=list[MlopsActionDefinition], tags=["mlops-orchestration"])
+def list_mlops_orchestration_actions(
+    orchestration: Annotated[MlopsOrchestrationService, Depends(get_mlops_orchestration_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> list[MlopsActionDefinition]:
+    return orchestration.list_actions()
+
+
+@app.post(
+    "/mlops/orchestration/run",
+    response_model=MlopsOrchestrationRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["mlops-orchestration"],
+)
+def trigger_mlops_orchestration_run(
+    payload: MlopsOrchestrationRunRequest,
+    background_tasks: BackgroundTasks,
+    orchestration: Annotated[MlopsOrchestrationService, Depends(get_mlops_orchestration_service)],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> MlopsOrchestrationRunResponse:
+    try:
+        run = orchestration.create_run(current_user, payload.action, payload.parameters)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    
+    run_id = uuid.UUID(str(run.id))
+    background_tasks.add_task(background_execute_orchestration_run, run_id)
+    return orchestration._to_run_response(run)
+
+
+@app.get("/mlops/orchestration/runs", response_model=list[MlopsOrchestrationRunResponse], tags=["mlops-orchestration"])
+def list_mlops_orchestration_runs(
+    orchestration: Annotated[MlopsOrchestrationService, Depends(get_mlops_orchestration_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[MlopsOrchestrationRunResponse]:
+    return orchestration.list_runs(limit=limit)
+
+
+@app.get(
+    "/mlops/orchestration/runs/{run_id}",
+    response_model=MlopsOrchestrationRunResponse,
+    tags=["mlops-orchestration"],
+)
+def get_mlops_orchestration_run(
+    run_id: str,
+    orchestration: Annotated[MlopsOrchestrationService, Depends(get_mlops_orchestration_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsOrchestrationRunResponse:
+    response = orchestration.get_run_response(run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run introuvable.")
+    return response
+
+
+@app.get(
+    "/mlops/orchestration/runs/{run_id}/logs",
+    response_model=MlopsOrchestrationRunLogsResponse,
+    tags=["mlops-orchestration"],
+)
+def get_mlops_orchestration_run_logs(
+    run_id: str,
+    orchestration: Annotated[MlopsOrchestrationService, Depends(get_mlops_orchestration_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsOrchestrationRunLogsResponse:
+    response = orchestration.get_run_logs(run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run introuvable.")
+    return response
+

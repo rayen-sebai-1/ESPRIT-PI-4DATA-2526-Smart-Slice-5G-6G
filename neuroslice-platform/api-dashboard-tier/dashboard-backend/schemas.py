@@ -322,7 +322,7 @@ class MlopsActionResponse(BaseModel):
     delegated_to: str | None = None
 
 
-PipelineRunStatus = Literal["QUEUED", "RUNNING", "SUCCESS", "FAILED", "TIMEOUT", "DISABLED"]
+PipelineRunStatus = Literal["QUEUED", "RUNNING", "SUCCESS", "FAILED", "TIMEOUT", "DISABLED", "CANCELLED"]
 
 
 class MlopsToolLink(BaseModel):
@@ -362,6 +362,42 @@ class MlopsPipelineRunResponse(BaseModel):
 
 
 class MlopsPipelineRunLogsResponse(BaseModel):
+    run_id: str
+    status: PipelineRunStatus
+    stdout: str
+    stderr: str
+
+
+class MlopsActionDefinition(BaseModel):
+    action_key: str
+    label: str
+    description: str
+    risk_level: RiskLevel
+    requires_confirmation: bool
+    allowed_roles: list[UserRole]
+
+
+class MlopsOrchestrationRunRequest(BaseModel):
+    action: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class MlopsOrchestrationRunResponse(BaseModel):
+    run_id: str
+    action_key: str
+    command_label: str
+    parameters: dict[str, Any]
+    triggered_by_user_id: int | None
+    triggered_by_email: str | None
+    status: PipelineRunStatus
+    started_at: datetime | None
+    finished_at: datetime | None
+    exit_code: int | None
+    duration_seconds: float | None
+    created_at: datetime
+
+
+class MlopsOrchestrationRunLogsResponse(BaseModel):
     run_id: str
     status: PipelineRunStatus
     stdout: str

@@ -23,6 +23,7 @@ x-mlops-project-volumes: &mlops-project-volumes
   - ../mlops-tier/batch-orchestrator/models:/app/models
   - ../mlops-tier/batch-orchestrator/data:/app/data
   - ../mlops-tier/batch-orchestrator/reports:/app/reports
+  - ../mlops-tier/batch-orchestrator/src:/app/src
 
 x-mlops-runtime-env: &mlops-runtime-env
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
@@ -318,22 +319,17 @@ services:
     build:
       context: ..
       dockerfile: mlops-tier/mlops-runner/Dockerfile
-    # Internal-only worker that triggers the offline MLOps pipeline.
-    # Not published on the host - dashboard-backend talks to it via the
-    # internal Compose network only.
+    container_name: mlops-runner
+    environment:
+      - MLOPS_ORCHESTRATION_ENABLED=${MLOPS_ORCHESTRATION_ENABLED:-true}
+      - MLOPS_ORCHESTRATION_WORKDIR=${MLOPS_ORCHESTRATION_WORKDIR:-/workspace/neuroslice-platform/infrastructure}
+      - MLOPS_ORCHESTRATION_TIMEOUT_SECONDS=${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
+      - MLOPS_RUNNER_TOKEN=${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/workspace/neuroslice-platform
     expose:
       - "8020"
-    environment:
-      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-false}
-      MLOPS_PIPELINE_COMMAND: "docker compose --profile mlops --profile mlops-worker run --rm mlops-worker"
-      MLOPS_PIPELINE_WORKDIR: /workspace/infrastructure
-      MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
-      MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-}
-    volumes:
-      # The runner needs the docker socket to start the worker container,
-      # and the platform tree to use the same docker compose project.
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ..:/workspace
     healthcheck:
       test:
         [
@@ -815,13 +811,12 @@ services:
       MLOPS_TOOLS_MINIO_URL: ${MLOPS_TOOLS_MINIO_URL:-http://localhost:9001}
       MLOPS_TOOLS_KIBANA_URL: ${MLOPS_TOOLS_KIBANA_URL:-http://localhost:5601}
       MLOPS_TOOLS_INFLUXDB_URL: ${MLOPS_TOOLS_INFLUXDB_URL:-http://localhost:8086}
-      MLOPS_TOOLS_GRAFANA_URL: ${MLOPS_TOOLS_GRAFANA_URL:-http://localhost:3000}
-      MLOPS_TOOLS_MLOPS_API_URL: ${MLOPS_TOOLS_MLOPS_API_URL:-http://localhost:8010}
-      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-false}
-      MLOPS_PIPELINE_COMMAND: "docker compose --profile mlops --profile mlops-worker run --rm mlops-worker"
-      MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
+      MLOPS_TOOLS_GRAFANA_URL: http://localhost:3000
+      MLOPS_TOOLS_MLOPS_API_URL: http://localhost:8010/docs
+      MLOPS_ORCHESTRATION_ENABLED: ${MLOPS_ORCHESTRATION_ENABLED:-true}
       MLOPS_RUNNER_URL: http://mlops-runner:8020
-      MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-}
+      MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
+      MLOPS_ORCHESTRATION_TIMEOUT_SECONDS: ${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
     volumes:
       - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
     expose:

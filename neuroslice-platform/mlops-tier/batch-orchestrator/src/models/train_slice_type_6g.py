@@ -114,26 +114,25 @@ def main():
 
         # 6. SHAP Explanations
         print("Generating SHAP summary plot...")
-        # XGBoost TreeExplainer handles XGBClassifier seamlessly
-        explainer = shap.TreeExplainer(model)
-        # Using a subset of training data for faster SHAP computation if necessary,
-        # but 8000 samples should be fast for XGBoost.
-        # To avoid massive dot generation, we sample down.
-        sample_idx = np.random.choice(X_train.shape[0], min(X_train.shape[0], 2000), replace=False)
-        X_train_sample = X_train[sample_idx]
-        shap_values = explainer.shap_values(X_train_sample)
+        try:
+            explainer = shap.TreeExplainer(model)
+            sample_idx = np.random.choice(X_train.shape[0], min(X_train.shape[0], 2000), replace=False)
+            X_train_sample = X_train[sample_idx]
+            shap_values = explainer.shap_values(X_train_sample)
 
-        plt.figure(figsize=(10, 8))
-        shap.summary_plot(shap_values, X_train_sample, feature_names=feature_names, show=False)
+            plt.figure(figsize=(10, 8))
+            shap.summary_plot(shap_values, X_train_sample, feature_names=feature_names, show=False)
 
-        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-        shap_plot_path = ARTIFACTS_DIR / "shap_summary_6g.png"
-        plt.tight_layout()
-        plt.savefig(shap_plot_path.as_posix(), bbox_inches="tight")
-        plt.close()
+            ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+            shap_plot_path = ARTIFACTS_DIR / "shap_summary_6g.png"
+            plt.tight_layout()
+            plt.savefig(shap_plot_path.as_posix(), bbox_inches="tight")
+            plt.close()
 
-        mlflow.log_artifact(shap_plot_path.as_posix())
-        print(f"Logged SHAP artifact: {shap_plot_path.as_posix()}")
+            mlflow.log_artifact(shap_plot_path.as_posix())
+            print(f"Logged SHAP artifact: {shap_plot_path.as_posix()}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] SHAP computation skipped: {exc}")
 
         if LABEL_ENCODER_PATH.exists():
             mlflow.log_artifact(LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing")

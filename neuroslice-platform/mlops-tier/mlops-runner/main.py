@@ -9,17 +9,23 @@ Security model:
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import time
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-DEFAULT_COMMAND = "docker compose --profile mlops --profile mlops-worker run --rm mlops-worker"
 
-app = FastAPI(title="NeuroSlice MLOps Runner", version="1.0.0")
+app = FastAPI(title="NeuroSlice MLOps Runner", version="2.0.0")
+
+
+class RunActionRequest(BaseModel):
+    action: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
 
 
 class RunPipelineResponse(BaseModel):
@@ -38,18 +44,51 @@ def _expected_token() -> str | None:
 
 
 def _enabled() -> bool:
-    return os.getenv("MLOPS_PIPELINE_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
-
-
-def _command() -> list[str]:
-    raw = os.getenv("MLOPS_PIPELINE_COMMAND", DEFAULT_COMMAND).strip()
-    if not raw:
-        raw = DEFAULT_COMMAND
-    return shlex.split(raw)
+    return os.getenv("MLOPS_ORCHESTRATION_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
 
 
 def _workdir() -> str:
-    return os.getenv("MLOPS_PIPELINE_WORKDIR", "/workspace")
+    return os.getenv("MLOPS_ORCHESTRATION_WORKDIR", "/workspace/neuroslice-platform/infrastructure")
+
+
+def _mlops_api_container() -> str:
+    """Resolve the mlops-api container name dynamically via Docker labels."""
+    explicit = os.getenv("MLOPS_API_CONTAINER_NAME")
+    if explicit:
+        return explicit
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-q", "-f", "label=com.docker.compose.service=mlops-api"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        container_id = result.stdout.strip().split("\n")[0]
+        if container_id:
+            return container_id
+    except Exception:
+        pass
+    return "infrastructure-mlops-api-1"
+
+
+def _timeout_seconds() -> int:
+    try:
+        return max(60, int(os.getenv("MLOPS_ORCHESTRATION_TIMEOUT_SECONDS", "7200")))
+    except ValueError:
+        return 7200
+
+
+_ACTION_MAP = {
+    "prepare_data": "prepare-data",
+    "validate_data": "validate-data",
+    "train": "train",
+    "evaluate": "evaluate",
+    "log_mlflow": "log-mlflow",
+    "export_onnx": "export-onnx",
+    "convert_fp16": "convert-fp16",
+    "validate_model": "validate-model",
+    "promote_model": "promote-model",
+    "rollback_model": "rollback-model",
+    "full_pipeline": "mlops-full",
+}
 
 
 def _timeout_seconds() -> int:
@@ -84,19 +123,39 @@ def health() -> dict[str, str | bool]:
         "status": "ok",
         "service": "mlops-runner",
         "enabled": _enabled(),
-        "command_label": " ".join(_command()),
     }
 
 
-@app.post("/run-pipeline", response_model=RunPipelineResponse)
-def run_pipeline(_: Annotated[None, Depends(require_runner_token)]) -> RunPipelineResponse:
+@app.post("/run-action", response_model=RunPipelineResponse)
+def run_action(
+    payload: RunActionRequest,
+    _: Annotated[None, Depends(require_runner_token)]
+) -> RunPipelineResponse:
     if not _enabled():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="MLOps pipeline runner is disabled (MLOPS_PIPELINE_ENABLED).",
+            detail="MLOps orchestration is disabled (MLOPS_ORCHESTRATION_ENABLED).",
         )
 
-    argv = _command()
+    target = _ACTION_MAP.get(payload.action)
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown action key: {payload.action}",
+        )
+
+    container = _mlops_api_container()
+    argv = [
+        "docker", "exec", container,
+        "make", target
+    ]
+    
+    # Safely append parameters
+    for k, v in payload.parameters.items():
+        if not re.match(r"^[A-Za-z0-9_]+$", k):
+            continue
+        argv.append(f"{k}={v}")
+
     label = " ".join(argv)
     start = time.monotonic()
 
