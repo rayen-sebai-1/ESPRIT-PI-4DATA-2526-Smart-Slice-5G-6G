@@ -25,20 +25,24 @@ except ModuleNotFoundError:  # local execution from copilot-agent/
 logger = logging.getLogger(__name__)
 
 
-def _extract_slice_id(slice_id: str = "", query_parameters: Optional[Dict[str, Any]] = None) -> str:
-    filters, _ = normalize_filters(slice_id=slice_id, query_parameters=query_parameters)
+def _extract_slice_id(
+    slice_id: Optional[str] = None,
+    query_parameters: Optional[Dict[str, Any]] = None,
+) -> str:
+    filters, _ = normalize_filters(slice_id=slice_id or "", query_parameters=query_parameters)
     return str(filters.get("slice_id") or "slice-001")
 
 
 @tool
 def fetch_influx_kpis(
     query_parameters: Optional[Dict[str, Any]] = None,
-    slice_id: str = "",
+    slice_id: Optional[str] = None,
     time_range: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Fetch compact, aggregated telemetry and fault evidence from real InfluxDB.
     Accepts query_parameters with slice_id/domain/entity_id/entity_type/slice_type/time_range, or direct slice_id.
+    Pass null/omit any argument that is unknown.
     """
     try:
         normalized_slice_id = _extract_slice_id(slice_id=slice_id, query_parameters=query_parameters)
@@ -60,11 +64,12 @@ def fetch_influx_kpis(
 
 @tool
 def fetch_redis_state(
-    slice_id: str = "",
+    slice_id: Optional[str] = None,
     query_parameters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Fetch compact live Redis state for a slice, including entity hashes, active faults, and AIOps outputs.
+    Pass null/omit slice_id if unknown; the tool will fall back to a default slice.
     """
     try:
         normalized_slice_id = _extract_slice_id(slice_id=slice_id, query_parameters=query_parameters)

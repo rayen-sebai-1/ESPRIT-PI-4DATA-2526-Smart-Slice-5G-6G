@@ -1,10 +1,12 @@
 import {
   Activity,
   BarChart3,
+  Bot,
   Cpu,
   LogOut,
   Radar,
   RadioTower,
+  ScanSearch,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -54,6 +56,18 @@ export const navItems: NavItem[] = [
     to: "/mlops",
     icon: Cpu,
     roles: ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"],
+  },
+  {
+    label: "Root Cause Agent",
+    to: "/agentic/root-cause",
+    icon: ScanSearch,
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+  },
+  {
+    label: "Copilot Agent",
+    to: "/agentic/copilot",
+    icon: Bot,
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
     label: "Gestion utilisateurs",

@@ -10,6 +10,8 @@ import { PredictionsCenterPage } from "@/pages/PredictionsCenterPage";
 import { UsersManagementPage } from "@/pages/admin/UsersManagementPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { LiveStatePage } from "@/pages/LiveStatePage";
+import { RootCauseAgentPage } from "@/pages/RootCauseAgentPage";
+import { CopilotAgentPage } from "@/pages/CopilotAgentPage";
 import { MlopsLayout } from "@/pages/mlops/MlopsLayout";
 import { MlopsOverviewPage } from "@/pages/mlops/MlopsOverviewPage";
 import { MlopsModelsPage } from "@/pages/mlops/MlopsModelsPage";
@@ -50,6 +52,8 @@ export const router = createBrowserRouter([
             ),
             children: [{ path: "/predictions", element: <PredictionsCenterPage /> }],
           },
+          { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
+          { path: "/agentic/copilot", element: <CopilotAgentPage /> },
           {
             element: (
               <ProtectedRoute
