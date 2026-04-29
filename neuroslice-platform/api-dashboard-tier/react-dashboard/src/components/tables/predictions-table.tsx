@@ -10,10 +10,12 @@ export function PredictionsTable({
   predictions,
   onRun,
   isRunning,
+  canRun = true,
 }: {
   predictions: PredictionResponse[];
   onRun: (sessionId: number) => void;
   isRunning?: boolean;
+  canRun?: boolean;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -60,15 +62,19 @@ export function PredictionsTable({
                   </div>
                 </td>
                 <td className="px-5 py-4">
-                  <Button
-                    variant="secondary"
-                    className="gap-2"
-                    disabled={isRunning}
-                    onClick={() => onRun(prediction.session_id)}
-                  >
-                    {isRunning ? <Zap size={16} className="animate-pulse" /> : <Play size={16} />}
-                    Relancer
-                  </Button>
+                  {canRun ? (
+                    <Button
+                      variant="secondary"
+                      className="gap-2"
+                      disabled={isRunning}
+                      onClick={() => onRun(prediction.session_id)}
+                    >
+                      {isRunning ? <Zap size={16} className="animate-pulse" /> : <Play size={16} />}
+                      Relancer
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-mutedText">lecture seule</span>
+                  )}
                 </td>
               </tr>
             ))}

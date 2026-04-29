@@ -28,7 +28,10 @@ Kong is currently doing routing, CORS, and rate limiting only. Authentication an
 - `/api/dashboard/sessions*` -> `dashboard-backend:8002/sessions*`
 - `/api/dashboard/predictions*` -> `dashboard-backend:8002/predictions*`
 - `/api/dashboard/models` -> `dashboard-backend:8002/models`
+- `/api/dashboard/agentic*` -> `dashboard-backend:8002/agentic*` (JWT-validated agentic proxy)
 - other `/api/dashboard/*` routes -> `dashboard-backend:8002/dashboard/*`
+
+Agentic routes (`/api/dashboard/agentic/*`) go through `dashboard-backend`, which validates the Bearer token and enforces role checks before proxying to internal agent services. The old direct agentic routes (`/api/agentic/*`) have been removed.
 
 ## Active Plugins
 

@@ -44,7 +44,7 @@ Current route guards in the router:
 
 - all authenticated users can access the dashboard shell
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
-- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
+- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER` (write/run action hidden for `NETWORK_MANAGER`)
 - `/mlops/*`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (write actions hidden / disabled for `NETWORK_MANAGER`)
 - `/admin/users`: `ADMIN`
 
@@ -70,7 +70,9 @@ The Operations tab adds:
 - a runs table with auto-refresh while a run is `RUNNING` or `QUEUED`
 - a logs modal showing redacted stdout/stderr in a monospace block, also auto-refreshing while the run is in progress
 
-`NETWORK_MANAGER` currently has dashboard access only in the shipped UI, even though the backend prediction API accepts that role.
+The "Run Offline MLOps Pipeline" button queries `GET /mlops/pipeline/config` on mount and disables itself with an amber notice when `MLOPS_PIPELINE_ENABLED=false`. This prevents confusion when the pipeline is intentionally disabled in the running environment.
+
+Agentic features (Root Cause Agent, Copilot Agent) send requests to `/api/dashboard/agentic/*`, which is routed through Kong to `dashboard-backend` for JWT validation before proxying to the internal agent services.
 
 ## Local Development
 

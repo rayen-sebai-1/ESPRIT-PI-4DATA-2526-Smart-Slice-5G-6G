@@ -1,6 +1,24 @@
-# Smart Slice Observability (ELK)
+# Smart Slice Observability
 
-This folder contains production-oriented observability assets for Smart Slice AIOps prediction monitoring.
+This folder contains observability assets for Smart Slice AIOps: Prometheus metrics scraping and an ELK stack for prediction monitoring.
+
+## Prometheus
+
+`prometheus.yml` configures Prometheus (started automatically with `docker compose up`) to scrape:
+
+- `adapter-ves:7001/metrics` — VES adapter Prometheus metrics
+- `adapter-netconf:7002/metrics` — NETCONF adapter Prometheus metrics
+- `localhost:9090/metrics` — Prometheus self-metrics
+
+Prometheus UI: `http://localhost:9090`
+
+A Grafana datasource provisioning file at `grafana/provisioning/datasources/prometheus.yml` wires Prometheus into Grafana automatically (datasource UID `P1809F7CD0C75ACF3`).
+
+---
+
+## ELK Stack (Prediction Monitoring)
+
+The ELK section contains production-oriented observability assets for Smart Slice AIOps prediction monitoring.
 
 ## What This Setup Delivers
 

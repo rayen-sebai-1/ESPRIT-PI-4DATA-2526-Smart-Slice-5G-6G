@@ -817,6 +817,12 @@ services:
       MLOPS_RUNNER_URL: http://mlops-runner:8020
       MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
       MLOPS_ORCHESTRATION_TIMEOUT_SECONDS: ${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
+      # MLOps pipeline execution (off by default — set true only for Scenario B demo)
+      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-false}
+      MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
+      # Agentic AI proxy (routes from dashboard-backend to internal agent services)
+      ROOT_CAUSE_AGENT_URL: http://root-cause:7005
+      COPILOT_AGENT_URL: http://copilot-agent:7006
     volumes:
       - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
     expose:
@@ -880,6 +886,30 @@ services:
       kong-gateway:
         condition: service_healthy
 
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+    depends_on:
+      - adapter-ves
+      - adapter-netconf
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   grafana:
     image: grafana/grafana:10.4.2
     ports:
@@ -901,6 +931,7 @@ services:
 volumes:
   redis_data:
   grafana_data:
+  prometheus_data:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
