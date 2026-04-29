@@ -46,11 +46,13 @@ export const agentApi = {
     if (payload.domain) {
       body.domain = payload.domain;
     }
-    const response = await agentClient.post<RcaScanResponse>("/rca/manual-scan", body);
+    // Route goes through dashboard-backend proxy (/api/dashboard/agentic) for auth.
+    const response = await agentClient.post<RcaScanResponse>("/root-cause/manual-scan", body);
     return response.data;
   },
 
   askCopilot: async (payload: CopilotQueryRequest): Promise<CopilotQueryResponse> => {
+    // Route goes through dashboard-backend proxy (/api/dashboard/agentic) for auth.
     const response = await agentClient.post<CopilotQueryResponse>("/copilot/query/text", payload);
     return response.data;
   },

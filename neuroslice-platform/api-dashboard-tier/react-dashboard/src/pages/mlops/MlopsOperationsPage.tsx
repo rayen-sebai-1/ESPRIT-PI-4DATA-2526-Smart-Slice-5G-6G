@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import {
+  getMlopsPipelineConfig,
   getMlopsPipelineRunLogs,
   getMlopsPipelineRuns,
   getMlopsTools,
@@ -59,6 +60,16 @@ export function MlopsOperationsPage() {
   usePageTitle("MLOps - Operations");
   const { readOnly } = useOutletContext<MlopsContext>();
   const queryClient = useQueryClient();
+
+  const pipelineConfigQuery = useQuery({
+    queryKey: ["mlops", "pipeline", "config"],
+    queryFn: getMlopsPipelineConfig,
+    staleTime: 60_000,
+  });
+  const pipelineEnabled = pipelineConfigQuery.data?.pipeline_enabled ?? true;
+  const pipelineDisabledMessage = pipelineConfigQuery.data?.pipeline_enabled === false
+    ? pipelineConfigQuery.data.message
+    : null;
 
   const toolsQuery = useQuery({ queryKey: ["mlops", "tools"], queryFn: getMlopsTools });
   const healthQuery = useQuery({
@@ -184,16 +195,22 @@ export function MlopsOperationsPage() {
             <p className="text-sm text-mutedText">
               Lance la sequence: training, MLflow, ONNX export, FP16, promotion.
             </p>
+            {pipelineDisabledMessage ? (
+              <p className="mt-2 text-xs text-amber-400">
+                {pipelineDisabledMessage}
+              </p>
+            ) : null}
           </div>
           <Button
             onClick={() => {
               setMessage(null);
               setConfirmOpen(true);
             }}
-            disabled={readOnly || triggerMutation.isPending}
+            disabled={readOnly || triggerMutation.isPending || !pipelineEnabled}
+            title={pipelineDisabledMessage ?? undefined}
           >
             <Play size={16} />
-            Run Offline MLOps Pipeline
+            {pipelineEnabled ? "Run Offline MLOps Pipeline" : "Pipeline disabled"}
           </Button>
         </div>
       </Card>

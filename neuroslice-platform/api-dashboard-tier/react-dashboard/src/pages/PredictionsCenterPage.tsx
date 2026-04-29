@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Gauge, RefreshCcw, ShieldAlert, Waves } from "lucide-react";
 
+import { useAuth } from "@/hooks/useAuth";
+
 import { getNationalDashboard } from "@/api/dashboardApi";
 import { getPredictions, runPrediction } from "@/api/predictionApi";
 import { PageHeader } from "@/components/layout/page-header";
@@ -33,6 +35,10 @@ function sortPredictions(items: PredictionResponse[], tab: PredictionTab) {
 
 export function PredictionsCenterPage() {
   usePageTitle("Prediction simple");
+
+  const { user } = useAuth();
+  // NETWORK_MANAGER has read-only access; only ADMIN and NETWORK_OPERATOR can rerun
+  const canRunPredictions = user?.role === "ADMIN" || user?.role === "NETWORK_OPERATOR";
 
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
@@ -195,6 +201,7 @@ export function PredictionsCenterPage() {
                 runMutation.mutate(sessionId);
               }}
               isRunning={runMutation.isPending}
+              canRun={canRunPredictions}
             />
 
             <Card className="p-5">

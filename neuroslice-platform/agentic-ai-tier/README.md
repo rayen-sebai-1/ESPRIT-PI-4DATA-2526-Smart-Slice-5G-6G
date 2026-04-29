@@ -93,9 +93,27 @@ Operator or internal API caller
 	-> Streamed or JSON response
 ```
 
+## Auth Flow (Scenario B)
+
+Browser traffic reaches agentic services only through the authenticated `dashboard-backend` proxy:
+
+```
+React → Kong (/api/dashboard/agentic/*) → dashboard-backend (JWT check + role check) → agent service
+```
+
+The internal agent service ports (7005, 7006) should not be called directly from the browser. The Kong route `/api/agentic/*` that previously bypassed auth has been removed.
+
+Dashboard-backend proxy routes:
+
+- `GET  /agentic/health` → aggregates health from both agents
+- `POST /agentic/root-cause/manual-scan` → proxies to `root-cause:7005/internal/rca/manual-scan`
+- `POST /agentic/copilot/query/text` → proxies to `copilot-agent:7006/copilot/query/text`
+- `POST /agentic/copilot/query` → SSE streaming proxy to `copilot-agent:7006/copilot/query`
+
+Required roles: ADMIN, NETWORK_OPERATOR, NETWORK_MANAGER, DATA_MLOPS_ENGINEER.
+
 ## Known Limits
 
-- Services are exposed directly by Compose ports and are not routed through dashboard gateway/auth flows in this tier.
 - LLM quality depends on the local Ollama model's tool-calling behavior. The RCA service keeps a deterministic fallback for malformed JSON responses.
 
 ## Rebuild and Smoke Test
