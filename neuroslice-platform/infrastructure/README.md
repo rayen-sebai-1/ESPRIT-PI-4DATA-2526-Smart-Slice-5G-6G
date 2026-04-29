@@ -67,6 +67,7 @@ Important behavior:
 - InfluxDB
 - PostgreSQL
 - Grafana
+- Prometheus (scrapes adapter-ves and adapter-netconf metrics on `:9090`)
 - simulation services
 - ingestion services
 - runtime AIOps workers
@@ -116,6 +117,7 @@ Default runtime:
 - React dashboard: `http://localhost:5173`
 - Kong gateway: `http://localhost:8008`
 - Grafana: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
 - InfluxDB: `http://localhost:8086`
 - Redis: `localhost:6379`
 - Platform PostgreSQL: `localhost:5432`

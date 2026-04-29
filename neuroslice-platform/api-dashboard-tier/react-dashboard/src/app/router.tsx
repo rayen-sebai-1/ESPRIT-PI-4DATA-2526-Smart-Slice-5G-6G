@@ -47,7 +47,7 @@ export const router = createBrowserRouter([
           {
             element: (
               <ProtectedRoute
-                allowedRoles={["ADMIN", "NETWORK_OPERATOR", "DATA_MLOPS_ENGINEER"]}
+                allowedRoles={["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"]}
               />
             ),
             children: [{ path: "/predictions", element: <PredictionsCenterPage /> }],

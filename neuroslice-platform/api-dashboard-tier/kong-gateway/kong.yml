@@ -200,36 +200,15 @@ services:
           - GET
           - OPTIONS
 
-  - name: agentic-root-cause
-    url: http://root-cause:7005/internal/rca
+  - name: dashboard-service-agentic
+    url: http://dashboard-backend:8002/agentic
     routes:
-      - name: agentic-root-cause-route
+      - name: dashboard-service-agentic-route
         paths:
-          - /api/agentic/rca
+          - /api/dashboard/agentic
         strip_path: true
         methods:
-          - POST
-          - OPTIONS
-        plugins:
-          - name: rate-limiting
-            config:
-              policy: local
-              limit_by: ip
-              minute: 30
-              hour: 600
-              fault_tolerant: true
-              hide_client_headers: false
-              error_code: 429
-              error_message: Too many RCA scan requests.
-
-  - name: agentic-copilot
-    url: http://copilot-agent:7006/copilot
-    routes:
-      - name: agentic-copilot-route
-        paths:
-          - /api/agentic/copilot
-        strip_path: true
-        methods:
+          - GET
           - POST
           - OPTIONS
         plugins:
@@ -242,4 +221,4 @@ services:
               fault_tolerant: true
               hide_client_headers: false
               error_code: 429
-              error_message: Too many copilot requests.
+              error_message: Too many agentic requests.

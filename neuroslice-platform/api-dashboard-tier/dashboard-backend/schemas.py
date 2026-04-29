@@ -402,3 +402,14 @@ class MlopsOrchestrationRunLogsResponse(BaseModel):
     status: PipelineRunStatus
     stdout: str
     stderr: str
+
+
+class MlopsPipelineConfigResponse(BaseModel):
+    pipeline_enabled: bool
+    message: str
+
+
+class AgenticHealthResponse(BaseModel):
+    root_cause: str
+    copilot: str
+    detail: dict[str, Any] = Field(default_factory=dict)

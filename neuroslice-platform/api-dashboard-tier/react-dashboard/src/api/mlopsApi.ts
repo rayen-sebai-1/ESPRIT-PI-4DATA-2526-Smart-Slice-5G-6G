@@ -106,3 +106,13 @@ export async function getMlopsPipelineRunLogs(runId: string) {
   );
   return data;
 }
+
+export interface MlopsPipelineConfig {
+  pipeline_enabled: boolean;
+  message: string;
+}
+
+export async function getMlopsPipelineConfig(): Promise<MlopsPipelineConfig> {
+  const { data } = await dashboardClient.get<MlopsPipelineConfig>("/mlops/pipeline/config");
+  return data;
+}

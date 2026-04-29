@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
+import os
+from typing import Annotated, Any
 
+import httpx
 import uuid
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Response, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from db import check_database_connection, get_db
@@ -12,6 +15,7 @@ from mlops import MlopsService, get_mlops_service
 from mlops_ops import MlopsOpsService, background_execute_run
 from mlops_orchestration import MlopsOrchestrationService, background_execute_orchestration_run
 from schemas import (
+    AgenticHealthResponse,
     AlertAcknowledgePayload,
     AlertAcknowledgementResponse,
     AuthenticatedPrincipal,
@@ -27,6 +31,7 @@ from schemas import (
     MlopsOrchestrationRunResponse,
     MlopsOverview,
     MlopsActionDefinition,
+    MlopsPipelineConfigResponse,
     MlopsPipelineRunLogsResponse,
     MlopsPipelineRunResponse,
     MlopsPredictionMonitoringResponse,
@@ -44,6 +49,14 @@ from schemas import (
     SessionSummary,
 )
 from service import DashboardService, get_current_user, get_dashboard_provider, get_dashboard_service, require_roles
+
+
+def _get_root_cause_url() -> str:
+    return os.getenv("ROOT_CAUSE_AGENT_URL", "http://root-cause:7005").rstrip("/")
+
+
+def _get_copilot_url() -> str:
+    return os.getenv("COPILOT_AGENT_URL", "http://copilot-agent:7006").rstrip("/")
 
 
 def get_mlops_ops_service(db: Annotated[Session, Depends(get_db)]) -> MlopsOpsService:
@@ -484,4 +497,159 @@ def get_mlops_orchestration_run_logs(
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run introuvable.")
     return response
+
+
+# ---- MLOps pipeline config (read-only, for UI gating) ----------------------
+
+@app.get(
+    "/mlops/pipeline/config",
+    response_model=MlopsPipelineConfigResponse,
+    tags=["mlops-ops"],
+)
+def get_mlops_pipeline_config(
+    ops: Annotated[MlopsOpsService, Depends(get_mlops_ops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsPipelineConfigResponse:
+    enabled = ops.config.pipeline_enabled
+    return MlopsPipelineConfigResponse(
+        pipeline_enabled=enabled,
+        message=(
+            "Offline MLOps pipeline execution is enabled."
+            if enabled
+            else (
+                "Offline MLOps pipeline execution is disabled by configuration. "
+                "Set MLOPS_PIPELINE_ENABLED=true to enable it in Scenario B demo mode."
+            )
+        ),
+    )
+
+
+# ---- Agentic AI proxy routes (auth-protected) --------------------------------
+# The browser must never call agent services directly. All agentic traffic from
+# the browser must flow through these routes so that JWT/session validation is
+# enforced before any agent call is forwarded.
+
+agentic_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
+
+
+@app.get("/agentic/health", response_model=AgenticHealthResponse, tags=["agentic"])
+def agentic_health(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+) -> AgenticHealthResponse:
+    rca_status = "unknown"
+    copilot_status = "unknown"
+    detail: dict[str, Any] = {}
+
+    with httpx.Client(timeout=3.0) as client:
+        try:
+            r = client.get(f"{_get_root_cause_url()}/health")
+            rca_status = "ok" if r.status_code < 400 else "degraded"
+            detail["root_cause_http"] = r.status_code
+        except Exception as exc:
+            rca_status = "unavailable"
+            detail["root_cause_error"] = str(exc)
+
+        try:
+            r = client.get(f"{_get_copilot_url()}/health")
+            copilot_status = "ok" if r.status_code < 400 else "degraded"
+            detail["copilot_http"] = r.status_code
+        except Exception as exc:
+            copilot_status = "unavailable"
+            detail["copilot_error"] = str(exc)
+
+    return AgenticHealthResponse(
+        root_cause=rca_status,
+        copilot=copilot_status,
+        detail=detail,
+    )
+
+
+@app.post("/agentic/root-cause/manual-scan", tags=["agentic"])
+def agentic_rca_scan(
+    body: dict[str, Any],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+) -> Any:
+    target_url = f"{_get_root_cause_url()}/internal/rca/manual-scan"
+    try:
+        with httpx.Client(timeout=90.0) as client:
+            response = client.post(target_url, json=body)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "RCA_AGENT_UNAVAILABLE", "message": "Root-cause agent is not reachable."},
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={"code": "RCA_AGENT_TIMEOUT", "message": "Root-cause agent timed out."},
+        )
+
+    if response.status_code >= 500:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "RCA_AGENT_ERROR", "message": "Root-cause agent returned an error."},
+        )
+
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+    )
+
+
+@app.post("/agentic/copilot/query/text", tags=["agentic"])
+def agentic_copilot_text(
+    body: dict[str, Any],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+) -> Any:
+    target_url = f"{_get_copilot_url()}/copilot/query/text"
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(target_url, json=body)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "COPILOT_UNAVAILABLE", "message": "Copilot agent is not reachable."},
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={"code": "COPILOT_TIMEOUT", "message": "Copilot agent timed out."},
+        )
+
+    if response.status_code >= 500:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "COPILOT_ERROR", "message": "Copilot agent returned an error."},
+        )
+
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+    )
+
+
+@app.post("/agentic/copilot/query", tags=["agentic"])
+async def agentic_copilot_stream(
+    body: dict[str, Any],
+    request: Request,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+) -> StreamingResponse:
+    target_url = f"{_get_copilot_url()}/copilot/query"
+
+    async def _stream():
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("POST", target_url, json=body) as upstream:
+                    async for chunk in upstream.aiter_bytes():
+                        if await request.is_disconnected():
+                            return
+                        yield chunk
+        except httpx.ConnectError:
+            yield b'event: error\ndata: {"code":"COPILOT_UNAVAILABLE","message":"Copilot agent is not reachable."}\n\n'
+        except Exception as exc:
+            yield f'event: error\ndata: {{"code":"PROXY_ERROR","message":"{exc}"}}\n\n'.encode()
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 

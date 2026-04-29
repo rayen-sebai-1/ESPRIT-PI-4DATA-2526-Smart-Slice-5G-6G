@@ -63,42 +63,42 @@ export function LiveStatePage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <KpiCard
           title="Total Entites"
-          value={overview.total_entities}
+          value={String(overview.total_entities)}
           subtitle="Entites actives dans le Live State"
           icon={<RadioTower size={20} />}
           tone="accent"
         />
         <KpiCard
           title="Entites Unhealthy"
-          value={overview.unhealthy_entities_count}
+          value={String(overview.unhealthy_entities_count)}
           subtitle="Entites avec Health Score < 0.6"
           icon={<HeartPulse size={20} />}
           tone={overview.unhealthy_entities_count > 0 ? "danger" : "neutral"}
         />
         <KpiCard
           title="Faults Actifs"
-          value={overview.active_faults_count}
+          value={String(overview.active_faults_count)}
           subtitle="Alarms injectees en cours"
           icon={<AlertTriangle size={20} />}
           tone={overview.active_faults_count > 0 ? "warning" : "neutral"}
         />
         <KpiCard
           title="Risques Congestion"
-          value={overview.congestion_alerts_count}
+          value={String(overview.congestion_alerts_count)}
           subtitle="Anomalies AIOps de congestion"
           icon={<Activity size={20} />}
           tone={overview.congestion_alerts_count > 0 ? "danger" : "neutral"}
         />
         <KpiCard
           title="SLA at Risk"
-          value={overview.sla_risk_count}
+          value={String(overview.sla_risk_count)}
           subtitle="Predictions de degradation SLA"
           icon={<ShieldAlert size={20} />}
           tone={overview.sla_risk_count > 0 ? "warning" : "neutral"}
         />
         <KpiCard
           title="Mismatch Slices"
-          value={overview.slice_mismatch_count}
+          value={String(overview.slice_mismatch_count)}
           subtitle="Violations type de Slices"
           icon={<Cpu size={20} />}
           tone={overview.slice_mismatch_count > 0 ? "danger" : "neutral"}

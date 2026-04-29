@@ -107,23 +107,24 @@ _TOOLS: tuple[_ToolDef, ...] = (
 
 
 # Patterns that should be masked in captured stdout/stderr before persisting.
-# Each pattern's replacement string uses backrefs to keep surrounding context.
+# JWT pattern must precede generic token= / Bearer patterns so it gets the more
+# specific ***JWT*** marker rather than being swallowed by the catch-all ***.
 _REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"(?i)(password\s*[=:]\s*)([^\s'\";]+)"), r"\1***"),
-    (re.compile(r"(?i)(secret\s*[=:]\s*)([^\s'\";]+)"), r"\1***"),
-    (re.compile(r"(?i)(token\s*[=:]\s*)([^\s'\";]+)"), r"\1***"),
-    (re.compile(r"(?i)(api[_-]?key\s*[=:]\s*)([^\s'\";]+)"), r"\1***"),
-    (re.compile(r"(?i)(access[_-]?key[_-]?id\s*[=:]\s*)([^\s'\";]+)"), r"\1***"),
-    (re.compile(r"(?i)(secret[_-]?access[_-]?key\s*[=:]\s*)([^\s'\";]+)"), r"\1***"),
-    (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)(\S+)"), r"\1***"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]{2,}\b"), "***JWT***"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "***AWS_KEY***"),
+    (re.compile(r"(?i)(password\s*[=:]\s*)(?!\*\*\*)([^\s'\";]+)"), r"\1***"),
+    (re.compile(r"(?i)(secret\s*[=:]\s*)(?!\*\*\*)([^\s'\";]+)"), r"\1***"),
+    (re.compile(r"(?i)(token\s*[=:]\s*)(?!\*\*\*)([^\s'\";]+)"), r"\1***"),
+    (re.compile(r"(?i)(api[_-]?key\s*[=:]\s*)(?!\*\*\*)([^\s'\";]+)"), r"\1***"),
+    (re.compile(r"(?i)(access[_-]?key[_-]?id\s*[=:]\s*)(?!\*\*\*)([^\s'\";]+)"), r"\1***"),
+    (re.compile(r"(?i)(secret[_-]?access[_-]?key\s*[=:]\s*)(?!\*\*\*)([^\s'\";]+)"), r"\1***"),
+    (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)(?!\*\*\*)(\S+)"), r"\1***"),
     (
         re.compile(
             r"((?:postgres(?:ql)?|mysql|mongodb|redis|amqp)\+?\w*://[^:\s]+:)([^@\s]+)(@)"
         ),
         r"\1***\3",
     ),
-    (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\b"), "***JWT***"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "***AWS_KEY***"),
 )
 
 

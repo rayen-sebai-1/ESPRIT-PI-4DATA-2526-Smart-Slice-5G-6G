@@ -49,7 +49,7 @@ export const navItems: NavItem[] = [
     label: "Predictions & Models",
     to: "/predictions",
     icon: Radar,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "DATA_MLOPS_ENGINEER"],
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
     label: "MLOps Control Center",
