@@ -1,6 +1,6 @@
-﻿# MLOps Tier
+# MLOps Tier
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 The MLOps tier owns NeuroSlice offline preprocessing, training, MLflow tracking, model registry metadata, ONNX export, FP16 conversion, promotion, and the prediction API. The active project is `batch-orchestrator/`.
 

@@ -1,6 +1,6 @@
-﻿# React Dashboard
+# React Dashboard
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 `react-dashboard` is the protected React frontend for the NeuroSlice operations dashboard.
 
@@ -29,7 +29,10 @@ Last verified: 2026-04-26.
 - `/dashboard/region`
 - `/dashboard/region/:regionId`
 - `/sessions`
+- `/live-state`
 - `/predictions`
+- `/agentic/root-cause`
+- `/agentic/copilot`
 - `/mlops`
 - `/mlops/models`
 - `/mlops/runs`
@@ -37,6 +40,7 @@ Last verified: 2026-04-26.
 - `/mlops/promotions`
 - `/mlops/monitoring`
 - `/mlops/operations`
+- `/mlops/orchestration`
 - `/admin/users`
 - `*` -> not found page
 

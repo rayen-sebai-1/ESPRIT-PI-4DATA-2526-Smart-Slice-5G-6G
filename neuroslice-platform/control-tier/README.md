@@ -1,6 +1,6 @@
 # Control Tier
 
-Last verified: 2026-04-27.
+Last verified: 2026-04-29.
 
 The Control Tier contains the deterministic operations layer for NeuroSlice. It converts AIOps prediction events into lifecycle-managed alerts, then converts unresolved alerts into operator-approved remediation recommendations.
 

@@ -1,6 +1,6 @@
 # NeuroSlice Platform
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 `neuroslice-platform/` is the runnable platform subtree. It contains the integrated Docker Compose runtime, all service tiers, and the MLOps project used to train and promote models for online AIOps.
 
@@ -11,14 +11,11 @@ Implemented:
 - `simulation-tier`: Core, Edge, and RAN simulators plus `fault-engine`
 - `ingestion-tier`: VES adapter, NETCONF adapter, normalizer, telemetry exporter, shared models/config
 - `aiops-tier`: `congestion-detector`, `slice-classifier`, `sla-assurance`, and shared model-loading utilities
-- `api-dashboard-tier`: BFF, auth service, dashboard backend, Kong gateway, and React dashboard
+- `api-dashboard-tier`: BFF (with Redis Live State endpoints), auth service, dashboard backend, Kong gateway, and React dashboard
+- `control-tier`: `alert-management` and `policy-control` — deterministic alert lifecycle and human-in-the-loop remediation
 - `agentic-ai-tier`: `root-cause` and `copilot-agent`
 - `mlops-tier/batch-orchestrator`: offline data, training, MLflow, ONNX/FP16 export, promotion, API, tests, and reports
 - `infrastructure`: integrated Compose stack
-
-Scaffold-only:
-
-- `control-tier`
 
 Deferred:
 
@@ -34,6 +31,7 @@ Deferred:
 - `congestion-detector`, `slice-classifier`, `sla-assurance`
 - `api-bff-service`, `auth-service`, `dashboard-backend`, `kong-gateway`, `react-dashboard`
 - `root-cause`, `copilot-agent`
+- `alert-management`, `policy-control` (when added to Compose — see `control-tier/README.md` for standalone start)
 
 Optional `mlops` profile adds:
 
@@ -58,9 +56,13 @@ stream:norm.telemetry
   -> slice-classifier    -> events.slice.classification -> aiops:slice_classification:{entity_id}
   -> sla-assurance       -> events.sla -> aiops:sla:{entity_id}
 
+events.anomaly + events.sla + events.slice.classification
+  -> alert-management -> stream:control.alerts
+  -> policy-control   -> stream:control.actions
+
 telemetry-norm -> telemetry-exporter -> InfluxDB
 
-api-bff-service -> Redis state, streams, and fault-engine
+api-bff-service -> Redis state, streams, fault-engine, and Live State
 react-dashboard -> kong-gateway -> auth-service / dashboard-backend
 root-cause / copilot-agent -> Redis, InfluxDB, Ollama/LangChain tools
 ```
@@ -144,10 +146,13 @@ neuroslice-platform/
 |-- aiops-tier/
 |-- api-dashboard-tier/
 |-- control-tier/
+|   |-- alert-management/
+|   `-- policy-control/
 |-- infrastructure/
 |-- ingestion-tier/
 |-- mlops-tier/
-|   `-- batch-orchestrator/
+|   |-- batch-orchestrator/
+|   `-- mlops-runner/
 `-- simulation-tier/
 ```
 

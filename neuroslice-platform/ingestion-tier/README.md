@@ -1,6 +1,6 @@
-﻿# Ingestion Tier
+# Ingestion Tier
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 The ingestion tier receives simulator telemetry, normalizes heterogeneous payloads into a shared canonical event model, and forwards events to Redis, Kafka, and InfluxDB consumers.
 

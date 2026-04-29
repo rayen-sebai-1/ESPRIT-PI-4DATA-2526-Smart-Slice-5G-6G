@@ -20,6 +20,7 @@ A Grafana datasource provisioning file at `grafana/provisioning/datasources/prom
 
 The ELK section contains production-oriented observability assets for Smart Slice AIOps prediction monitoring.
 
+
 ## What This Setup Delivers
 
 - Normalized Logstash ingestion with ECS v8 canonical fields:

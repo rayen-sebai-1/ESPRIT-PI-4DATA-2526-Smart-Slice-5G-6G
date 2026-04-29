@@ -1,6 +1,6 @@
-﻿# Auth Service
+# Auth Service
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 `auth-service` is the PostgreSQL-backed authentication and user-administration service for the protected NeuroSlice dashboard stack.
 

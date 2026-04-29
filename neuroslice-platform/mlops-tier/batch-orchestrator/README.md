@@ -1,6 +1,6 @@
-﻿# Batch Orchestrator
+# Batch Orchestrator
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 `batch-orchestrator` is the active NeuroSlice MLOps project. It contains preprocessing, validation, model training, MLflow lifecycle integration, ONNX export, FP16 conversion, model promotion, the prediction API, tests, notebooks, and generated reports.
 

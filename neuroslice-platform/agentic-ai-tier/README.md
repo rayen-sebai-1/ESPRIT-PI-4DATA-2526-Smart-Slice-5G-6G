@@ -1,4 +1,7 @@
 # Agentic AI Tier
+
+Last verified: 2026-04-29.
+
 The agentic AI tier provides LLM-driven operator assistance and manual RCA workflows on top of NeuroSlice telemetry and runtime AIOps context.
 
 ## Current Status

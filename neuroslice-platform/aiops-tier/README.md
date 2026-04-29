@@ -1,6 +1,6 @@
-﻿# AIOps Tier
+# AIOps Tier
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 The AIOps tier contains online inference workers that consume normalized telemetry and emit runtime prediction events and latest-state summaries.
 
