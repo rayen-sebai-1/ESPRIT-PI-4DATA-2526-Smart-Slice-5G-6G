@@ -1,6 +1,6 @@
-﻿# Kong Gateway
+# Kong Gateway
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 `kong-gateway` is the browser-facing API gateway for the protected NeuroSlice dashboard stack.
 

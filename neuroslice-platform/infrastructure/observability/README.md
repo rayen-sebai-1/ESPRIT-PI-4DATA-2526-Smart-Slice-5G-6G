@@ -1,5 +1,7 @@
 # Smart Slice Observability (ELK)
 
+Last verified: 2026-04-29.
+
 This folder contains production-oriented observability assets for Smart Slice AIOps prediction monitoring.
 
 ## What This Setup Delivers

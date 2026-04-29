@@ -1,8 +1,8 @@
-﻿# Infrastructure Layer
+# Infrastructure Layer
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
-The infrastructure layer is the canonical local entry point for NeuroSlice. It wires simulators, ingestion, runtime AIOps, dashboard services, agentic services, observability, and the optional integrated MLOps stack.
+The infrastructure layer is the canonical local entry point for NeuroSlice. It wires simulators, ingestion, runtime AIOps, control-tier services, dashboard services, agentic services, observability, and the optional integrated MLOps stack.
 
 ## Runtime Modes
 
@@ -78,6 +78,11 @@ Important behavior:
 - `root-cause`
 - `copilot-agent`
 
+Control-tier services (not yet wired into the integrated Compose file; start them standalone — see `control-tier/README.md`):
+
+- `alert-management` (default port `7010`)
+- `policy-control` (default port `7011`)
+
 The integrated MLOps services start only with the `mlops` profile.
 
 ## Optional MLOps Services
@@ -115,6 +120,11 @@ Default runtime:
 - Redis: `localhost:6379`
 - Platform PostgreSQL: `localhost:5432`
 - Kafka host listener: `localhost:29092`
+
+Control-tier (standalone start — see `control-tier/README.md`):
+
+- Alert management: `http://localhost:7010`
+- Policy control: `http://localhost:7011`
 
 Optional `mlops` profile:
 

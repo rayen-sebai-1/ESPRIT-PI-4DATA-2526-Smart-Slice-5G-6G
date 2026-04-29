@@ -1,6 +1,6 @@
-﻿# Simulation Tier
+# Simulation Tier
 
-Last verified: 2026-04-26.
+Last verified: 2026-04-29.
 
 The simulation tier generates synthetic multi-domain 5G/6G telemetry and provides the fault engine used for scenarios and manual fault injection.
 
