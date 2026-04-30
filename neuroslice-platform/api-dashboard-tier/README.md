@@ -1,12 +1,12 @@
 # API Dashboard Tier
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 The API dashboard tier is the user-facing access layer for NeuroSlice. It combines a public telemetry BFF with a protected dashboard stack built from auth, backend, gateway, and frontend services.
 
 ## Components
 
-- `api-bff-service/`: public FastAPI service for KPIs, AIOps outputs, Live State, SSE, faults, scenarios, network insights, and export views
+- `api-bff-service/`: public FastAPI service for KPIs, AIOps outputs, Live State, SSE, faults, scenarios, network insights, export views, and **drift detection status** (`/api/v1/drift/*`)
 - `auth-service/`: PostgreSQL-backed authentication and user administration service
 - `dashboard-backend/`: protected dashboard domain API and metadata persistence layer
 - `kong-gateway/`: browser-facing API gateway for `/api/auth/*` and `/api/dashboard/*`
@@ -40,6 +40,7 @@ Served directly by `api-bff-service` on `http://localhost:8000`:
 - server-sent events streams
 - fault and scenario proxy endpoints
 - feature-view export endpoints for the MLOps project
+- drift detection status endpoints: `GET /api/v1/drift/latest`, `GET /api/v1/drift/latest/{model_name}`, `GET /api/v1/drift/events`
 
 ### Protected Dashboard Stack
 
@@ -65,12 +66,13 @@ Current React router exposure:
 
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
 - `/live-state`: `ADMIN`, `NETWORK_OPERATOR`
-- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
-- `/mlops`, `/mlops/models`, `/mlops/runs`, `/mlops/artifacts`, `/mlops/promotions`, `/mlops/monitoring`, `/mlops/operations`, `/mlops/orchestration`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (read-only for `NETWORK_MANAGER`)
+- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`
+- `/mlops`, `/mlops/models`, `/mlops/runs`, `/mlops/artifacts`, `/mlops/promotions`, `/mlops/monitoring`, `/mlops/drift`, `/mlops/operations`, `/mlops/orchestration`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (read-only for `NETWORK_MANAGER`)
+- `/control/actions`: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`
 - `/agentic/root-cause`, `/agentic/copilot`: all authenticated users
 - `/admin/users`: `ADMIN`
 
-That means `NETWORK_MANAGER` is allowed by the backend prediction API but does not currently get a predictions route in the shipped frontend.
+`NETWORK_MANAGER` is allowed on prediction APIs and is also included in the shipped frontend route guard for `/predictions`.
 
 ## MLOps Control Center
 
@@ -83,6 +85,9 @@ That means `NETWORK_MANAGER` is allowed by the backend prediction API but does n
 - `GET /api/dashboard/mlops/artifacts`
 - `GET /api/dashboard/mlops/promotions`
 - `GET /api/dashboard/mlops/monitoring/predictions`
+- `GET /api/dashboard/mlops/drift`
+- `GET /api/dashboard/mlops/drift/{model_name}`
+- `GET /api/dashboard/mlops/drift-events`
 - `POST /api/dashboard/mlops/promote`
 - `POST /api/dashboard/mlops/rollback`
 - `GET /api/dashboard/mlops/tools`
@@ -99,29 +104,42 @@ Role access:
 - read endpoints: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
 - `promote`, `rollback`, `pipeline/run`: `ADMIN`, `DATA_MLOPS_ENGINEER`
 
+## Control Actions Center
+
+`/api/dashboard/controls/*` exposes a proxy facade over `policy-control` and `drift-monitor`:
+
+- `GET /api/dashboard/controls/actions` -> `policy-control /actions`
+- `GET /api/dashboard/controls/actions/{id}` -> `policy-control /actions/{id}`
+- `POST /api/dashboard/controls/actions/{id}/approve` -> `policy-control /actions/{id}/approve`
+- `POST /api/dashboard/controls/actions/{id}/reject` -> `policy-control /actions/{id}/reject`
+- `POST /api/dashboard/controls/actions/{id}/execute` -> `policy-control /actions/{id}/execute`
+- `GET /api/dashboard/controls/drift/status` -> `drift-monitor /drift/status`
+- `GET /api/dashboard/controls/drift/events` -> `drift-monitor /drift/events`
+- `POST /api/dashboard/controls/drift/trigger` -> `drift-monitor /drift/trigger`
+
+Role access: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER` (approve/reject/execute hidden for `NETWORK_MANAGER`).
+
 ## MLOps Operations Center
 
 The Operations tab under `/mlops/operations` opens external observability/MLOps UIs (MLflow, MinIO, Kibana, InfluxDB, Grafana, MLOps API), shows their health, lists pipeline run history, and exposes a single button that triggers the offline MLOps pipeline.
 
 The pipeline trigger does **not** run any code in `dashboard-backend`. Instead it:
 
-1. inserts a `dashboard.mlops_pipeline_runs` row with `RUNNING`
-2. delegates to an internal-only `mlops-runner` service (no published port, no public route) that owns the Docker socket and executes the fixed compose command
+1. inserts a `dashboard.mlops_orchestration_runs` row with `RUNNING` and `trigger_source=manual`
+2. delegates to an internal-only `mlops-runner` service (no published port, no public route) via `POST /run-action` with `{ action: "full_pipeline", trigger_source: "manual" }`
 3. captures stdout/stderr, redacts secrets, truncates, and stores the result on the same row
 
-`mlops-runner` is the only service in the platform that can spawn the offline pipeline, and it accepts no parameters from the frontend.
+`mlops-runner` is the only service in the platform that can spawn the offline pipeline. The `drift-monitor` service also calls `mlops-runner` automatically when anomaly bursts exceed the configured threshold, using `trigger_source=drift`.
 
 ## Provider Modes
 
 `dashboard-backend` supports two provider modes:
 
-- `temporary_mock`
-  - current default in `infrastructure/docker-compose.yml`
-  - provides deterministic national, regional, session, prediction, model, bookmark, preference, and alert data for UI development
 - `bff`
+  - current default in `infrastructure/docker-compose.yml`
   - aggregates live data from `api-bff-service`
-  - currently supports the national overview and models catalog
-  - still returns `501 Not Implemented` for the rest of the dashboard domain
+- `temporary_mock`
+  - provides deterministic national, regional, session, prediction, model, bookmark, preference, and alert data for UI development; useful when `api-bff-service` is not available
 
 ## Database Ownership
 
@@ -157,7 +175,7 @@ Current development defaults in the Compose file:
 
 - seeded admin email: `admin@neuroslice.tn`
 - seeded admin password: `change-me-now`
-- `dashboard-backend` provider: `temporary_mock`
+- `dashboard-backend` provider: `bff`
 
 Replace those values before using the stack anywhere except local development.
 

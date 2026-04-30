@@ -9,8 +9,22 @@ This folder contains observability assets for Smart Slice AIOps: Prometheus metr
 - `adapter-ves:7001/metrics` — VES adapter Prometheus metrics
 - `adapter-netconf:7002/metrics` — NETCONF adapter Prometheus metrics
 - `localhost:9090/metrics` — Prometheus self-metrics
+- `drift-monitor:7012/metrics` — drift detection metrics (active when `--profile drift` is used)
 
 Prometheus UI: `http://localhost:9090`
+
+### Drift Detection Metrics (drift profile)
+
+When the `drift` profile is active, the following metrics are exposed:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `neuroslice_drift_window_size{model_name}` | Gauge | Current rolling window sample count |
+| `neuroslice_drift_p_value{model_name}` | Gauge | Latest MMD p-value |
+| `neuroslice_drift_detected_total{model_name}` | Counter | Total drift detections |
+| `neuroslice_drift_reference_loaded{model_name}` | Gauge | 1 if reference artifact loaded |
+| `neuroslice_drift_last_check_timestamp{model_name}` | Gauge | Unix timestamp of last check |
+| `neuroslice_drift_events_emitted_total{model_name}` | Counter | Total drift alert events published |
 
 A Grafana datasource provisioning file at `grafana/provisioning/datasources/prometheus.yml` wires Prometheus into Grafana automatically (datasource UID `P1809F7CD0C75ACF3`).
 

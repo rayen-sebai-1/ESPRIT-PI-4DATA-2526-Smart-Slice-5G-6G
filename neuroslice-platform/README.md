@@ -1,6 +1,6 @@
 # NeuroSlice Platform
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 `neuroslice-platform/` is the runnable platform subtree. It contains the integrated Docker Compose runtime, all service tiers, and the MLOps project used to train and promote models for online AIOps.
 
@@ -10,11 +10,13 @@ Implemented:
 
 - `simulation-tier`: Core, Edge, and RAN simulators plus `fault-engine`
 - `ingestion-tier`: VES adapter, NETCONF adapter, normalizer, telemetry exporter, shared models/config
-- `aiops-tier`: `congestion-detector`, `slice-classifier`, `sla-assurance`, and shared model-loading utilities
+- `aiops-tier`: `congestion-detector`, `slice-classifier`, `sla-assurance`, optional `drift-monitor` (profile `drift`), and shared model-loading utilities
 - `api-dashboard-tier`: BFF (with Redis Live State endpoints), auth service, dashboard backend, Kong gateway, and React dashboard
 - `control-tier`: `alert-management` and `policy-control` — deterministic alert lifecycle and human-in-the-loop remediation
 - `agentic-ai-tier`: `root-cause` and `copilot-agent`
 - `mlops-tier/batch-orchestrator`: offline data, training, MLflow, ONNX/FP16 export, promotion, API, tests, and reports
+- `mlops-tier/mlops-runner`: internal-only worker that executes the offline pipeline on behalf of the dashboard
+- `mlops-tier/drift-monitor`: lightweight anomaly-count drift detector that auto-triggers the MLOps pipeline
 - `infrastructure`: integrated Compose stack
 
 Deferred:
@@ -31,7 +33,13 @@ Deferred:
 - `congestion-detector`, `slice-classifier`, `sla-assurance`
 - `api-bff-service`, `auth-service`, `dashboard-backend`, `kong-gateway`, `react-dashboard`
 - `root-cause`, `copilot-agent`
-- `alert-management`, `policy-control` (when added to Compose — see `control-tier/README.md` for standalone start)
+- `alert-management`, `policy-control`
+- `mlops-runner` (internal — no published port)
+- `drift-monitor` (mlops-tier lightweight drift detector at port 8030, internal)
+
+Optional `drift` profile adds:
+
+- `drift-monitor` (aiops-tier statistical drift detector with alibi-detect, port 7012)
 
 Optional `mlops` profile adds:
 
@@ -55,10 +63,14 @@ stream:norm.telemetry
   -> congestion-detector -> events.anomaly -> aiops:congestion:{entity_id}
   -> slice-classifier    -> events.slice.classification -> aiops:slice_classification:{entity_id}
   -> sla-assurance       -> events.sla -> aiops:sla:{entity_id}
+  -> drift-monitor       -> events.drift -> aiops:drift:{model_name}   (aiops-tier, drift profile)
 
-events.anomaly + events.sla + events.slice.classification
+events.anomaly + events.sla + events.slice.classification + events.drift
   -> alert-management -> stream:control.alerts
   -> policy-control   -> stream:control.actions
+
+events.anomaly (sliding window count)
+  -> drift-monitor (mlops-tier) -> mlops-runner /run-action -> offline pipeline trigger
 
 telemetry-norm -> telemetry-exporter -> InfluxDB
 
@@ -111,6 +123,13 @@ cd neuroslice-platform/infrastructure
 docker compose --profile mlops up --build
 ```
 
+Optional drift detection:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile drift up --build
+```
+
 Manual offline pipeline:
 
 ```bash
@@ -126,6 +145,7 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - Fault engine: `http://localhost:7004`
 - Root-cause agent: `http://localhost:7005`
 - Copilot agent: `http://localhost:7006`
+- Drift monitor API/metrics: `http://localhost:7012` with `drift` profile
 - React dashboard: `http://localhost:5173`
 - React live-state overview: `http://localhost:5173/live-state`
 - Kong gateway: `http://localhost:8008`
@@ -152,6 +172,7 @@ neuroslice-platform/
 |-- ingestion-tier/
 |-- mlops-tier/
 |   |-- batch-orchestrator/
+|   |-- drift-monitor/
 |   `-- mlops-runner/
 `-- simulation-tier/
 ```

@@ -22,10 +22,13 @@ from pydantic import BaseModel, Field
 app = FastAPI(title="NeuroSlice MLOps Runner", version="2.0.0")
 
 
+_VALID_TRIGGER_SOURCES = frozenset({"manual", "drift", "scheduled"})
+
+
 class RunActionRequest(BaseModel):
     action: str
     parameters: dict[str, Any] = Field(default_factory=dict)
-
+    trigger_source: str = Field(default="manual")
 
 
 class RunPipelineResponse(BaseModel):
@@ -35,6 +38,7 @@ class RunPipelineResponse(BaseModel):
     stdout: str = Field(default="")
     stderr: str = Field(default="")
     command_label: str
+    trigger_source: str = Field(default="manual")
     timed_out: bool = False
     detail: str | None = None
 
@@ -137,12 +141,19 @@ def run_action(
             detail="MLOps orchestration is disabled (MLOPS_ORCHESTRATION_ENABLED).",
         )
 
+    trigger_source = payload.trigger_source if payload.trigger_source in _VALID_TRIGGER_SOURCES else "manual"
+
     target = _ACTION_MAP.get(payload.action)
     if not target:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown action key: {payload.action}",
         )
+
+    import logging
+    logging.getLogger("mlops-runner").info(
+        "Pipeline triggered — action=%s target=%s source=%s", payload.action, target, trigger_source
+    )
 
     container = _mlops_api_container()
     argv = [
@@ -177,6 +188,7 @@ def run_action(
             stdout=_truncate(exc.stdout or ""),
             stderr=_truncate(exc.stderr or "Pipeline timed out."),
             command_label=label,
+            trigger_source=trigger_source,
             timed_out=True,
             detail=f"Pipeline timed out after {_timeout_seconds()}s.",
         )
@@ -189,6 +201,7 @@ def run_action(
             stdout="",
             stderr=str(exc),
             command_label=label,
+            trigger_source=trigger_source,
             timed_out=False,
             detail="Pipeline command binary not found inside mlops-runner.",
         )
@@ -201,5 +214,6 @@ def run_action(
         stdout=_truncate(completed.stdout or ""),
         stderr=_truncate(completed.stderr or ""),
         command_label=label,
+        trigger_source=trigger_source,
         timed_out=False,
     )

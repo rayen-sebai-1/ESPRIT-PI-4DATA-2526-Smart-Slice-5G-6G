@@ -9,9 +9,10 @@ The AIOps tier contains online inference workers that consume normalized telemet
 - `congestion-detector/`: congestion anomaly scoring
 - `slice-classifier/`: slice type classification and mismatch detection
 - `sla-assurance/`: SLA risk scoring
+- `drift-monitor/`: **Scenario B drift detection** — Alibi Detect MMD
 - `shared/`: Redis, model registry, ONNX Runtime, and hot-reload helpers
 
-All services are background workers in the integrated runtime. They do not expose public HTTP APIs.
+The three inference workers are background workers with no public HTTP APIs. The `drift-monitor` exposes `GET /health`, `GET /drift/latest`, `GET /drift/latest/{model_name}`, and `GET /metrics` (Prometheus).
 
 ## Runtime Streams
 
@@ -24,8 +25,28 @@ Outputs:
 - `congestion-detector` -> `events.anomaly`, Redis state prefix `aiops:congestion`, Influx measurement `aiops_congestion`
 - `slice-classifier` -> `events.slice.classification`, Redis state prefix `aiops:slice_classification`, Influx measurement `aiops_slice_classification`
 - `sla-assurance` -> `events.sla`, Redis state prefix `aiops:sla`, Influx measurement `aiops_sla`
+- `drift-monitor` -> `events.drift`, Redis state prefix `aiops:drift`, Kafka topic `drift.alert`, Influx measurement `aiops_drift`
 
 Kafka and InfluxDB mirroring are enabled by default in `infrastructure/docker-compose.yml`.
+
+## Scenario B Drift Detection
+
+The `drift-monitor` is an adaptation of the architecture report's Alibi Detect sidecar design for Docker Compose. One service monitors all three models; it can be split into per-model sidecars without schema changes.
+
+- **Method**: Alibi Detect MMD (`alibi_detect.cd.MMDDrift`, PyTorch backend)
+- **Window size**: 500 samples per model (rolling)
+- **p-value threshold**: p < 0.01
+- **Test interval**: every 60 s
+- **Emit cooldown**: 300 s (suppresses repeated alerts)
+- **Auto-trigger MLOps**: OFF by default (`DRIFT_AUTO_TRIGGER_MLOPS=false`)
+
+The `drift-monitor` is behind the `drift` Docker Compose profile because alibi-detect includes PyTorch:
+
+```bash
+docker compose --profile drift up --build
+```
+
+See `SCENARIO_B_DRIFT_DETECTION.md` for the full design, drift event contract, and verification commands.
 
 ## Production Model Loading
 

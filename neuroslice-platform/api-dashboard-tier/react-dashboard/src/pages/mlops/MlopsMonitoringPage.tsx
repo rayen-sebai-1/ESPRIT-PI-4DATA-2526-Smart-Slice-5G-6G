@@ -1,13 +1,220 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getMlopsPredictionMonitoring } from "@/api/mlopsApi";
+import { getMlopsDrift, getMlopsPredictionMonitoring, type DriftModelState } from "@/api/mlopsApi";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { formatMetric } from "./mlopsHelpers";
+
+// ---------------------------------------------------------------------------
+// Drift severity colours
+// ---------------------------------------------------------------------------
+
+function severityClass(severity?: string): string {
+  switch (severity?.toUpperCase()) {
+    case "CRITICAL":
+      return "text-red-400 font-bold";
+    case "HIGH":
+      return "text-orange-400 font-bold";
+    case "MEDIUM":
+      return "text-amber-400";
+    case "LOW":
+      return "text-yellow-300";
+    default:
+      return "text-green-400";
+  }
+}
+
+function statusBadge(status?: string, isDrift?: boolean): JSX.Element {
+  if (isDrift) {
+    return (
+      <span className="rounded bg-red-900/60 px-2 py-0.5 text-xs font-semibold text-red-300">
+        DRIFT DETECTED
+      </span>
+    );
+  }
+  switch (status) {
+    case "no_drift":
+      return (
+        <span className="rounded bg-green-900/50 px-2 py-0.5 text-xs text-green-400">
+          No Drift
+        </span>
+      );
+    case "insufficient_data":
+      return (
+        <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
+          Collecting data
+        </span>
+      );
+    case "reference_missing":
+      return (
+        <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
+          Reference missing
+        </span>
+      );
+    case "alibi_unavailable":
+      return (
+        <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
+          Alibi unavailable
+        </span>
+      );
+    case "no_data":
+    default:
+      return (
+        <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-400">
+          No data
+        </span>
+      );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drift card for one model
+// ---------------------------------------------------------------------------
+
+function DriftModelCard({ state }: { state: DriftModelState }) {
+  const isDrift = Boolean(state.is_drift);
+  return (
+    <div
+      className={`rounded-lg border p-4 ${
+        isDrift ? "border-red-700 bg-red-950/30" : "border-border bg-surface"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-white">{state.model_name}</p>
+          <p className="text-xs text-mutedText">v{state.deployment_version ?? "unknown"}</p>
+        </div>
+        {statusBadge(state.status, isDrift)}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <span className="text-mutedText">p-value</span>
+        <span className="font-mono text-slate-200">
+          {state.p_value != null ? state.p_value.toFixed(4) : "—"}
+        </span>
+
+        <span className="text-mutedText">Threshold</span>
+        <span className="font-mono text-slate-200">{state.threshold ?? 0.01}</span>
+
+        <span className="text-mutedText">Window</span>
+        <span className="font-mono text-slate-200">
+          {state.window_size ?? 0} / {state.window_capacity ?? 500}
+        </span>
+
+        <span className="text-mutedText">Reference samples</span>
+        <span className="font-mono text-slate-200">{state.reference_sample_count ?? 0}</span>
+
+        {state.severity && state.severity !== "NONE" ? (
+          <>
+            <span className="text-mutedText">Severity</span>
+            <span className={severityClass(state.severity)}>{state.severity}</span>
+          </>
+        ) : null}
+
+        {state.last_checked_at ? (
+          <>
+            <span className="text-mutedText">Last checked</span>
+            <span className="text-slate-300">
+              {new Date(state.last_checked_at).toLocaleTimeString()}
+            </span>
+          </>
+        ) : null}
+
+        {isDrift && state.last_drift_at ? (
+          <>
+            <span className="text-mutedText">Last drift</span>
+            <span className="text-red-300">
+              {new Date(state.last_drift_at).toLocaleTimeString()}
+            </span>
+          </>
+        ) : null}
+      </div>
+
+      {isDrift && state.recommendation ? (
+        <p className="mt-3 rounded bg-red-900/30 px-3 py-2 text-xs text-red-200">
+          {state.recommendation}
+        </p>
+      ) : null}
+
+      {state.status === "reference_missing" ? (
+        <p className="mt-3 text-xs text-amber-400">
+          Run the MLOps pipeline to generate drift reference artifacts, then restart
+          drift-monitor.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Drift section
+// ---------------------------------------------------------------------------
+
+function DriftSection() {
+  const driftQuery = useQuery({
+    queryKey: ["mlops", "drift"],
+    queryFn: getMlopsDrift,
+    refetchInterval: 60_000,
+  });
+
+  if (driftQuery.isLoading) {
+    return (
+      <Card className="p-5">
+        <h3 className="mb-3 text-lg font-semibold text-white">Drift Detection</h3>
+        <p className="text-sm text-mutedText">Chargement...</p>
+      </Card>
+    );
+  }
+
+  const driftData = driftQuery.data;
+  const models = driftData?.models ?? {};
+  const anyDrift = Object.values(models).some((m) => m.is_drift);
+
+  return (
+    <Card className="p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Drift Detection</h3>
+          <p className="text-xs text-mutedText">
+            Alibi Detect MMD — window 500 — p &lt; 0.01 — auto-trigger OFF by default
+          </p>
+          {driftData?.note ? (
+            <p className="mt-1 text-xs text-amber-300">{driftData.note}</p>
+          ) : null}
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => void driftQuery.refetch()}>
+          Rafraichir
+        </Button>
+      </div>
+
+      {anyDrift ? (
+        <div className="mb-4 rounded border border-red-700 bg-red-950/40 px-4 py-2 text-sm text-red-300">
+          Distribution drift detected on one or more models. Review the MLOps Operations
+          page before promoting any candidate model.
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {Object.entries(models).map(([name, state]) => (
+          <DriftModelCard key={name} state={state} />
+        ))}
+        {Object.keys(models).length === 0 ? (
+          <p className="col-span-3 py-4 text-center text-sm text-mutedText">
+            drift-monitor not reachable or no data collected yet.
+          </p>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export function MlopsMonitoringPage() {
   usePageTitle("MLOps - Monitoring");
@@ -22,13 +229,19 @@ export function MlopsMonitoringPage() {
     return <div className="py-10 text-sm text-mutedText">Chargement du monitoring...</div>;
   }
   if (query.isError || !query.data) {
-    return <EmptyState title="Monitoring indisponible" description="Echec de la requete Elasticsearch." />;
+    return (
+      <EmptyState title="Monitoring indisponible" description="Echec de la requete Elasticsearch." />
+    );
   }
 
   const data = query.data;
 
   return (
     <div className="space-y-6">
+      {/* Drift Detection section */}
+      <DriftSection />
+
+      {/* Prediction monitoring section */}
       <Card className="p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
@@ -58,7 +271,9 @@ export function MlopsMonitoringPage() {
 
       <Card className="p-5">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-white">Dernieres predictions ({data.total})</h4>
+          <h4 className="text-sm font-semibold text-white">
+            Dernieres predictions ({data.total})
+          </h4>
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-left text-sm">

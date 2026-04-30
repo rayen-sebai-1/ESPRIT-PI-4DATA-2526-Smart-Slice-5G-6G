@@ -21,6 +21,7 @@ export interface MlopsOrchestrationRunResponse {
   parameters: Record<string, any>;
   triggered_by_user_id: number | null;
   triggered_by_email: string | null;
+  trigger_source: "manual" | "drift" | "scheduled";
   status: "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED" | "TIMEOUT" | "DISABLED" | "CANCELLED";
   started_at: string | null;
   finished_at: string | null;

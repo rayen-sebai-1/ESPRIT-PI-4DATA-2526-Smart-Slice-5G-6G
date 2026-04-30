@@ -171,6 +171,11 @@ class MlopsOrchestrationRun(Base):
         nullable=True,
     )
     triggered_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    trigger_source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'manual'"),
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

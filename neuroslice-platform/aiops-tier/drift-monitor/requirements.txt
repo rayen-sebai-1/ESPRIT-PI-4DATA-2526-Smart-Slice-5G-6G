@@ -1,0 +1,12 @@
+fastapi==0.111.1
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+redis==5.0.7
+kafka-python==2.0.2
+influxdb-client==1.44.0
+numpy==1.26.4
+prometheus-client==0.20.0
+httpx==0.27.0
+# Alibi Detect with PyTorch backend (lighter than TensorFlow).
+# torch is pulled in as a dependency of alibi-detect[torch].
+alibi-detect[torch]==0.12.0

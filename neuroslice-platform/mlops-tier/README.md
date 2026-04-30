@@ -1,8 +1,26 @@
 # MLOps Tier
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 The MLOps tier owns NeuroSlice offline preprocessing, training, MLflow tracking, model registry metadata, ONNX export, FP16 conversion, promotion, and the prediction API. The active project is `batch-orchestrator/`.
+
+## Scenario B Drift References
+
+When the MLOps pipeline promotes a model (`promote_onnx_artifacts`), it now also generates drift reference artifacts alongside each promoted model:
+
+```
+models/promoted/{model_name}/current/drift_reference.npz
+models/promoted/{model_name}/current/drift_feature_schema.json
+```
+
+These are loaded by the `drift-monitor` service at startup. If they are absent, the drift-monitor reports `reference_missing` and continues operating in degraded mode.
+
+To generate them without running the full pipeline:
+
+```bash
+cd neuroslice-platform/mlops-tier/batch-orchestrator
+python -m src.mlops.drift_reference models/promoted data/processed
+```
 
 ## Runtime Modes
 
@@ -75,6 +93,8 @@ models/promoted/{model_name}/current/model.onnx
 models/promoted/{model_name}/current/model_fp16.onnx
 models/promoted/{model_name}/current/metadata.json
 models/promoted/{model_name}/current/version.txt
+models/promoted/{model_name}/current/drift_reference.npz
+models/promoted/{model_name}/current/drift_feature_schema.json
 ```
 
 Production metadata includes:
@@ -102,22 +122,49 @@ AIOps services mount generated models from the batch orchestrator as read-only p
 
 `mlops-tier/mlops-runner/` is an internal-only worker that exists so the React dashboard can trigger the offline MLOps pipeline without giving any other service direct access to the Docker socket or arbitrary shell commands. See `mlops-runner/README.md` for the full security model.
 
-- It accepts only `POST /run-pipeline` and `GET /health`.
-- The command is fixed at runtime by `MLOPS_PIPELINE_COMMAND` (default: `docker compose --profile mlops --profile mlops-worker run --rm mlops-worker`).
-- It is not published on the host - only `dashboard-backend` reaches it via the internal Compose network.
+- It accepts `POST /run-action` and `GET /health`.
+- Actions are mapped via a fixed `_ACTION_MAP` (e.g. `full_pipeline` → `make mlops-full`); callers cannot inject arbitrary shell strings.
+- It is not published on the host — only `dashboard-backend` and `drift-monitor` reach it via the internal Compose network.
 - A kill switch `MLOPS_PIPELINE_ENABLED=false` immediately disables pipeline execution.
 - An optional shared bearer token `MLOPS_RUNNER_TOKEN` blocks all other callers.
+- Each request carries a `trigger_source` field (`manual` | `drift` | `scheduled`) that is logged and returned in the response.
 
 Trigger flow from the dashboard:
 
 ```text
 React (/mlops/operations) -> Kong /api/dashboard/mlops/pipeline/run
   -> dashboard-backend POST /mlops/pipeline/run
-    -> create dashboard.mlops_pipeline_runs row (RUNNING)
-    -> background task -> mlops-runner POST /run-pipeline
-      -> docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
+    -> create dashboard.mlops_orchestration_runs row (RUNNING, trigger_source=manual)
+    -> background task -> mlops-runner POST /run-action {action: "full_pipeline", trigger_source: "manual"}
+      -> docker exec <mlops-api-container> make mlops-full
     -> capture stdout/stderr -> redact -> persist on the row
 ```
+
+Trigger flow from drift detection:
+
+```text
+drift-monitor (mlops-tier) detects anomaly burst
+  -> mlops-runner POST /run-action {action: "full_pipeline", trigger_source: "drift"}
+    -> docker exec <mlops-api-container> make mlops-full
+```
+
+## Drift Monitor
+
+`mlops-tier/drift-monitor/` is a lightweight FastAPI service that watches the `events.anomaly` Redis stream for statistical drift signals and automatically triggers the MLOps pipeline when anomaly bursts exceed a configurable threshold.
+
+- Polls `events.anomaly` Redis stream every `DRIFT_POLL_INTERVAL_SECONDS` seconds (default: 30).
+- Counts anomaly events within a sliding `DRIFT_WINDOW_SECONDS` window (default: 120 s).
+- Triggers `mlops-runner POST /run-action` when count ≥ `DRIFT_ANOMALY_THRESHOLD` (default: 5).
+- Enforces a `DRIFT_COOLDOWN_SECONDS` window (default: 600 s) between consecutive triggers.
+- Publishes drift events to the `events.drift` Redis stream and persists status in Redis keys `drift:status` and `drift:events`.
+- Part of the default Compose runtime (no separate profile required). Internal only — no published host port.
+
+Endpoints:
+
+- `GET /health`
+- `GET /drift/status`
+- `GET /drift/events`
+- `POST /drift/trigger` (manual test trigger)
 
 Primary production model paths:
 

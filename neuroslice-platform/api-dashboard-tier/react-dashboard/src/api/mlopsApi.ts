@@ -116,3 +116,71 @@ export async function getMlopsPipelineConfig(): Promise<MlopsPipelineConfig> {
   const { data } = await dashboardClient.get<MlopsPipelineConfig>("/mlops/pipeline/config");
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Drift Detection
+// ---------------------------------------------------------------------------
+
+export interface DriftModelState {
+  model_name: string;
+  status: string;
+  deployment_version?: string;
+  window_size?: number;
+  window_capacity?: number;
+  reference_sample_count?: number;
+  reference_loaded?: boolean;
+  p_value?: number | null;
+  threshold?: number;
+  is_drift?: boolean;
+  drift_score?: number | null;
+  feature_names?: string[];
+  severity?: string;
+  recommendation?: string;
+  last_checked_at?: string | null;
+  last_drift_at?: string | null;
+  auto_trigger_enabled?: boolean;
+  scenario_b_live_mode?: boolean;
+}
+
+export interface DriftLatestResponse {
+  models: Record<string, DriftModelState>;
+  timestamp?: string | null;
+  note?: string;
+}
+
+export interface DriftEvent {
+  event_type: string;
+  drift_id: string;
+  model_name: string;
+  timestamp: string;
+  p_value: number;
+  threshold: number;
+  is_drift: boolean;
+  severity: string;
+  recommendation: string;
+  window_size: number;
+}
+
+export interface DriftEventsResponse {
+  events: DriftEvent[];
+  count: number;
+}
+
+export async function getMlopsDrift(): Promise<DriftLatestResponse> {
+  const { data } = await dashboardClient.get<DriftLatestResponse>("/mlops/drift");
+  return data;
+}
+
+export async function getMlopsDriftModel(modelName: string): Promise<DriftModelState> {
+  const { data } = await dashboardClient.get<DriftModelState>(
+    `/mlops/drift/${encodeURIComponent(modelName)}`,
+  );
+  return data;
+}
+
+export async function getMlopsDriftEvents(limit = 50): Promise<DriftEventsResponse> {
+  const { data } = await dashboardClient.get<DriftEventsResponse>("/mlops/drift-events", {
+    params: { limit },
+  });
+  return data;
+}

@@ -1,6 +1,6 @@
 # Dashboard Backend
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 `dashboard-backend` is the protected dashboard domain API. It validates authenticated sessions against the shared PostgreSQL database, stores dashboard-owned metadata, and delegates operational views to a pluggable provider layer.
 
@@ -38,6 +38,9 @@ Last verified: 2026-04-29.
 - `GET /mlops/artifacts`
 - `GET /mlops/promotions`
 - `GET /mlops/monitoring/predictions`
+- `GET /mlops/drift`
+- `GET /mlops/drift/{model_name}`
+- `GET /mlops/drift-events`
 - `POST /mlops/promote`
 - `POST /mlops/rollback`
 - `GET /mlops/tools`
@@ -59,10 +62,10 @@ Backend API role checks:
 - MLOps read views (`/mlops/*` GET, including `/mlops/tools`, `/mlops/tools/health`, `/mlops/pipeline/runs`, `/mlops/pipeline/runs/{id}/logs`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
 - MLOps write actions (`POST /mlops/promote`, `POST /mlops/rollback`, `POST /mlops/pipeline/run`): `ADMIN`, `DATA_MLOPS_ENGINEER`
 
-Current UI difference:
+Current UI behavior:
 
 - the backend accepts `NETWORK_MANAGER` on prediction endpoints
-- the shipped React router does not currently expose a `/predictions` route to `NETWORK_MANAGER`
+- the shipped React router also exposes `/predictions` to `NETWORK_MANAGER`
 
 ## Provider Modes
 

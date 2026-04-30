@@ -103,6 +103,7 @@ class ActionStore:
         if action.get("status") != ActionStatus.APPROVED.value:
             raise ValueError("Only APPROVED actions can be executed.")
         action["status"] = ActionStatus.EXECUTED_SIMULATED.value
+        action["execution_note"] = "Simulated execution — no real PCF/RAN integration in Scenario B."
         action["updated_at"] = utc_now_iso()
         self._save(action)
         self._publish("action.executed_simulated", action)

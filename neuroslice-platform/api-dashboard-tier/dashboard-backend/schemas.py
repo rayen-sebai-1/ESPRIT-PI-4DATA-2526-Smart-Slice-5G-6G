@@ -389,6 +389,7 @@ class MlopsOrchestrationRunResponse(BaseModel):
     parameters: dict[str, Any]
     triggered_by_user_id: int | None
     triggered_by_email: str | None
+    trigger_source: str = "manual"
     status: PipelineRunStatus
     started_at: datetime | None
     finished_at: datetime | None

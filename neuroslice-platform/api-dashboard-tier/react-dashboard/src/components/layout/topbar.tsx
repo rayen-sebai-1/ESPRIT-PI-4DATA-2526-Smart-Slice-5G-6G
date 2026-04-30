@@ -1,4 +1,4 @@
-import { Bell, Clock3, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
+import { Bell, Clock3, LogOut, Moon, ShieldCheck, Sun, Radio } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -29,6 +29,10 @@ export function Topbar({
             <span className="inline-flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-green-600 dark:text-emerald-300">
               <ShieldCheck size={14} />
               Central service active
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-accent font-semibold tracking-wide text-xs">
+              <Radio size={13} className="animate-pulse" />
+              DATA SOURCE: LIVE
             </span>
           </div>
         </div>

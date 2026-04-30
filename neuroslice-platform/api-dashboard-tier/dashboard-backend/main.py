@@ -499,6 +499,78 @@ def get_mlops_orchestration_run_logs(
     return response
 
 
+# ---- Drift detection (reads from api-bff-service which reads Redis) ---------
+
+_BFF_BASE_URL = os.getenv("API_BFF_BASE_URL", "http://api-bff-service:8000").rstrip("/")
+_DRIFT_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
+
+
+@app.get("/mlops/drift", tags=["mlops"])
+def get_mlops_drift(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return latest drift detection state for all Scenario B models.
+
+    Reads from api-bff-service which proxies Redis aiops:drift:{model_name} hashes.
+    Returns empty valid response if no drift data has been collected yet.
+    """
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/drift/latest")
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    # Graceful empty response — drift-monitor may not be running
+    return {
+        "models": {
+            name: {"model_name": name, "status": "no_data"}
+            for name in _DRIFT_MODEL_NAMES
+        },
+        "timestamp": None,
+        "note": "drift-monitor not reachable or no data collected yet",
+    }
+
+
+@app.get("/mlops/drift/{model_name}", tags=["mlops"])
+def get_mlops_drift_model(
+    model_name: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return latest drift state for a single model."""
+    if model_name not in _DRIFT_MODEL_NAMES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown model '{model_name}'. Known: {_DRIFT_MODEL_NAMES}",
+        )
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/drift/latest/{model_name}")
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"model_name": model_name, "status": "no_data"}
+
+
+@app.get("/mlops/drift-events", tags=["mlops"])
+def get_mlops_drift_events(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    """Return recent drift alert events from events.drift stream."""
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(
+                f"{_BFF_BASE_URL}/api/v1/drift/events", params={"limit": limit}
+            )
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"events": [], "count": 0}
+
+
 # ---- MLOps pipeline config (read-only, for UI gating) ----------------------
 
 @app.get(
@@ -652,4 +724,107 @@ async def agentic_copilot_stream(
             yield f'event: error\ndata: {{"code":"PROXY_ERROR","message":"{exc}"}}\n\n'.encode()
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── Control tier proxy routes ──────────────────────────────────────────────────
+# Proxy calls to policy-control service for the control/actions dashboard page.
+# JWT auth is enforced here before forwarding. The policy-control service is
+# internal-only (not exposed via Kong directly).
+
+control_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER")
+
+
+def _get_policy_control_url() -> str:
+    return os.getenv("POLICY_CONTROL_URL", "http://policy-control:7011").rstrip("/")
+
+
+def _get_drift_monitor_url() -> str:
+    return os.getenv("DRIFT_MONITOR_URL", "http://drift-monitor:8030").rstrip("/")
+
+
+def _proxy_get(url: str) -> Response:
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.get(url)
+            return Response(content=r.content, status_code=r.status_code,
+                            media_type=r.headers.get("content-type", "application/json"))
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Control service unavailable.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _proxy_post(url: str, body: dict | None = None) -> Response:
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.post(url, json=body or {})
+            return Response(content=r.content, status_code=r.status_code,
+                            media_type=r.headers.get("content-type", "application/json"))
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Control service unavailable.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/controls/actions", tags=["controls"])
+def list_control_actions(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_policy_control_url()}/actions")
+
+
+@app.get("/controls/actions/{action_id}", tags=["controls"])
+def get_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_policy_control_url()}/actions/{action_id}")
+
+
+@app.post("/controls/actions/{action_id}/approve", tags=["controls"])
+def approve_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/approve")
+
+
+@app.post("/controls/actions/{action_id}/reject", tags=["controls"])
+def reject_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/reject")
+
+
+@app.post("/controls/actions/{action_id}/execute", tags=["controls"])
+def execute_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/execute")
+
+
+# ── Drift monitor proxy routes ─────────────────────────────────────────────────
+
+@app.get("/controls/drift/status", tags=["controls"])
+def drift_status_proxy(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_drift_monitor_url()}/drift/status")
+
+
+@app.get("/controls/drift/events", tags=["controls"])
+def drift_events_proxy(
+    limit: int = Query(default=20, ge=1, le=100),
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_drift_monitor_url()}/drift/events?limit={limit}")
+
+
+@app.post("/controls/drift/trigger", tags=["controls"])
+def drift_manual_trigger(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_drift_monitor_url()}/drift/trigger")
 

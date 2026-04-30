@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Play, FileText, AlertTriangle, CheckCircle, Clock, XCircle, Search, RefreshCw, X } from "lucide-react";
+import { Play, FileText, AlertTriangle, CheckCircle, Clock, XCircle, Search, RefreshCw, X, Activity, Zap } from "lucide-react";
+import { getDriftStatus } from "@/api/controlApi";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,6 +30,20 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold", styles[status] || styles.DISABLED)}>
       {status}
+    </span>
+  );
+}
+
+function TriggerSourceBadge({ source }: { source?: string }) {
+  const cfg: Record<string, { cls: string; label: string }> = {
+    manual: { cls: "bg-slate-500/10 text-slate-400 border-slate-500/20", label: "Manual" },
+    drift: { cls: "bg-purple-500/10 text-purple-400 border-purple-500/20", label: "Drift" },
+    scheduled: { cls: "bg-blue-500/10 text-blue-400 border-blue-500/20", label: "Scheduled" },
+  };
+  const { cls, label } = cfg[source ?? "manual"] ?? cfg.manual;
+  return (
+    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase", cls)}>
+      {label}
     </span>
   );
 }
@@ -176,6 +191,12 @@ export function MlopsOrchestrationPage() {
   const [logsRunId, setLogsRunId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<MlopsActionDefinition | null>(null);
 
+  const { data: driftStatus } = useQuery({
+    queryKey: ["controls", "drift", "status"],
+    queryFn: getDriftStatus,
+    refetchInterval: 15000,
+  });
+
   const { data: actions = [], isLoading: isLoadingActions } = useQuery({
     queryKey: ["mlops", "orchestration", "actions"],
     queryFn: getMlopsOrchestrationActions,
@@ -201,9 +222,38 @@ export function MlopsOrchestrationPage() {
 
   const canExecute = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
 
+  const lastDriftRun = runs.find((r) => r.trigger_source === "drift");
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      
+
+      {/* Auto MLOps status bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className={cn(
+          "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold",
+          driftStatus?.pipeline_enabled
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+            : "border-slate-500/20 bg-slate-500/10 text-slate-500",
+        )}>
+          <Activity className="size-3" />
+          Auto MLOps: {driftStatus?.pipeline_enabled ? "ON" : "OFF"}
+        </div>
+
+        {driftStatus?.drift_detected && (
+          <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-400">
+            <Zap className="size-3" />
+            DRIFT DETECTED — {driftStatus.anomaly_count} anomalies
+          </div>
+        )}
+
+        {lastDriftRun && (
+          <div className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs text-purple-400">
+            <Zap className="size-3" />
+            Last drift-triggered run: {lastDriftRun.started_at ? new Date(lastDriftRun.started_at).toLocaleString() : "pending"}
+          </div>
+        )}
+      </div>
+
       {/* Actions Grid */}
       <section>
         <h2 className="mb-4 flex items-center gap-2 text-lg font-medium text-slate-200">
@@ -245,6 +295,7 @@ export function MlopsOrchestrationPage() {
               <tr>
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Triggered By</th>
                 <th className="px-4 py-3">Started</th>
                 <th className="px-4 py-3">Duration</th>
@@ -254,7 +305,7 @@ export function MlopsOrchestrationPage() {
             <tbody className="divide-y divide-white/5">
               {runs.length === 0 && !isLoadingRuns && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                     No runs found.
                   </td>
                 </tr>
@@ -267,6 +318,9 @@ export function MlopsOrchestrationPage() {
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={run.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TriggerSourceBadge source={run.trigger_source} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-slate-300">{run.triggered_by_email || "System"}</div>

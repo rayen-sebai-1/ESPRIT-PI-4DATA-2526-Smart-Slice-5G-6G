@@ -95,6 +95,11 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many protected dashboard requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
 
   - name: dashboard-service-predictions
     url: http://dashboard-backend:8002/predictions
@@ -118,6 +123,11 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many protected dashboard requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
 
   - name: dashboard-service-models
     url: http://dashboard-backend:8002/models
@@ -140,6 +150,11 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many protected dashboard requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
 
   - name: dashboard-service-mlops
     url: http://dashboard-backend:8002/mlops
@@ -163,6 +178,11 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many protected MLOps requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
 
   - name: dashboard-service-root
     url: http://dashboard-backend:8002/dashboard
@@ -188,6 +208,11 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many protected dashboard requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
 
   - name: api-bff-service
     url: http://api-bff-service:8000
@@ -222,3 +247,36 @@ services:
               hide_client_headers: false
               error_code: 429
               error_message: Too many agentic requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
+
+  - name: dashboard-service-controls
+    url: http://dashboard-backend:8002/controls
+    routes:
+      - name: dashboard-service-controls-route
+        paths:
+          - /api/dashboard/controls
+        strip_path: true
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+        plugins:
+          - name: rate-limiting
+            config:
+              policy: local
+              limit_by: ip
+              minute: 120
+              hour: 5000
+              fault_tolerant: true
+              hide_client_headers: false
+              error_code: 429
+              error_message: Too many control requests.
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Kong-Authenticated: true"
