@@ -9,6 +9,7 @@ import {
   ScanSearch,
   ShieldCheck,
   Users,
+  ShieldAlert,
 } from "lucide-react";
 
 import type { AssignableRole, UserRole } from "@/types/auth";
@@ -56,6 +57,12 @@ export const navItems: NavItem[] = [
     to: "/mlops",
     icon: Cpu,
     roles: ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"],
+  },
+  {
+    label: "Control Actions",
+    to: "/control/actions",
+    icon: ShieldAlert,
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
   },
   {
     label: "Root Cause Agent",

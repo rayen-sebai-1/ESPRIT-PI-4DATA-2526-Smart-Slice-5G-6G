@@ -21,6 +21,7 @@ import { MlopsPromotionsPage } from "@/pages/mlops/MlopsPromotionsPage";
 import { MlopsMonitoringPage } from "@/pages/mlops/MlopsMonitoringPage";
 import { MlopsOperationsPage } from "@/pages/mlops/MlopsOperationsPage";
 import { MlopsOrchestrationPage } from "@/pages/mlops/MlopsOrchestrationPage";
+import { ControlActionsPage } from "@/pages/ControlActionsPage";
 import { MlopsDriftPage } from "@/pages/mlops/MlopsDriftPage";
 
 export const router = createBrowserRouter([
@@ -55,6 +56,14 @@ export const router = createBrowserRouter([
           },
           { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
           { path: "/agentic/copilot", element: <CopilotAgentPage /> },
+          {
+            element: (
+              <ProtectedRoute allowedRoles={["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"]} />
+            ),
+            children: [
+              { path: "/control/actions", element: <ControlActionsPage /> },
+            ],
+          },
           {
             element: (
               <ProtectedRoute

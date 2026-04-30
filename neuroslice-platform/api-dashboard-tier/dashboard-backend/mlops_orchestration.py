@@ -216,14 +216,17 @@ class MlopsOrchestrationService:
         )
 
     def create_run(
-        self, 
-        principal: AuthenticatedPrincipal, 
-        action_key: str, 
-        parameters: dict[str, Any]
+        self,
+        principal: AuthenticatedPrincipal,
+        action_key: str,
+        parameters: dict[str, Any],
+        trigger_source: str = "manual",
     ) -> MlopsOrchestrationRun:
         action_def = self.get_action_definition(action_key)
         if not action_def:
             raise ValueError(f"Unknown action: {action_key}")
+
+        safe_source = trigger_source if trigger_source in {"manual", "drift", "scheduled"} else "manual"
 
         # Ensure parameters only contain safe types (strings, ints, floats, bools)
         safe_params = {}
@@ -237,6 +240,7 @@ class MlopsOrchestrationService:
             parameters_json=safe_params,
             triggered_by_user_id=principal.id,
             triggered_by_email=principal.email,
+            trigger_source=safe_source,
             status="QUEUED",
         )
         self.db.add(run)
@@ -285,6 +289,7 @@ class MlopsOrchestrationService:
         payload = {
             "action": row.action_key,
             "parameters": row.parameters_json,
+            "trigger_source": row.trigger_source or "manual",
         }
 
         try:
@@ -334,6 +339,7 @@ class MlopsOrchestrationService:
             parameters=row.parameters_json,  # type: ignore
             triggered_by_user_id=row.triggered_by_user_id,
             triggered_by_email=row.triggered_by_email,
+            trigger_source=row.trigger_source or "manual",
             status=row.status,  # type: ignore[arg-type]
             started_at=row.started_at,
             finished_at=row.finished_at,

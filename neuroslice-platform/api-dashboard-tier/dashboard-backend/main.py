@@ -725,3 +725,106 @@ async def agentic_copilot_stream(
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
+
+# ── Control tier proxy routes ──────────────────────────────────────────────────
+# Proxy calls to policy-control service for the control/actions dashboard page.
+# JWT auth is enforced here before forwarding. The policy-control service is
+# internal-only (not exposed via Kong directly).
+
+control_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER")
+
+
+def _get_policy_control_url() -> str:
+    return os.getenv("POLICY_CONTROL_URL", "http://policy-control:7011").rstrip("/")
+
+
+def _get_drift_monitor_url() -> str:
+    return os.getenv("DRIFT_MONITOR_URL", "http://drift-monitor:8030").rstrip("/")
+
+
+def _proxy_get(url: str) -> Response:
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.get(url)
+            return Response(content=r.content, status_code=r.status_code,
+                            media_type=r.headers.get("content-type", "application/json"))
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Control service unavailable.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _proxy_post(url: str, body: dict | None = None) -> Response:
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.post(url, json=body or {})
+            return Response(content=r.content, status_code=r.status_code,
+                            media_type=r.headers.get("content-type", "application/json"))
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Control service unavailable.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/controls/actions", tags=["controls"])
+def list_control_actions(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_policy_control_url()}/actions")
+
+
+@app.get("/controls/actions/{action_id}", tags=["controls"])
+def get_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_policy_control_url()}/actions/{action_id}")
+
+
+@app.post("/controls/actions/{action_id}/approve", tags=["controls"])
+def approve_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/approve")
+
+
+@app.post("/controls/actions/{action_id}/reject", tags=["controls"])
+def reject_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/reject")
+
+
+@app.post("/controls/actions/{action_id}/execute", tags=["controls"])
+def execute_control_action(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/execute")
+
+
+# ── Drift monitor proxy routes ─────────────────────────────────────────────────
+
+@app.get("/controls/drift/status", tags=["controls"])
+def drift_status_proxy(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_drift_monitor_url()}/drift/status")
+
+
+@app.get("/controls/drift/events", tags=["controls"])
+def drift_events_proxy(
+    limit: int = Query(default=20, ge=1, le=100),
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_drift_monitor_url()}/drift/events?limit={limit}")
+
+
+@app.post("/controls/drift/trigger", tags=["controls"])
+def drift_manual_trigger(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> Any:
+    return _proxy_post(f"{_get_drift_monitor_url()}/drift/trigger")
+

@@ -52,6 +52,7 @@ class Action(BaseModel):
     status: ActionStatus
     reason: str
     policy_id: str
+    execution_note: str | None = None
     created_at: str = Field(default_factory=utc_now_iso)
     updated_at: str = Field(default_factory=utc_now_iso)
 

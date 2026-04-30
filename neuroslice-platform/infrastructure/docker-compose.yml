@@ -325,6 +325,7 @@ services:
       - MLOPS_ORCHESTRATION_WORKDIR=${MLOPS_ORCHESTRATION_WORKDIR:-/workspace/neuroslice-platform/infrastructure}
       - MLOPS_ORCHESTRATION_TIMEOUT_SECONDS=${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
       - MLOPS_RUNNER_TOKEN=${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
+      - MLOPS_PIPELINE_ENABLED=${MLOPS_PIPELINE_ENABLED:-true}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ..:/workspace/neuroslice-platform
@@ -342,6 +343,41 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  drift-monitor:
+    build:
+      context: ..
+      dockerfile: mlops-tier/drift-monitor/Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MLOPS_RUNNER_URL: http://mlops-runner:8020
+      MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
+      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-true}
+      DRIFT_ANOMALY_THRESHOLD: ${DRIFT_ANOMALY_THRESHOLD:-5}
+      DRIFT_WINDOW_SECONDS: ${DRIFT_WINDOW_SECONDS:-120}
+      DRIFT_COOLDOWN_SECONDS: ${DRIFT_COOLDOWN_SECONDS:-600}
+      DRIFT_POLL_INTERVAL_SECONDS: ${DRIFT_POLL_INTERVAL_SECONDS:-30}
+    expose:
+      - "8030"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mlops-runner:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8030/health', timeout=3); sys.exit(0)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   adapter-ves:
     build:
@@ -817,8 +853,11 @@ services:
       MLOPS_RUNNER_URL: http://mlops-runner:8020
       MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
       MLOPS_ORCHESTRATION_TIMEOUT_SECONDS: ${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
-      # MLOps pipeline execution (off by default — set true only for Scenario B demo)
-      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-false}
+      # Control tier proxy
+      POLICY_CONTROL_URL: http://policy-control:7011
+      DRIFT_MONITOR_URL: http://drift-monitor:8030
+      # MLOps pipeline execution — enabled for Scenario B full integration
+      MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-true}
       MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
       # Agentic AI proxy (routes from dashboard-backend to internal agent services)
       ROOT_CAUSE_AGENT_URL: http://root-cause:7005
@@ -832,6 +871,8 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      policy-control:
+        condition: service_started
     healthcheck:
       test:
         [
@@ -875,11 +916,9 @@ services:
     build:
       context: ..
       dockerfile: api-dashboard-tier/react-dashboard/Dockerfile
-    environment:
-      CHOKIDAR_USEPOLLING: "true"
-      VITE_DEV_PROXY_TARGET: http://kong-gateway:8000
-      VITE_AUTH_API_URL: /api/auth
-      VITE_DASHBOARD_API_URL: /api/dashboard
+      args:
+        VITE_AUTH_API_URL: /api/auth
+        VITE_DASHBOARD_API_URL: /api/dashboard
     ports:
       - "${DASHBOARD_FRONTEND_PORT:-5173}:5173"
     depends_on:
