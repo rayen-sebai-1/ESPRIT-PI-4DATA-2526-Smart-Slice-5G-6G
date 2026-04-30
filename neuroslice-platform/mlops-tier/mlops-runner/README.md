@@ -1,6 +1,6 @@
 # MLOps Runner
 
-Internal-only worker that executes fixed offline MLOps pipeline actions on demand. It exists so the React dashboard and the drift-monitor can trigger the offline training pipeline without giving any other service direct access to the Docker socket or arbitrary shell commands.
+Internal-only worker that executes fixed offline MLOps pipeline actions on demand. It exists so the React dashboard and `mlops-drift-monitor` can trigger the offline training pipeline without giving any other service direct access to the Docker socket or arbitrary shell commands.
 
 ## Security model
 
@@ -8,15 +8,16 @@ Internal-only worker that executes fixed offline MLOps pipeline actions on deman
 - Subprocess spawn uses an argv list (`["docker", "exec", container, "make", target]`) — no shell interpolation.
 - The runner is bound to the internal Compose network only (no published port).
 - A shared bearer token (`MLOPS_RUNNER_TOKEN`) gates the runner so only authorized services can call it.
-- A kill switch (`MLOPS_PIPELINE_ENABLED=false`) immediately disables `POST /run-action` and returns `409`.
+- A kill switch (`MLOPS_ORCHESTRATION_ENABLED=false`) immediately disables `POST /run-action` and returns `409`.
 - Output is truncated to ~200 KB before returning to avoid memory blowups on long runs.
 
 ## Endpoints
 
 - `GET /health` -> `{ status, service, enabled }`
+- `GET /metrics` -> Prometheus metrics
 - `POST /run-action` -> blocks until the action completes (or hits `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS`), then returns `{ accepted, exit_code, duration_seconds, stdout, stderr, command_label, trigger_source, timed_out }`.
 
-`dashboard-backend` calls `POST /run-action` from a background task so the HTTP request from the React dashboard returns immediately with a `RUNNING` status. `drift-monitor` calls it directly when an anomaly burst is detected.
+`dashboard-backend` calls `POST /run-action` from a background task so the HTTP request from the React dashboard returns immediately with a `RUNNING` status. `mlops-drift-monitor` calls it directly when an anomaly burst is detected.
 
 ## Request body
 
@@ -57,3 +58,14 @@ Internal-only worker that executes fixed offline MLOps pipeline actions on deman
 | `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS` | `7200` | Max seconds before the subprocess is killed |
 | `MLOPS_RUNNER_TOKEN` | *(unset)* | Optional shared bearer token; if set, all callers must include `Authorization: Bearer <token>` |
 | `MLOPS_API_CONTAINER_NAME` | *(auto-detected)* | Override the mlops-api container name; auto-detected via `docker ps` label if unset |
+
+## Environment Variables Clarification
+
+- `MLOPS_PIPELINE_ENABLED` does not control command execution inside this service. It is used by upstream trigger callers (`dashboard-backend` and `mlops-drift-monitor`) to decide whether to submit a run request.
+- `MLOPS_ORCHESTRATION_ENABLED` is the execution kill switch in `mlops-runner` itself.
+
+## Prometheus Metrics
+
+- `neuroslice_mlops_runner_requests_total{action,trigger_source,status}`
+- `neuroslice_mlops_runner_duration_seconds{action,trigger_source}`
+- `neuroslice_mlops_runner_enabled`

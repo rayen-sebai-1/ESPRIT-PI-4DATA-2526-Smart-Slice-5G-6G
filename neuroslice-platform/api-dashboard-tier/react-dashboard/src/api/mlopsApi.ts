@@ -184,3 +184,41 @@ export async function getMlopsDriftEvents(limit = 50): Promise<DriftEventsRespon
   });
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Online evaluation
+// ---------------------------------------------------------------------------
+
+export interface EvaluationModelState {
+  model_name: string;
+  status?: string;
+  timestamp?: string;
+  window_size?: number;
+  window_capacity?: number;
+  samples_total?: number;
+  accuracy?: number;
+  precision?: number;
+  recall?: number;
+  f1?: number;
+  false_positive_count?: number;
+  false_negative_count?: number;
+  pseudo_ground_truth_available?: boolean;
+}
+
+export interface EvaluationLatestResponse {
+  models: Record<string, EvaluationModelState>;
+  timestamp?: string | null;
+  note?: string | null;
+}
+
+export async function getMlopsEvaluation(): Promise<EvaluationLatestResponse> {
+  const { data } = await dashboardClient.get<EvaluationLatestResponse>("/mlops/evaluation");
+  return data;
+}
+
+export async function getMlopsEvaluationModel(modelName: string): Promise<EvaluationModelState> {
+  const { data } = await dashboardClient.get<EvaluationModelState>(
+    `/mlops/evaluation/${encodeURIComponent(modelName)}`,
+  );
+  return data;
+}

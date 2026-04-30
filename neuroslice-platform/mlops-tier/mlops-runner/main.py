@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 import subprocess
 import time
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
 
 
@@ -23,6 +23,22 @@ app = FastAPI(title="NeuroSlice MLOps Runner", version="2.0.0")
 
 
 _VALID_TRIGGER_SOURCES = frozenset({"manual", "drift", "scheduled"})
+
+mlops_runner_requests_total = Counter(
+    "neuroslice_mlops_runner_requests_total",
+    "Total mlops-runner run-action requests",
+    ["action", "trigger_source", "status"],
+)
+mlops_runner_duration_seconds = Histogram(
+    "neuroslice_mlops_runner_duration_seconds",
+    "mlops-runner action execution duration in seconds",
+    ["action", "trigger_source"],
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 15.0, 30.0, 60.0, 300.0, 900.0, 1800.0, 3600.0],
+)
+mlops_runner_enabled = Gauge(
+    "neuroslice_mlops_runner_enabled",
+    "Whether mlops-runner orchestration is enabled (1) or disabled (0)",
+)
 
 
 class RunActionRequest(BaseModel):
@@ -75,7 +91,7 @@ def _mlops_api_container() -> str:
 
 def _timeout_seconds() -> int:
     try:
-        return max(60, int(os.getenv("MLOPS_ORCHESTRATION_TIMEOUT_SECONDS", "7200")))
+        return max(60, int(os.getenv("MLOPS_PIPELINE_TIMEOUT_SECONDS", os.getenv("MLOPS_ORCHESTRATION_TIMEOUT_SECONDS", "7200"))))
     except ValueError:
         return 7200
 
@@ -93,14 +109,6 @@ _ACTION_MAP = {
     "rollback_model": "rollback-model",
     "full_pipeline": "mlops-full",
 }
-
-
-def _timeout_seconds() -> int:
-    try:
-        return max(60, int(os.getenv("MLOPS_PIPELINE_TIMEOUT_SECONDS", "7200")))
-    except ValueError:
-        return 7200
-
 
 def _truncate(value: str, *, limit: int = 200_000) -> str:
     if len(value) <= limit:
@@ -123,6 +131,7 @@ def require_runner_token(authorization: Annotated[str | None, Header()] = None) 
 
 @app.get("/health")
 def health() -> dict[str, str | bool]:
+    mlops_runner_enabled.set(1 if _enabled() else 0)
     return {
         "status": "ok",
         "service": "mlops-runner",
@@ -130,21 +139,38 @@ def health() -> dict[str, str | bool]:
     }
 
 
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/run-action", response_model=RunPipelineResponse)
 def run_action(
     payload: RunActionRequest,
     _: Annotated[None, Depends(require_runner_token)]
 ) -> RunPipelineResponse:
+    action_label = payload.action or "unknown"
+    trigger_source = payload.trigger_source if payload.trigger_source in _VALID_TRIGGER_SOURCES else "manual"
+    mlops_runner_enabled.set(1 if _enabled() else 0)
+
     if not _enabled():
+        mlops_runner_requests_total.labels(
+            action=action_label,
+            trigger_source=trigger_source,
+            status="disabled",
+        ).inc()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="MLOps orchestration is disabled (MLOPS_ORCHESTRATION_ENABLED).",
         )
 
-    trigger_source = payload.trigger_source if payload.trigger_source in _VALID_TRIGGER_SOURCES else "manual"
-
     target = _ACTION_MAP.get(payload.action)
     if not target:
+        mlops_runner_requests_total.labels(
+            action=action_label,
+            trigger_source=trigger_source,
+            status="invalid_action",
+        ).inc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown action key: {payload.action}",
@@ -181,6 +207,15 @@ def run_action(
         )
     except subprocess.TimeoutExpired as exc:
         duration = time.monotonic() - start
+        mlops_runner_requests_total.labels(
+            action=action_label,
+            trigger_source=trigger_source,
+            status="timeout",
+        ).inc()
+        mlops_runner_duration_seconds.labels(
+            action=action_label,
+            trigger_source=trigger_source,
+        ).observe(duration)
         return RunPipelineResponse(
             accepted=True,
             exit_code=None,
@@ -194,6 +229,15 @@ def run_action(
         )
     except FileNotFoundError as exc:
         duration = time.monotonic() - start
+        mlops_runner_requests_total.labels(
+            action=action_label,
+            trigger_source=trigger_source,
+            status="runner_error",
+        ).inc()
+        mlops_runner_duration_seconds.labels(
+            action=action_label,
+            trigger_source=trigger_source,
+        ).observe(duration)
         return RunPipelineResponse(
             accepted=False,
             exit_code=None,
@@ -207,6 +251,16 @@ def run_action(
         )
 
     duration = time.monotonic() - start
+    status_label = "success" if completed.returncode == 0 else "failed"
+    mlops_runner_requests_total.labels(
+        action=action_label,
+        trigger_source=trigger_source,
+        status=status_label,
+    ).inc()
+    mlops_runner_duration_seconds.labels(
+        action=action_label,
+        trigger_source=trigger_source,
+    ).observe(duration)
     return RunPipelineResponse(
         accepted=True,
         exit_code=completed.returncode,

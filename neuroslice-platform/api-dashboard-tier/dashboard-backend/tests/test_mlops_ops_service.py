@@ -123,8 +123,8 @@ def test_execute_run_delegates_and_persists_redacted_output(monkeypatch) -> None
         def __exit__(self, *_):
             return False
 
-        def post(self, url, headers=None):
-            self.calls.append((url, headers))
+        def post(self, url, json=None, headers=None):
+            self.calls.append((url, json, headers))
             return _FakeResp(
                 {
                     "accepted": True,
@@ -150,8 +150,13 @@ def test_execute_run_delegates_and_persists_redacted_output(monkeypatch) -> None
     assert row.status == "SUCCESS"
     assert row.exit_code == 0
     assert "hunter2" not in (row.stdout_log or "")
-    assert fake.calls[0][0] == "http://mlops-runner:8020/run-pipeline"
-    assert fake.calls[0][1] == {"Authorization": "Bearer shared"}
+    assert fake.calls[0][0] == "http://mlops-runner:8020/run-action"
+    assert fake.calls[0][1] == {
+        "action": "full_pipeline",
+        "trigger_source": "manual",
+        "parameters": {},
+    }
+    assert fake.calls[0][2] == {"Authorization": "Bearer shared"}
 
 
 def test_execute_run_marks_failed_when_runner_url_missing(monkeypatch) -> None:

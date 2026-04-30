@@ -1,4 +1,4 @@
-"""Drift Monitor — watches AIOps output streams for statistical drift signals,
+"""Drift Monitor — watches AIOps output streams for anomaly-burst drift proxy signals,
 then triggers the MLOps pipeline automatically via mlops-runner.
 
 Security:
@@ -18,7 +18,8 @@ from typing import Any
 
 import httpx
 import redis.asyncio as aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from pydantic import BaseModel
 
 logging.basicConfig(
@@ -50,11 +51,30 @@ DRIFT_WINDOW_SECONDS = int(os.getenv("DRIFT_WINDOW_SECONDS", "120"))
 DRIFT_COOLDOWN_SECONDS = int(os.getenv("DRIFT_COOLDOWN_SECONDS", "600"))
 
 POLL_INTERVAL_SECONDS = float(os.getenv("DRIFT_POLL_INTERVAL_SECONDS", "30"))
+RUNTIME_SERVICE_NAME = os.getenv("RUNTIME_SERVICE_NAME", "mlops-drift-monitor")
 
 # Redis key that stores the last trigger timestamp
 _LAST_TRIGGER_KEY = "drift:last_trigger_ts"
 _DRIFT_STATUS_KEY = "drift:status"
 _DRIFT_EVENTS_KEY = "drift:events"
+
+mlops_drift_anomaly_events_total = Counter(
+    "neuroslice_mlops_drift_anomaly_events_total",
+    "Total anomaly events observed by mlops-drift-monitor",
+)
+mlops_drift_triggers_total = Counter(
+    "neuroslice_mlops_drift_triggers_total",
+    "Total drift trigger attempts by status",
+    ["status"],
+)
+mlops_drift_last_trigger_timestamp = Gauge(
+    "neuroslice_mlops_drift_last_trigger_timestamp",
+    "Unix timestamp of the last successful drift trigger",
+)
+mlops_drift_enabled = Gauge(
+    "neuroslice_mlops_drift_enabled",
+    "Whether mlops-drift-monitor pipeline triggering is enabled (1) or disabled (0)",
+)
 
 # ── state ─────────────────────────────────────────────────────────────────────
 
@@ -93,6 +113,25 @@ async def _get_redis() -> aioredis.Redis:
     return _redis
 
 
+def _runtime_key(suffix: str) -> str:
+    return f"runtime:service:{RUNTIME_SERVICE_NAME}:{suffix}"
+
+
+def _parse_bool(value: str | None, *, default: bool = True) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _runtime_service_enabled(r: aioredis.Redis) -> bool:
+    enabled_raw = await r.get(_runtime_key("enabled"))
+    mode = str(await r.get(_runtime_key("mode")) or "").strip().lower()
+    enabled = _parse_bool(enabled_raw, default=True)
+    if mode == "disabled":
+        return False
+    return enabled
+
+
 async def _count_recent_anomalies(r: aioredis.Redis) -> int:
     """Count anomaly events in the last DRIFT_WINDOW_SECONDS from Redis stream."""
     cutoff_ms = int((_now_ts() - DRIFT_WINDOW_SECONDS) * 1000)
@@ -103,6 +142,26 @@ async def _count_recent_anomalies(r: aioredis.Redis) -> int:
     except Exception as exc:
         logger.warning("Could not read anomaly stream: %s", exc)
         return 0
+
+
+async def _count_new_anomalies(r: aioredis.Redis) -> int:
+    """Count newly observed anomaly events since the previous poll."""
+    global _last_stream_id
+    try:
+        chunks = await r.xread({ANOMALY_STREAM: _last_stream_id}, count=1000, block=1)
+    except Exception:
+        return 0
+
+    if not chunks:
+        return 0
+
+    total = 0
+    for _, messages in chunks:
+        if not messages:
+            continue
+        total += len(messages)
+        _last_stream_id = messages[-1][0]
+    return total
 
 
 async def _is_in_cooldown(r: aioredis.Redis) -> bool:
@@ -117,7 +176,9 @@ async def _is_in_cooldown(r: aioredis.Redis) -> bool:
 
 
 async def _record_trigger(r: aioredis.Redis) -> None:
-    await r.set(_LAST_TRIGGER_KEY, str(_now_ts()))
+    now = _now_ts()
+    await r.set(_LAST_TRIGGER_KEY, str(now))
+    mlops_drift_last_trigger_timestamp.set(now)
 
 
 async def _publish_drift_event(r: aioredis.Redis, anomaly_count: int) -> None:
@@ -147,6 +208,7 @@ async def _trigger_mlops_pipeline(anomaly_count: int) -> bool:
     """Call mlops-runner to trigger the full pipeline. Returns True on success."""
     if not MLOPS_PIPELINE_ENABLED:
         logger.info("MLOPS_PIPELINE_ENABLED=false — skipping auto trigger")
+        mlops_drift_triggers_total.labels(status="disabled").inc()
         return False
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -161,11 +223,14 @@ async def _trigger_mlops_pipeline(anomaly_count: int) -> bool:
             )
             if resp.status_code == 200:
                 logger.info("Pipeline triggered via drift — response: %s", resp.json().get("accepted"))
+                mlops_drift_triggers_total.labels(status="success").inc()
                 return True
             logger.warning("mlops-runner returned %s: %s", resp.status_code, resp.text[:200])
+            mlops_drift_triggers_total.labels(status="failed").inc()
             return False
     except Exception as exc:
         logger.error("Failed to call mlops-runner: %s", exc)
+        mlops_drift_triggers_total.labels(status="failed").inc()
         return False
 
 
@@ -178,6 +243,13 @@ async def _monitor_loop() -> None:
     r = await _get_redis()
     while True:
         try:
+            runtime_enabled = await _runtime_service_enabled(r)
+            monitor_enabled = runtime_enabled and MLOPS_PIPELINE_ENABLED
+            mlops_drift_enabled.set(1 if monitor_enabled else 0)
+            new_anomalies = await _count_new_anomalies(r)
+            if new_anomalies > 0:
+                mlops_drift_anomaly_events_total.inc(new_anomalies)
+
             anomaly_count = await _count_recent_anomalies(r)
             drift_detected = anomaly_count >= DRIFT_ANOMALY_THRESHOLD
             cooldown = await _is_in_cooldown(r)
@@ -192,12 +264,16 @@ async def _monitor_loop() -> None:
                 logger.warning("DRIFT DETECTED — %d anomalies in %ds window. Triggering pipeline.",
                                anomaly_count, DRIFT_WINDOW_SECONDS)
                 await _publish_drift_event(r, anomaly_count)
-                pipeline_triggered = await _trigger_mlops_pipeline(anomaly_count)
-                if pipeline_triggered:
-                    await _record_trigger(r)
-                    last_trigger_time = _now_iso()
+                if not monitor_enabled:
+                    mlops_drift_triggers_total.labels(status="disabled").inc()
+                else:
+                    pipeline_triggered = await _trigger_mlops_pipeline(anomaly_count)
+                    if pipeline_triggered:
+                        await _record_trigger(r)
+                        last_trigger_time = _now_iso()
             elif drift_detected and cooldown:
                 logger.info("Drift detected but cooldown active — skipping trigger")
+                mlops_drift_triggers_total.labels(status="cooldown").inc()
 
             status = {
                 "drift_detected": drift_detected,
@@ -209,7 +285,7 @@ async def _monitor_loop() -> None:
                 "last_trigger_time": last_trigger_time,
                 "pipeline_triggered": pipeline_triggered,
                 "cooldown_active": cooldown,
-                "pipeline_enabled": MLOPS_PIPELINE_ENABLED,
+                "pipeline_enabled": monitor_enabled,
             }
             await _save_drift_status(r, status)
 
@@ -227,16 +303,18 @@ async def _monitor_loop() -> None:
 async def health() -> dict:
     r = await _get_redis()
     redis_ok = False
+    runtime_enabled = True
     try:
         await r.ping()
         redis_ok = True
+        runtime_enabled = await _runtime_service_enabled(r)
     except Exception:
         pass
     return {
         "status": "ok" if redis_ok else "degraded",
         "service": "drift-monitor",
         "redis": "up" if redis_ok else "down",
-        "pipeline_enabled": MLOPS_PIPELINE_ENABLED,
+        "pipeline_enabled": MLOPS_PIPELINE_ENABLED and runtime_enabled,
         "timestamp": _now_iso(),
     }
 
@@ -249,6 +327,7 @@ async def drift_status() -> DriftStatus:
         data = json.loads(raw)
         return DriftStatus(**data)
 
+    runtime_enabled = await _runtime_service_enabled(r)
     anomaly_count = await _count_recent_anomalies(r)
     cooldown = await _is_in_cooldown(r)
     return DriftStatus(
@@ -261,8 +340,13 @@ async def drift_status() -> DriftStatus:
         last_trigger_time=None,
         pipeline_triggered=False,
         cooldown_active=cooldown,
-        pipeline_enabled=MLOPS_PIPELINE_ENABLED,
+        pipeline_enabled=MLOPS_PIPELINE_ENABLED and runtime_enabled,
     )
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/drift/events")
@@ -282,9 +366,15 @@ async def drift_events(limit: int = 20) -> dict:
 async def manual_trigger() -> dict:
     """Manually trigger a drift check and pipeline (for testing)."""
     r = await _get_redis()
+    runtime_enabled = await _runtime_service_enabled(r)
     anomaly_count = await _count_recent_anomalies(r)
     cooldown = await _is_in_cooldown(r)
+    if not runtime_enabled:
+        mlops_drift_enabled.set(0)
+        mlops_drift_triggers_total.labels(status="disabled").inc()
+        return {"triggered": False, "reason": "runtime_disabled", "anomaly_count": anomaly_count}
     if cooldown:
+        mlops_drift_triggers_total.labels(status="cooldown").inc()
         return {"triggered": False, "reason": "cooldown_active", "anomaly_count": anomaly_count}
     await _publish_drift_event(r, anomaly_count)
     ok = await _trigger_mlops_pipeline(anomaly_count)
@@ -297,10 +387,19 @@ async def manual_trigger() -> dict:
 async def startup() -> None:
     global _monitor_task
     r = await _get_redis()
+    mlops_drift_enabled.set(1 if MLOPS_PIPELINE_ENABLED else 0)
     for attempt in range(30):
         try:
             await r.ping()
             logger.info("Connected to Redis")
+            runtime_enabled = await _runtime_service_enabled(r)
+            mlops_drift_enabled.set(1 if (runtime_enabled and MLOPS_PIPELINE_ENABLED) else 0)
+            last_ts = await r.get(_LAST_TRIGGER_KEY)
+            if last_ts:
+                try:
+                    mlops_drift_last_trigger_timestamp.set(float(last_ts))
+                except ValueError:
+                    pass
             break
         except Exception as exc:
             logger.warning("Waiting for Redis (%d/30): %s", attempt + 1, exc)

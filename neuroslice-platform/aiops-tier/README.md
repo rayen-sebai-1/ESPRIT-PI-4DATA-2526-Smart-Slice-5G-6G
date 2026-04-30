@@ -9,10 +9,18 @@ The AIOps tier contains online inference workers that consume normalized telemet
 - `congestion-detector/`: congestion anomaly scoring
 - `slice-classifier/`: slice type classification and mismatch detection
 - `sla-assurance/`: SLA risk scoring
-- `drift-monitor/`: **Scenario B drift detection** — Alibi Detect MMD
+- `drift-monitor/` (service name `aiops-drift-monitor`): **Scenario B drift detection** — Alibi Detect MMD
+- `online-evaluator/`: runtime pseudo-ground-truth evaluation for model predictions
 - `shared/`: Redis, model registry, ONNX Runtime, and hot-reload helpers
 
-The three inference workers are background workers with no public HTTP APIs. The `drift-monitor` exposes `GET /health`, `GET /drift/latest`, `GET /drift/latest/{model_name}`, and `GET /metrics` (Prometheus).
+The three inference workers are background workers (no business REST API) and expose Prometheus metrics on dedicated ports:
+
+- `congestion-detector`: `:9101/metrics`
+- `sla-assurance`: `:9102/metrics`
+- `slice-classifier`: `:9103/metrics`
+
+`aiops-drift-monitor` exposes `GET /health`, `GET /drift/latest`, `GET /drift/latest/{model_name}`, and `GET /metrics`.
+`online-evaluator` exposes `GET /health`, `GET /evaluation/latest`, `GET /evaluation/latest/{model_name}`, `GET /evaluation/events`, and `GET /metrics`.
 
 ## Runtime Streams
 
@@ -25,13 +33,57 @@ Outputs:
 - `congestion-detector` -> `events.anomaly`, Redis state prefix `aiops:congestion`, Influx measurement `aiops_congestion`
 - `slice-classifier` -> `events.slice.classification`, Redis state prefix `aiops:slice_classification`, Influx measurement `aiops_slice_classification`
 - `sla-assurance` -> `events.sla`, Redis state prefix `aiops:sla`, Influx measurement `aiops_sla`
-- `drift-monitor` -> `events.drift`, Redis state prefix `aiops:drift`, Kafka topic `drift.alert`, Influx measurement `aiops_drift`
+- `aiops-drift-monitor` -> `events.drift`, Redis state prefix `aiops:drift`, Kafka topic `drift.alert`, Influx measurement `aiops_drift`
+- `online-evaluator` -> `events.evaluation`, Redis state prefix `aiops:evaluation`
+
+## Runtime Service Flags
+
+AIOps workers use Redis runtime flags and skip inference when disabled:
+
+- `runtime:service:congestion-detector:*`
+- `runtime:service:sla-assurance:*`
+- `runtime:service:slice-classifier:*`
+- `runtime:service:aiops-drift-monitor:*`
+
+Supported fields:
+
+- `enabled` (`true` / `false`)
+- `mode` (`auto` / `manual` / `disabled`)
+- `updated_at`
+- `updated_by`
+- `reason`
+
+When disabled, workers set `neuroslice_aiops_service_enabled{service}=0` and pause event processing.
+
+## Online Model Evaluation (Scenario B)
+
+`online-evaluator` consumes:
+
+- `events.anomaly`
+- `events.sla`
+- `events.slice.classification`
+- `stream:norm.telemetry`
+- `faults:active` (Redis hash lookup)
+
+It derives pseudo-ground-truth labels from Scenario B telemetry/fault context and computes rolling:
+
+- accuracy
+- precision
+- recall
+- f1
+- false-positive and false-negative counts
+
+Per-model state keys:
+
+- `aiops:evaluation:congestion_5g`
+- `aiops:evaluation:sla_5g`
+- `aiops:evaluation:slice_type_5g`
 
 Kafka and InfluxDB mirroring are enabled by default in `infrastructure/docker-compose.yml`.
 
 ## Scenario B Drift Detection
 
-The `drift-monitor` is an adaptation of the architecture report's Alibi Detect sidecar design for Docker Compose. One service monitors all three models; it can be split into per-model sidecars without schema changes.
+`aiops-drift-monitor` is an adaptation of the architecture report's Alibi Detect sidecar design for Docker Compose. One service monitors all three models; it can be split into per-model sidecars without schema changes.
 
 - **Method**: Alibi Detect MMD (`alibi_detect.cd.MMDDrift`, PyTorch backend)
 - **Window size**: 500 samples per model (rolling)
@@ -40,13 +92,15 @@ The `drift-monitor` is an adaptation of the architecture report's Alibi Detect s
 - **Emit cooldown**: 300 s (suppresses repeated alerts)
 - **Auto-trigger MLOps**: OFF by default (`DRIFT_AUTO_TRIGGER_MLOPS=false`)
 
-The `drift-monitor` is behind the `drift` Docker Compose profile because alibi-detect includes PyTorch:
+`aiops-drift-monitor` is behind the `drift` Docker Compose profile because alibi-detect includes PyTorch:
 
 ```bash
 docker compose --profile drift up --build
 ```
 
 See `SCENARIO_B_DRIFT_DETECTION.md` for the full design, drift event contract, and verification commands.
+
+This service is distinct from `mlops-drift-monitor` in `mlops-tier`: `aiops-drift-monitor` performs statistical MMD drift detection, while `mlops-drift-monitor` performs anomaly-count retraining triggers.
 
 ## Production Model Loading
 

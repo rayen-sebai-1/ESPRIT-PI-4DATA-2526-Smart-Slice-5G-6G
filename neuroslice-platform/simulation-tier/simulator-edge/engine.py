@@ -87,6 +87,15 @@ class EdgeSimulationEngine:
             scenario_id=self.current_scenario,
         ).model_dump()
 
+    @staticmethod
+    def _as_float(value, default: float = 0.0) -> float:
+        try:
+            if value is None:
+                return default
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
     async def _emit(self, events: list) -> None:
         if not self.http_client:
             return
@@ -103,28 +112,45 @@ class EdgeSimulationEngine:
             # Get RAN congestion from Redis
             ran_congestion = 0.0
             edge_sessions = 500.0
+            edge_capacity_boost = 0.0
             try:
                 if self.redis:
                     v = self.redis.get("ran:congestion_score")
                     if v:
                         ran_congestion = float(v)
-                    # Pull edge session count published by ran simulator
-                    s = self.redis.get("core:active_sessions")
+                    # Pull edge session count published by ran simulator.
+                    # Prefer the newer key but stay compatible with older deployments.
+                    s = self.redis.get("core:active_sessions") or self.redis.get("core:active_ues")
                     if s:
                         edge_sessions = float(s) * 0.15  # ~15% of sessions go to edge
+                    boost_global = self._as_float(self.redis.get("control:sim:edge_capacity_boost"))
+                    boost_entity = self._as_float(
+                        self.redis.get(f"control:sim:edge_capacity_boost:{self.compute.node_id}")
+                    )
+                    edge_capacity_boost = max(0.0, min(1.0, max(boost_global, boost_entity)))
             except Exception:
                 pass
 
             # Causal update chain
-            self.compute.update(self.mec_app.request_rate)
+            self.compute.update(self.mec_app.request_rate * (1.0 - min(0.6, edge_capacity_boost)))
             self.mec_app.update(edge_sessions, self.compute.saturation)
             self.edge_upf.update(edge_sessions, ran_congestion)
+
+            # Simulated control-loop effect: scale actions increase edge headroom.
+            if edge_capacity_boost > 0.0:
+                attenuation = 1.0 - min(0.6, edge_capacity_boost)
+                self.compute.saturation = max(0.0, self.compute.saturation * attenuation)
+                self.compute.cpu_util = max(0.0, self.compute.cpu_util * attenuation)
+                self.mec_app.response_time_ms = max(0.5, self.mec_app.response_time_ms * attenuation)
+                self.edge_upf.forwarding_latency_ms = max(0.5, self.edge_upf.forwarding_latency_ms * attenuation)
+                self.edge_upf.packet_loss_pct = max(0.0, self.edge_upf.packet_loss_pct * attenuation)
 
             # Store state in Redis for cross-domain reference
             try:
                 if self.redis:
                     self.redis.set("edge:saturation", self.compute.saturation)
                     self.redis.set("edge:misrouting_ratio", self.edge_upf.misrouting_ratio)
+                    self.redis.set("edge:capacity_boost", edge_capacity_boost)
             except Exception:
                 pass
 

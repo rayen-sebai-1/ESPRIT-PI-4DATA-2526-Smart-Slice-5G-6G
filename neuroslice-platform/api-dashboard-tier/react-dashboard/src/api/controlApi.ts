@@ -33,11 +33,30 @@ export interface ControlAction {
   execution_note: string | null;
   created_at: string;
   updated_at: string;
+  actuation_result?: ControlActuation | null;
+}
+
+export interface ControlActuation {
+  action_id: string;
+  alert_id: string;
+  entity_id: string;
+  slice_id: string | null;
+  policy_id: string;
+  action_type: ActionType;
+  timestamp: string;
+  simulated: boolean;
+  keys_written: string[];
+  note?: string;
 }
 
 export interface ControlActionsResponse {
   count: number;
   items: ControlAction[];
+}
+
+export interface ControlActuationsResponse {
+  count: number;
+  items: ControlActuation[];
 }
 
 export interface DriftStatus {
@@ -90,6 +109,16 @@ export async function rejectControlAction(actionId: string): Promise<ControlActi
 
 export async function executeControlAction(actionId: string): Promise<ControlAction> {
   const { data } = await dashboardClient.post<ControlAction>(`/controls/actions/${actionId}/execute`);
+  return data;
+}
+
+export async function listControlActuations(): Promise<ControlActuationsResponse> {
+  const { data } = await dashboardClient.get<ControlActuationsResponse>("/controls/actuations");
+  return data;
+}
+
+export async function getControlActuation(actionId: string): Promise<ControlActuation> {
+  const { data } = await dashboardClient.get<ControlActuation>(`/controls/actuations/${actionId}`);
   return data;
 }
 

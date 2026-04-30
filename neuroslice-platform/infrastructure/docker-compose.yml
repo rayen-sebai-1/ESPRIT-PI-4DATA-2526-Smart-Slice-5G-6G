@@ -344,7 +344,7 @@ services:
       retries: 10
       start_period: 15s
 
-  drift-monitor:
+  mlops-drift-monitor:
     build:
       context: ..
       dockerfile: mlops-tier/drift-monitor/Dockerfile
@@ -359,6 +359,7 @@ services:
       DRIFT_WINDOW_SECONDS: ${DRIFT_WINDOW_SECONDS:-120}
       DRIFT_COOLDOWN_SECONDS: ${DRIFT_COOLDOWN_SECONDS:-600}
       DRIFT_POLL_INTERVAL_SECONDS: ${DRIFT_POLL_INTERVAL_SECONDS:-30}
+      RUNTIME_SERVICE_NAME: mlops-drift-monitor
     expose:
       - "8030"
     depends_on:
@@ -580,6 +581,37 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+  online-evaluator:
+    build:
+      context: ..
+      dockerfile: aiops-tier/online-evaluator/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: online-evaluator
+      SERVICE_PORT: "7013"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      INPUT_TELEMETRY_STREAM: stream:norm.telemetry
+      INPUT_CONGESTION_STREAM: events.anomaly
+      INPUT_SLA_STREAM: events.sla
+      INPUT_SLICE_STREAM: events.slice.classification
+      OUTPUT_EVALUATION_STREAM: events.evaluation
+      EVALUATION_WINDOW_SIZE: ${EVALUATION_WINDOW_SIZE:-500}
+      EVALUATION_PENDING_TTL_SECONDS: ${EVALUATION_PENDING_TTL_SECONDS:-900}
+    expose:
+      - "7013"
+    depends_on:
+      redis:
+        condition: service_healthy
+      normalizer:
+        condition: service_started
+      congestion-detector:
+        condition: service_started
+      sla-assurance:
+        condition: service_started
+      slice-classifier:
+        condition: service_started
 
   alert-management:
     build:
@@ -855,7 +887,7 @@ services:
       MLOPS_ORCHESTRATION_TIMEOUT_SECONDS: ${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
       # Control tier proxy
       POLICY_CONTROL_URL: http://policy-control:7011
-      DRIFT_MONITOR_URL: http://drift-monitor:8030
+      DRIFT_MONITOR_URL: http://mlops-drift-monitor:8030
       # MLOps pipeline execution — enabled for Scenario B full integration
       MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-true}
       MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
@@ -934,14 +966,14 @@ services:
   # Start with drift detection:
   #   docker compose --profile drift up --build
   #
-  # The drift-monitor reads stream:norm.telemetry, maintains 500-sample rolling
+  # The aiops-drift-monitor reads stream:norm.telemetry, maintains 500-sample rolling
   # windows per model, and runs MMD drift tests every 60 s.  Results are stored
   # in Redis aiops:drift:{model_name} and published to events.drift / Kafka
   # drift.alert / InfluxDB aiops_drift.
   #
   # Auto-trigger of MLOps retraining is OFF by default (DRIFT_AUTO_TRIGGER_MLOPS=false).
   # ---------------------------------------------------------------------------
-  drift-monitor:
+  aiops-drift-monitor:
     build:
       context: ..
       dockerfile: aiops-tier/drift-monitor/Dockerfile
@@ -976,6 +1008,7 @@ services:
       DRIFT_EMIT_COOLDOWN_SEC: "300"
       DRIFT_AUTO_TRIGGER_MLOPS: ${DRIFT_AUTO_TRIGGER_MLOPS:-false}
       DRIFT_REQUIRE_REFERENCES: ${DRIFT_REQUIRE_REFERENCES:-false}
+      RUNTIME_SERVICE_NAME: aiops-drift-monitor
     depends_on:
       redis:
         condition: service_healthy
@@ -1032,10 +1065,11 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/neuroslice_overview.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/neuroslice-platform-overview.json
     volumes:
       - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     depends_on:
       - influxdb

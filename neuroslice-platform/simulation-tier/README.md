@@ -4,6 +4,8 @@ Last verified: 2026-04-29.
 
 The simulation tier generates synthetic multi-domain 5G/6G telemetry and provides the fault engine used for scenarios and manual fault injection.
 
+Faults in this tier are simulated for scenario-driven testing and demos; they do not represent real network fault ingestion.
+
 ## Components
 
 - `simulator-core/`: Core-domain worker for AMF, SMF, and Core UPF entities
@@ -26,12 +28,19 @@ The simulation tier generates synthetic multi-domain 5G/6G telemetry and provide
 - emits NETCONF-like telemetry to `adapter-netconf`
 - models `edge-upf-01`, `mec-app-01`, and `edge-comp-01`
 - publishes helper state such as `edge:saturation` and `edge:misrouting_ratio`
+- consumes optional control-loop keys:
+  - `control:sim:edge_capacity_boost`
+  - `control:sim:edge_capacity_boost:{entity_id}`
 
 ### `simulator-ran`
 
 - emits VES-like telemetry to `adapter-ves`
 - models two gNBs, four cells, and slice instances across `eMBB`, `URLLC`, and `mMTC`
-- publishes `ran:congestion_score` and `core:active_ues`
+- publishes `ran:congestion_score`, `core:active_ues`, and compatibility alias `core:active_sessions`
+- consumes optional control-loop keys:
+  - `control:sim:qos_boost`
+  - `control:sim:reroute_bias`
+  - `control:sim:reroute_bias:{slice_id}`
 
 ### `fault-engine`
 
@@ -62,8 +71,13 @@ Important Redis keys and streams:
 - `stream:fault.events`
 - `ran:congestion_score`
 - `core:active_ues`
+- `core:active_sessions` (compatibility alias)
 - `edge:saturation`
 - `edge:misrouting_ratio`
+- `control:sim:qos_boost`
+- `control:sim:reroute_bias`
+- `control:sim:edge_capacity_boost`
+- `stream:control.actuations`
 
 Telemetry path:
 
@@ -99,3 +113,4 @@ docker compose up --build redis adapter-ves adapter-netconf fault-engine simulat
 - Only `fault-engine` exposes a public HTTP API.
 - Simulator services are background workers and do not publish host ports.
 - Fault effects are implemented for the currently modeled KPIs only.
+- Closed-loop control is simulated through Redis actuation keys only. No real PCF/NMS calls are made.

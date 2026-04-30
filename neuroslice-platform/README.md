@@ -4,13 +4,20 @@ Last verified: 2026-04-30.
 
 `neuroslice-platform/` is the runnable platform subtree. It contains the integrated Docker Compose runtime, all service tiers, and the MLOps project used to train and promote models for online AIOps.
 
+## Scenario B Validation Scope (Current)
+
+- Active validation target: Docker Compose local PoC for simulation, ingestion, AIOps (except misrouting), MLOps, control, API/dashboard, and observability
+- Explicitly out of scope in this validation pass: `agentic-ai-tier`
+- Explicitly deferred/future work: `misrouting-detector`
+- Agentic AI tier is implemented but excluded from current Scenario B validation scope.
+
 ## Current Tiers
 
 Implemented:
 
 - `simulation-tier`: Core, Edge, and RAN simulators plus `fault-engine`
 - `ingestion-tier`: VES adapter, NETCONF adapter, normalizer, telemetry exporter, shared models/config
-- `aiops-tier`: `congestion-detector`, `slice-classifier`, `sla-assurance`, optional `drift-monitor` (profile `drift`), and shared model-loading utilities
+- `aiops-tier`: `congestion-detector`, `slice-classifier`, `sla-assurance`, optional `aiops-drift-monitor` (profile `drift`), `online-evaluator`, and shared model-loading utilities
 - `api-dashboard-tier`: BFF (with Redis Live State endpoints), auth service, dashboard backend, Kong gateway, and React dashboard
 - `control-tier`: `alert-management` and `policy-control` — deterministic alert lifecycle and human-in-the-loop remediation
 - `agentic-ai-tier`: `root-cause` and `copilot-agent`
@@ -31,15 +38,16 @@ Deferred:
 - `adapter-ves`, `adapter-netconf`, `normalizer`, `telemetry-exporter`
 - `simulator-core`, `simulator-edge`, `simulator-ran`, `fault-engine`
 - `congestion-detector`, `slice-classifier`, `sla-assurance`
+- `online-evaluator`
 - `api-bff-service`, `auth-service`, `dashboard-backend`, `kong-gateway`, `react-dashboard`
 - `root-cause`, `copilot-agent`
 - `alert-management`, `policy-control`
 - `mlops-runner` (internal — no published port)
-- `drift-monitor` (mlops-tier lightweight drift detector at port 8030, internal)
+- `mlops-drift-monitor` (mlops-tier lightweight drift detector at port 8030, internal)
 
 Optional `drift` profile adds:
 
-- `drift-monitor` (aiops-tier statistical drift detector with alibi-detect, port 7012)
+- `aiops-drift-monitor` (aiops-tier statistical drift detector with alibi-detect, port 7012)
 
 Optional `mlops` profile adds:
 
@@ -63,14 +71,17 @@ stream:norm.telemetry
   -> congestion-detector -> events.anomaly -> aiops:congestion:{entity_id}
   -> slice-classifier    -> events.slice.classification -> aiops:slice_classification:{entity_id}
   -> sla-assurance       -> events.sla -> aiops:sla:{entity_id}
-  -> drift-monitor       -> events.drift -> aiops:drift:{model_name}   (aiops-tier, drift profile)
+  -> aiops-drift-monitor -> events.drift -> aiops:drift:{model_name}   (aiops-tier, drift profile)
+events.anomaly + events.sla + events.slice.classification + stream:norm.telemetry
+  -> online-evaluator -> events.evaluation -> aiops:evaluation:{model_name}
 
-events.anomaly + events.sla + events.slice.classification + events.drift
+events.anomaly + events.sla + events.slice.classification
   -> alert-management -> stream:control.alerts
   -> policy-control   -> stream:control.actions
+  -> policy-control simulated actuator -> stream:control.actuations + control:sim:* keys
 
 events.anomaly (sliding window count)
-  -> drift-monitor (mlops-tier) -> mlops-runner /run-action -> offline pipeline trigger
+  -> mlops-drift-monitor (mlops-tier) -> mlops-runner /run-action -> offline pipeline trigger
 
 telemetry-norm -> telemetry-exporter -> InfluxDB
 
@@ -78,6 +89,16 @@ api-bff-service -> Redis state, streams, fault-engine, and Live State
 react-dashboard -> kong-gateway -> auth-service / dashboard-backend
 root-cause / copilot-agent -> Redis, InfluxDB, Ollama/LangChain tools
 ```
+
+## Runtime Service Controls
+
+Scenario B runtime controls are Redis-backed feature flags (no container lifecycle control from dashboard):
+
+- `runtime:service:{service_name}:enabled`
+- `runtime:service:{service_name}:mode`
+- `runtime:service:{service_name}:updated_at`
+- `runtime:service:{service_name}:updated_by`
+- `runtime:service:{service_name}:reason`
 
 ## Model Deployment Flow
 
@@ -145,7 +166,8 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - Fault engine: `http://localhost:7004`
 - Root-cause agent: `http://localhost:7005`
 - Copilot agent: `http://localhost:7006`
-- Drift monitor API/metrics: `http://localhost:7012` with `drift` profile
+- aiops-drift-monitor API/metrics: `http://localhost:7012` with `drift` profile
+- mlops-drift-monitor: internal-only service (`mlops-drift-monitor:8030` on the Compose network; no host-published port)
 - React dashboard: `http://localhost:5173`
 - React live-state overview: `http://localhost:5173/live-state`
 - Kong gateway: `http://localhost:8008`

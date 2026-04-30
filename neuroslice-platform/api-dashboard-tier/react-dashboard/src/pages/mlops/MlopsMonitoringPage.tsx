@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getMlopsDrift, getMlopsPredictionMonitoring, type DriftModelState } from "@/api/mlopsApi";
+import {
+  getMlopsDrift,
+  getMlopsEvaluation,
+  getMlopsPredictionMonitoring,
+  type DriftModelState,
+  type EvaluationModelState,
+} from "@/api/mlopsApi";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -213,6 +219,107 @@ function DriftSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Online evaluation section
+// ---------------------------------------------------------------------------
+
+function EvalModelCard({ state }: { state: EvaluationModelState }) {
+  const hasTruth = Boolean(state.pseudo_ground_truth_available);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-white">{state.model_name}</p>
+        <span
+          className={`rounded px-2 py-0.5 text-xs ${
+            hasTruth ? "bg-emerald-900/50 text-emerald-300" : "bg-amber-900/50 text-amber-300"
+          }`}
+        >
+          {hasTruth ? "Ground truth: available" : "Ground truth: pending"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <span className="text-mutedText">Samples</span>
+        <span className="font-mono text-slate-200">{state.samples_total ?? 0}</span>
+
+        <span className="text-mutedText">Accuracy</span>
+        <span className="font-mono text-slate-200">
+          {state.accuracy != null ? `${(state.accuracy * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">Precision</span>
+        <span className="font-mono text-slate-200">
+          {state.precision != null ? `${(state.precision * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">Recall</span>
+        <span className="font-mono text-slate-200">
+          {state.recall != null ? `${(state.recall * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">F1</span>
+        <span className="font-mono text-slate-200">
+          {state.f1 != null ? `${(state.f1 * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">FP / FN</span>
+        <span className="font-mono text-slate-200">
+          {state.false_positive_count ?? 0} / {state.false_negative_count ?? 0}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function EvaluationSection() {
+  const evalQuery = useQuery({
+    queryKey: ["mlops", "evaluation"],
+    queryFn: getMlopsEvaluation,
+    refetchInterval: 30_000,
+  });
+
+  if (evalQuery.isLoading) {
+    return (
+      <Card className="p-5">
+        <h3 className="mb-3 text-lg font-semibold text-white">Online Evaluation</h3>
+        <p className="text-sm text-mutedText">Chargement...</p>
+      </Card>
+    );
+  }
+
+  const evalData = evalQuery.data;
+  const models = evalData?.models ?? {};
+
+  return (
+    <Card className="p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Online Model Evaluation</h3>
+          <p className="text-xs text-mutedText">
+            Rolling metrics against Scenario B pseudo-ground-truth.
+          </p>
+          {evalData?.note ? <p className="mt-1 text-xs text-amber-300">{evalData.note}</p> : null}
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => void evalQuery.refetch()}>
+          Rafraichir
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {Object.entries(models).map(([name, state]) => (
+          <EvalModelCard key={name} state={state} />
+        ))}
+        {Object.keys(models).length === 0 ? (
+          <p className="col-span-3 py-4 text-center text-sm text-mutedText">
+            online-evaluator not reachable or no data collected yet.
+          </p>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -240,6 +347,7 @@ export function MlopsMonitoringPage() {
     <div className="space-y-6">
       {/* Drift Detection section */}
       <DriftSection />
+      <EvaluationSection />
 
       {/* Prediction monitoring section */}
       <Card className="p-5">

@@ -1,0 +1,103 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Control Alerts by Severity",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (severity) (rate(neuroslice_control_alerts_total[5m]))",
+          "legendFormat": "{{severity}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Control Alerts by Type/Status",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (type, status) (rate(neuroslice_control_alerts_total[5m]))",
+          "legendFormat": "{{type}}/{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Control Actions by Status",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(neuroslice_control_actions_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Control Actions by Type",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (action_type, status) (rate(neuroslice_control_actions_total[5m]))",
+          "legendFormat": "{{action_type}}/{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Control Events Processed Rate",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(neuroslice_control_events_processed_total[5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Last Control Event Timestamp",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "expr": "max by (service) (neuroslice_control_last_event_timestamp)",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["neuroslice", "control", "scenario-b"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "NeuroSlice Control Dashboard",
+  "version": 1,
+  "weekStart": ""
+}

@@ -4,9 +4,11 @@ Last verified: 2026-04-30.
 
 The API dashboard tier is the user-facing access layer for NeuroSlice. It combines a public telemetry BFF with a protected dashboard stack built from auth, backend, gateway, and frontend services.
 
+Scope note: Agentic AI tier is implemented in the repository but excluded from current Scenario B validation scope.
+
 ## Components
 
-- `api-bff-service/`: public FastAPI service for KPIs, AIOps outputs, Live State, SSE, faults, scenarios, network insights, export views, and **drift detection status** (`/api/v1/drift/*`)
+- `api-bff-service/`: public FastAPI service for KPIs, AIOps outputs, Live State, SSE, faults, scenarios, network insights, export views, drift status (`/api/v1/drift/*`), and online evaluation state (`/api/v1/evaluation/*`)
 - `auth-service/`: PostgreSQL-backed authentication and user administration service
 - `dashboard-backend/`: protected dashboard domain API and metadata persistence layer
 - `kong-gateway/`: browser-facing API gateway for `/api/auth/*` and `/api/dashboard/*`
@@ -41,6 +43,7 @@ Served directly by `api-bff-service` on `http://localhost:8000`:
 - fault and scenario proxy endpoints
 - feature-view export endpoints for the MLOps project
 - drift detection status endpoints: `GET /api/v1/drift/latest`, `GET /api/v1/drift/latest/{model_name}`, `GET /api/v1/drift/events`
+- online evaluation endpoints: `GET /api/v1/evaluation/latest`, `GET /api/v1/evaluation/latest/{model_name}`, `GET /api/v1/evaluation/events`
 
 ### Protected Dashboard Stack
 
@@ -88,10 +91,13 @@ Current React router exposure:
 - `GET /api/dashboard/mlops/drift`
 - `GET /api/dashboard/mlops/drift/{model_name}`
 - `GET /api/dashboard/mlops/drift-events`
+- `GET /api/dashboard/mlops/evaluation`
+- `GET /api/dashboard/mlops/evaluation/{model_name}`
 - `POST /api/dashboard/mlops/promote`
 - `POST /api/dashboard/mlops/rollback`
 - `GET /api/dashboard/mlops/tools`
 - `GET /api/dashboard/mlops/tools/health`
+- `GET /api/dashboard/mlops/pipeline/config`
 - `POST /api/dashboard/mlops/pipeline/run`
 - `GET /api/dashboard/mlops/pipeline/runs`
 - `GET /api/dashboard/mlops/pipeline/runs/{run_id}`
@@ -106,30 +112,67 @@ Role access:
 
 ## Control Actions Center
 
-`/api/dashboard/controls/*` exposes a proxy facade over `policy-control` and `drift-monitor`:
+`/api/dashboard/controls/*` exposes a proxy facade over `policy-control` and `mlops-drift-monitor`:
 
 - `GET /api/dashboard/controls/actions` -> `policy-control /actions`
 - `GET /api/dashboard/controls/actions/{id}` -> `policy-control /actions/{id}`
 - `POST /api/dashboard/controls/actions/{id}/approve` -> `policy-control /actions/{id}/approve`
 - `POST /api/dashboard/controls/actions/{id}/reject` -> `policy-control /actions/{id}/reject`
 - `POST /api/dashboard/controls/actions/{id}/execute` -> `policy-control /actions/{id}/execute`
-- `GET /api/dashboard/controls/drift/status` -> `drift-monitor /drift/status`
-- `GET /api/dashboard/controls/drift/events` -> `drift-monitor /drift/events`
-- `POST /api/dashboard/controls/drift/trigger` -> `drift-monitor /drift/trigger`
+- `GET /api/dashboard/controls/actuations` -> `policy-control /actuations`
+- `GET /api/dashboard/controls/actuations/{id}` -> `policy-control /actuations/{id}`
+- `GET /api/dashboard/controls/drift/status` -> `mlops-drift-monitor /drift/status`
+- `GET /api/dashboard/controls/drift/events` -> `mlops-drift-monitor /drift/events`
+- `POST /api/dashboard/controls/drift/trigger` -> `mlops-drift-monitor /drift/trigger`
 
 Role access: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER` (approve/reject/execute hidden for `NETWORK_MANAGER`).
+
+Closed-loop note: action execution remains simulated in Scenario B. `policy-control` writes Redis actuation keys and publishes `stream:control.actuations`; no real PCF/NMS call path exists.
+
+## Runtime Service Control
+
+`dashboard-backend` exposes Redis-backed runtime service controls:
+
+- `GET /api/dashboard/runtime/services`
+- `GET /api/dashboard/runtime/services/{service_name}`
+- `PATCH /api/dashboard/runtime/services/{service_name}`
+
+Request body:
+
+```json
+{
+  "enabled": true,
+  "mode": "auto",
+  "reason": "operator note"
+}
+```
+
+Controlled services:
+
+- `congestion-detector`
+- `sla-assurance`
+- `slice-classifier`
+- `aiops-drift-monitor`
+- `mlops-drift-monitor`
+
+Role policy:
+
+- read: `ADMIN`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`, `NETWORK_OPERATOR`
+- write: `ADMIN`, `DATA_MLOPS_ENGINEER`, and `NETWORK_OPERATOR` for operational AIOps toggles
 
 ## MLOps Operations Center
 
 The Operations tab under `/mlops/operations` opens external observability/MLOps UIs (MLflow, MinIO, Kibana, InfluxDB, Grafana, MLOps API), shows their health, lists pipeline run history, and exposes a single button that triggers the offline MLOps pipeline.
 
+The "Run Offline MLOps Pipeline" button first checks `GET /api/dashboard/mlops/pipeline/config` to read `MLOPS_PIPELINE_ENABLED`; when disabled, the UI shows the disable reason and does not fire `POST /api/dashboard/mlops/pipeline/run`.
+
 The pipeline trigger does **not** run any code in `dashboard-backend`. Instead it:
 
-1. inserts a `dashboard.mlops_orchestration_runs` row with `RUNNING` and `trigger_source=manual`
+1. inserts a `dashboard.mlops_pipeline_runs` row with `RUNNING`
 2. delegates to an internal-only `mlops-runner` service (no published port, no public route) via `POST /run-action` with `{ action: "full_pipeline", trigger_source: "manual" }`
 3. captures stdout/stderr, redacts secrets, truncates, and stores the result on the same row
 
-`mlops-runner` is the only service in the platform that can spawn the offline pipeline. The `drift-monitor` service also calls `mlops-runner` automatically when anomaly bursts exceed the configured threshold, using `trigger_source=drift`.
+`mlops-runner` is the only service in the platform that can spawn the offline pipeline. The `mlops-drift-monitor` service also calls `mlops-runner` automatically when anomaly bursts exceed the configured threshold, using `trigger_source=drift`.
 
 ## Provider Modes
 

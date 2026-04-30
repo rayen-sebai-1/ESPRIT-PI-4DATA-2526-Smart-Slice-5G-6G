@@ -28,6 +28,7 @@ Kong is currently doing routing, CORS, and rate limiting only. Authentication an
 - `/api/dashboard/sessions*` -> `dashboard-backend:8002/sessions*`
 - `/api/dashboard/predictions*` -> `dashboard-backend:8002/predictions*`
 - `/api/dashboard/models` -> `dashboard-backend:8002/models`
+- `/api/dashboard/mlops*` -> `dashboard-backend:8002/mlops*`
 - `/api/dashboard/agentic*` -> `dashboard-backend:8002/agentic*` (JWT-validated agentic proxy)
 - `/api/dashboard/controls*` -> `dashboard-backend:8002/controls*`
 - other `/api/dashboard/*` routes -> `dashboard-backend:8002/dashboard/*`

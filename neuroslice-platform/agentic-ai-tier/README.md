@@ -4,6 +4,10 @@ Last verified: 2026-04-29.
 
 The agentic AI tier provides LLM-driven operator assistance and manual RCA workflows on top of NeuroSlice telemetry and runtime AIOps context.
 
+## Validation Scope Note
+
+`agentic-ai-tier` exists and is integrated in Compose, but it is **out of scope for the current Scenario B source validation**. Current Scenario B validation focuses on simulation, ingestion, AIOps (except misrouting), MLOps, control-tier, API/dashboard, and observability.
+
 ## Current Status
 
 This tier is implemented and integrated in Compose, but should be treated as **Beta/Internal**.

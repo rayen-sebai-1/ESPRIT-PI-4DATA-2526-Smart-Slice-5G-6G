@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +25,8 @@ import httpx
 import redis
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 import uvicorn
 
@@ -53,6 +55,9 @@ AIOPS_STREAMS = {
 DRIFT_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
 DRIFT_STATE_KEY = "aiops:drift:{model_name}"
 DRIFT_EVENTS_STREAM = "events.drift"
+EVALUATION_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
+EVALUATION_STATE_KEY = "aiops:evaluation:{model_name}"
+EVALUATION_EVENTS_STREAM = "events.evaluation"
 
 app = FastAPI(
     title="neuroslice-sim API",
@@ -68,6 +73,43 @@ app.add_middleware(
 
 _redis: Optional[redis.Redis] = None
 _http: Optional[httpx.AsyncClient] = None
+
+api_bff_requests_total = Counter(
+    "neuroslice_api_bff_requests_total",
+    "Total API BFF requests",
+    ["route", "method", "status"],
+)
+api_bff_request_latency_seconds = Histogram(
+    "neuroslice_api_bff_request_latency_seconds",
+    "API BFF request latency",
+    ["route", "method"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
+
+
+def _route_label(request) -> str:
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return str(path or request.url.path)
+
+
+@app.middleware("http")
+async def bff_metrics_middleware(request, call_next):
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        route = _route_label(request)
+        duration = time.perf_counter() - started
+        api_bff_requests_total.labels(route=route, method=request.method, status="500").inc()
+        api_bff_request_latency_seconds.labels(route=route, method=request.method).observe(duration)
+        raise
+
+    route = _route_label(request)
+    duration = time.perf_counter() - started
+    api_bff_requests_total.labels(route=route, method=request.method, status=str(response.status_code)).inc()
+    api_bff_request_latency_seconds.labels(route=route, method=request.method).observe(duration)
+    return response
 
 
 def get_r() -> redis.Redis:
@@ -136,6 +178,11 @@ def health() -> dict:
         "redis": "up" if redis_ok else "down",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/config")
@@ -669,6 +716,27 @@ def _empty_drift_state(model_name: str) -> Dict[str, Any]:
     return {"model_name": model_name, "status": "no_data"}
 
 
+def _decode_eval_state(raw: Dict[str, Any]) -> Dict[str, Any]:
+    result = {}
+    for k, v in raw.items():
+        if isinstance(v, str):
+            try:
+                result[k] = json.loads(v)
+            except Exception:
+                result[k] = v
+        else:
+            result[k] = v
+    return result
+
+
+def _empty_eval_state(model_name: str) -> Dict[str, Any]:
+    return {
+        "model_name": model_name,
+        "status": "no_data",
+        "pseudo_ground_truth_available": False,
+    }
+
+
 @app.get("/api/v1/drift/latest")
 def get_drift_latest() -> dict:
     """Return latest drift detection state for all models."""
@@ -706,6 +774,59 @@ def get_drift_events(limit: int = Query(50, ge=1, le=200)) -> dict:
     """Return recent drift alert events from events.drift stream."""
     try:
         raw = get_r().xrevrange(DRIFT_EVENTS_STREAM, count=limit)
+    except Exception:
+        return {"events": [], "count": 0}
+    events = []
+    for _, fields in raw:
+        raw_event = fields.get("event")
+        if not raw_event:
+            continue
+        try:
+            events.append(json.loads(raw_event) if isinstance(raw_event, str) else raw_event)
+        except Exception:
+            continue
+    return {"events": events, "count": len(events)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Online evaluation endpoints (Scenario B pseudo-ground-truth)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/v1/evaluation/latest")
+def get_evaluation_latest() -> dict:
+    models = {}
+    for model_name in EVALUATION_MODEL_NAMES:
+        key = EVALUATION_STATE_KEY.format(model_name=model_name)
+        raw = get_r().hgetall(key)
+        if raw:
+            models[model_name] = _decode_eval_state(raw)
+        else:
+            models[model_name] = _empty_eval_state(model_name)
+    return {
+        "models": models,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/v1/evaluation/latest/{model_name}")
+def get_evaluation_latest_model(model_name: str) -> dict:
+    if model_name not in EVALUATION_MODEL_NAMES:
+        raise HTTPException(
+            404,
+            f"Unknown model '{model_name}'. Known: {EVALUATION_MODEL_NAMES}",
+        )
+    key = EVALUATION_STATE_KEY.format(model_name=model_name)
+    raw = get_r().hgetall(key)
+    if raw:
+        return _decode_eval_state(raw)
+    return _empty_eval_state(model_name)
+
+
+@app.get("/api/v1/evaluation/events")
+def get_evaluation_events(limit: int = Query(50, ge=1, le=200)) -> dict:
+    try:
+        raw = get_r().xrevrange(EVALUATION_EVENTS_STREAM, count=limit)
     except Exception:
         return {"events": [], "count": 0}
     events = []

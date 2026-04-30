@@ -16,6 +16,7 @@ Last verified: 2026-04-30.
 ## Direct Internal Routes
 
 - `GET /health`
+- `GET /metrics`
 - `GET /dashboard/national`
 - `GET /dashboard/region/{region_id}`
 - `GET /dashboard/preferences/me`
@@ -41,14 +42,27 @@ Last verified: 2026-04-30.
 - `GET /mlops/drift`
 - `GET /mlops/drift/{model_name}`
 - `GET /mlops/drift-events`
+- `GET /mlops/evaluation`
+- `GET /mlops/evaluation/{model_name}`
 - `POST /mlops/promote`
 - `POST /mlops/rollback`
 - `GET /mlops/tools`
 - `GET /mlops/tools/health`
+- `GET /mlops/pipeline/config`
 - `POST /mlops/pipeline/run`
 - `GET /mlops/pipeline/runs`
 - `GET /mlops/pipeline/runs/{run_id}`
 - `GET /mlops/pipeline/runs/{run_id}/logs`
+- `GET /controls/actions`
+- `GET /controls/actions/{action_id}`
+- `POST /controls/actions/{action_id}/approve`
+- `POST /controls/actions/{action_id}/reject`
+- `POST /controls/actions/{action_id}/execute`
+- `GET /controls/actuations`
+- `GET /controls/actuations/{action_id}`
+- `GET /runtime/services`
+- `GET /runtime/services/{service_name}`
+- `PATCH /runtime/services/{service_name}`
 
 Browser-facing equivalents are exposed by Kong under `/api/dashboard/*`.
 
@@ -59,8 +73,10 @@ Backend API role checks:
 - dashboard views: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`
 - prediction views and model catalog: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`
 - rerun actions: `ADMIN`, `NETWORK_OPERATOR`
-- MLOps read views (`/mlops/*` GET, including `/mlops/tools`, `/mlops/tools/health`, `/mlops/pipeline/runs`, `/mlops/pipeline/runs/{id}/logs`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
+- MLOps read views (`/mlops/*` GET, including `/mlops/tools`, `/mlops/tools/health`, `/mlops/pipeline/config`, `/mlops/pipeline/runs`, `/mlops/pipeline/runs/{id}/logs`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
 - MLOps write actions (`POST /mlops/promote`, `POST /mlops/rollback`, `POST /mlops/pipeline/run`): `ADMIN`, `DATA_MLOPS_ENGINEER`
+- runtime read (`GET /runtime/services*`): `ADMIN`, `NETWORK_MANAGER`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
+- runtime write (`PATCH /runtime/services/{service_name}`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_OPERATOR` (operational AIOps toggles only)
 
 Current UI behavior:
 
@@ -71,15 +87,16 @@ Current UI behavior:
 
 ### `temporary_mock`
 
-- default in `infrastructure/docker-compose.yml`
+- not default in `infrastructure/docker-compose.yml`
 - deterministic mock data for UI development
 - supports national, regional, sessions, predictions, models, bookmarks, preferences, and alert acknowledgements
 
 ### `bff`
 
 - uses `API_BFF_BASE_URL`
-- currently supports national overview aggregation and a simple models catalog
-- still returns `501 Not Implemented` for regional, session, prediction detail, and batch execution workflows
+- default in `infrastructure/docker-compose.yml`
+- supports national + regional views, sessions list/detail, predictions list/detail, and model catalog through `api-bff-service`
+- live-mode rerun/batch actions are explicit `422` responses (not `501`) to indicate Scenario B read-oriented BFF behavior
 
 ## Stored Metadata
 
@@ -109,11 +126,14 @@ The service also reads these auth tables through a read model:
 - `ES_HOST` and `ES_INDEX_NAME` for the prediction monitoring read endpoint (Elasticsearch)
 - `MLOPS_TOOLS_MLFLOW_URL`, `MLOPS_TOOLS_MINIO_URL`, `MLOPS_TOOLS_KIBANA_URL`, `MLOPS_TOOLS_INFLUXDB_URL`, `MLOPS_TOOLS_GRAFANA_URL`, `MLOPS_TOOLS_MLOPS_API_URL` for the tool inventory shown in the MLOps Operations Center
 - `MLOPS_TOOLS_*_HEALTH_URL` (optional, defaults are container-internal probes; useful when the dashboard runs outside Compose)
-- `MLOPS_PIPELINE_ENABLED` (default `false`) - kill switch for `POST /mlops/pipeline/run`
+- `MLOPS_PIPELINE_ENABLED` (default `true` in integrated Compose) - kill switch for `POST /mlops/pipeline/run`
 - `MLOPS_PIPELINE_COMMAND` - label only; the actual command is fixed inside `mlops-runner`
 - `MLOPS_PIPELINE_TIMEOUT_SECONDS` (default `7200`)
 - `MLOPS_RUNNER_URL` (default `http://mlops-runner:8020` in Compose)
 - `MLOPS_RUNNER_TOKEN` (optional shared secret - both `dashboard-backend` and `mlops-runner` must set the same value)
+- `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB` for runtime service flags (`runtime:service:*`)
+
+`MLOPS_PIPELINE_ENABLED` controls dashboard trigger eligibility and `GET /mlops/pipeline/config`. Actual command execution is still enforced in `mlops-runner` by `MLOPS_ORCHESTRATION_ENABLED`.
 
 `DASHBOARD_DATA_PROVIDER` and `API_BFF_BASE_URL` drive the legacy provider layer. The MLOps Control Center endpoints additionally read `MLOPS_MODELS_DIR`, optionally call `MLOPS_API_BASE_URL` for `promote` / `rollback`, and optionally query `ES_HOST` for prediction monitoring. None of these endpoints expose MinIO credentials, MLflow database credentials, or JWT secrets.
 
@@ -145,7 +165,7 @@ The `/mlops/tools`, `/mlops/tools/health`, and `/mlops/pipeline/*` routes are th
 
 - `GET /mlops/tools` returns the configured external UIs (MLflow, MinIO, Kibana, InfluxDB, Grafana, MLOps API). The browser opens these directly via `target="_blank"` - they are not proxied.
 - `GET /mlops/tools/health` checks the same services in parallel from inside the container network and reports `UP|DOWN|UNKNOWN` with latency.
-- `POST /mlops/pipeline/run` creates a `dashboard.mlops_pipeline_runs` row, kicks off a FastAPI background task that calls the internal `mlops-runner` service, and returns `RUNNING` immediately. The background task captures stdout/stderr, runs them through a redactor (passwords, tokens, secrets, JWTs, AWS keys, DB URLs), truncates to ~200 KB and persists the result.
+- `POST /mlops/pipeline/run` creates a `dashboard.mlops_pipeline_runs` row, kicks off a FastAPI background task that calls the internal `mlops-runner` service (`POST /run-action` with fixed payload `{action:"full_pipeline", trigger_source:"manual", parameters:{}}`), and returns `RUNNING` immediately. The background task captures stdout/stderr, runs them through a redactor (passwords, tokens, secrets, JWTs, AWS keys, DB URLs), truncates to ~200 KB and persists the result.
 - `GET /mlops/pipeline/runs`, `/mlops/pipeline/runs/{run_id}`, `/mlops/pipeline/runs/{run_id}/logs` are read-only paginated views over the same table.
 
 Safety properties:

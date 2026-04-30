@@ -63,6 +63,7 @@ class CongestionConfig:
     model_format: str = field(default_factory=lambda: os.getenv("MODEL_FORMAT", "onnx_fp16"))
     mlflow_tracking_uri: str = field(default_factory=lambda: os.getenv("MLFLOW_TRACKING_URI", ""))
     default_site_id: str = field(default_factory=lambda: os.getenv("SITE_ID", "TT-SFAX-02"))
+    metrics_port: int = field(default_factory=lambda: int(os.getenv("METRICS_PORT", "9101")))
 
     sequence_length: int = field(default_factory=lambda: int(os.getenv("CONGESTION_SEQUENCE_LENGTH", "30")))
     congestion_threshold: float = field(default_factory=lambda: float(os.getenv("CONGESTION_THRESHOLD", "0.5")))

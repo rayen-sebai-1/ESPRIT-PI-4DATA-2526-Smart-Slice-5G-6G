@@ -5,27 +5,73 @@ global:
     environment: scenario_b_local
 
 scrape_configs:
-  - job_name: 'adapter-ves'
-    static_configs:
-      - targets: ['adapter-ves:7001']
+  - job_name: "adapter-ves"
     metrics_path: /metrics
-    scrape_interval: 15s
-
-  - job_name: 'adapter-netconf'
     static_configs:
-      - targets: ['adapter-netconf:7002']
+      - targets: ["adapter-ves:7001"]
+
+  - job_name: "adapter-netconf"
     metrics_path: /metrics
-    scrape_interval: 15s
-
-  - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ["adapter-netconf:7002"]
 
-  # drift-monitor exposes neuroslice_drift_* metrics.
-  # Active only when the `drift` Docker Compose profile is running.
-  # Prometheus will report scrape failures silently if the target is absent.
-  - job_name: 'drift-monitor'
-    static_configs:
-      - targets: ['drift-monitor:7012']
+  - job_name: "congestion-detector"
     metrics_path: /metrics
-    scrape_interval: 30s
+    static_configs:
+      - targets: ["congestion-detector:9101"]
+
+  - job_name: "sla-assurance"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["sla-assurance:9102"]
+
+  - job_name: "slice-classifier"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["slice-classifier:9103"]
+
+  - job_name: "online-evaluator"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["online-evaluator:7013"]
+
+  # Active only when the `drift` profile runs.
+  - job_name: "aiops-drift-monitor"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["aiops-drift-monitor:7012"]
+
+  - job_name: "alert-management"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["alert-management:7010"]
+
+  - job_name: "policy-control"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["policy-control:7011"]
+
+  - job_name: "dashboard-backend"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["dashboard-backend:8002"]
+
+  - job_name: "api-bff-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api-bff-service:8000"]
+
+  - job_name: "mlops-runner"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["mlops-runner:8020"]
+
+  - job_name: "mlops-drift-monitor"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["mlops-drift-monitor:8030"]
+
+  - job_name: "prometheus"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["localhost:9090"]

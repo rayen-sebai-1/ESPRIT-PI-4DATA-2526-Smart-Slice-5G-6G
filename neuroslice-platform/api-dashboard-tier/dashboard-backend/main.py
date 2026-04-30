@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Annotated, Any
 
 import httpx
+import redis
 import uuid
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db import check_database_connection, get_db
@@ -72,6 +76,122 @@ prediction_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA
 writer_roles = ("ADMIN", "NETWORK_OPERATOR")
 mlops_reader_roles = ("ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER")
 mlops_writer_roles = ("ADMIN", "DATA_MLOPS_ENGINEER")
+runtime_reader_roles = ("ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER", "NETWORK_OPERATOR")
+runtime_controlled_services = (
+    "congestion-detector",
+    "sla-assurance",
+    "slice-classifier",
+    "aiops-drift-monitor",
+    "mlops-drift-monitor",
+)
+
+dashboard_requests_total = Counter(
+    "neuroslice_dashboard_requests_total",
+    "Total dashboard backend requests",
+    ["route", "method", "status"],
+)
+dashboard_request_latency_seconds = Histogram(
+    "neuroslice_dashboard_request_latency_seconds",
+    "Dashboard backend request latency",
+    ["route", "method"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
+dashboard_mlops_pipeline_requests_total = Counter(
+    "neuroslice_dashboard_mlops_pipeline_requests_total",
+    "Total MLOps pipeline trigger requests received by dashboard-backend",
+    ["status"],
+)
+dashboard_auth_failures_total = Counter(
+    "neuroslice_dashboard_auth_failures_total",
+    "Total dashboard authentication and authorization failures",
+)
+
+
+def _route_label(request: Request) -> str:
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return str(path or request.url.path)
+
+
+@app.middleware("http")
+async def dashboard_metrics_middleware(request: Request, call_next):
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        route = _route_label(request)
+        duration = time.perf_counter() - started
+        dashboard_requests_total.labels(route=route, method=request.method, status="500").inc()
+        dashboard_request_latency_seconds.labels(route=route, method=request.method).observe(duration)
+        raise
+
+    route = _route_label(request)
+    status_code = str(response.status_code)
+    duration = time.perf_counter() - started
+    dashboard_requests_total.labels(route=route, method=request.method, status=status_code).inc()
+    dashboard_request_latency_seconds.labels(route=route, method=request.method).observe(duration)
+    if response.status_code in {401, 403}:
+        dashboard_auth_failures_total.inc()
+    return response
+
+
+class RuntimeServicePatchRequest(BaseModel):
+    enabled: bool | None = None
+    mode: str | None = None
+    reason: str | None = None
+
+
+def _runtime_key(service_name: str, suffix: str) -> str:
+    return f"runtime:service:{service_name}:{suffix}"
+
+
+def _runtime_redis_client() -> redis.Redis:
+    return redis.Redis(
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        db=int(os.getenv("REDIS_DB", "0")),
+        decode_responses=True,
+    )
+
+
+def _parse_bool(value: str | None, *, default: bool = True) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _runtime_default_mode(enabled: bool) -> str:
+    return "auto" if enabled else "disabled"
+
+
+def _read_runtime_service_state(service_name: str) -> dict[str, Any]:
+    if service_name not in runtime_controlled_services:
+        raise HTTPException(status_code=404, detail=f"Unknown runtime service '{service_name}'.")
+
+    client = _runtime_redis_client()
+    enabled = _parse_bool(client.get(_runtime_key(service_name, "enabled")), default=True)
+    mode = client.get(_runtime_key(service_name, "mode")) or _runtime_default_mode(enabled)
+    updated_at = client.get(_runtime_key(service_name, "updated_at"))
+    updated_by = client.get(_runtime_key(service_name, "updated_by")) or "system"
+    reason = client.get(_runtime_key(service_name, "reason")) or ""
+    return {
+        "service_name": service_name,
+        "enabled": enabled,
+        "mode": mode,
+        "updated_at": updated_at,
+        "updated_by": updated_by,
+        "reason": reason,
+    }
+
+
+def _can_write_runtime(service_name: str, principal: AuthenticatedPrincipal) -> bool:
+    if principal.role == "ADMIN":
+        return True
+    if principal.role == "DATA_MLOPS_ENGINEER":
+        return service_name in runtime_controlled_services
+    if principal.role == "NETWORK_OPERATOR":
+        return service_name in {"congestion-detector", "sla-assurance", "slice-classifier", "aiops-drift-monitor"}
+    return False
 
 
 @app.get("/health")
@@ -90,6 +210,11 @@ def health() -> dict[str, str]:
         "database": database_state,
         "provider": get_dashboard_provider().name,
     }
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/dashboard/national", tags=["dashboard"])
@@ -374,6 +499,7 @@ def trigger_mlops_pipeline(
     current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
 ) -> MlopsPipelineRunResponse:
     if not ops.config.pipeline_enabled:
+        dashboard_mlops_pipeline_requests_total.labels(status="disabled").inc()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="MLOps pipeline runner is disabled (set MLOPS_PIPELINE_ENABLED=true).",
@@ -382,6 +508,7 @@ def trigger_mlops_pipeline(
     run = ops.create_run(current_user)
     run_id = uuid.UUID(str(run.id))
     background_tasks.add_task(background_execute_run, run_id)
+    dashboard_mlops_pipeline_requests_total.labels(status="accepted").inc()
     return ops._to_run_response(run)
 
 
@@ -503,6 +630,7 @@ def get_mlops_orchestration_run_logs(
 
 _BFF_BASE_URL = os.getenv("API_BFF_BASE_URL", "http://api-bff-service:8000").rstrip("/")
 _DRIFT_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
+_EVALUATION_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
 
 
 @app.get("/mlops/drift", tags=["mlops"])
@@ -569,6 +697,49 @@ def get_mlops_drift_events(
     except Exception:  # noqa: BLE001
         pass
     return {"events": [], "count": 0}
+
+
+@app.get("/mlops/evaluation", tags=["mlops"])
+def get_mlops_evaluation(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return latest online evaluation state for all Scenario B models."""
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/evaluation/latest")
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "models": {
+            name: {"model_name": name, "status": "no_data", "pseudo_ground_truth_available": False}
+            for name in _EVALUATION_MODEL_NAMES
+        },
+        "timestamp": None,
+        "note": "online-evaluator not reachable or no data collected yet",
+    }
+
+
+@app.get("/mlops/evaluation/{model_name}", tags=["mlops"])
+def get_mlops_evaluation_model(
+    model_name: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return latest online evaluation state for one model."""
+    if model_name not in _EVALUATION_MODEL_NAMES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown model '{model_name}'. Known: {_EVALUATION_MODEL_NAMES}",
+        )
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/evaluation/latest/{model_name}")
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"model_name": model_name, "status": "no_data", "pseudo_ground_truth_available": False}
 
 
 # ---- MLOps pipeline config (read-only, for UI gating) ----------------------
@@ -739,7 +910,7 @@ def _get_policy_control_url() -> str:
 
 
 def _get_drift_monitor_url() -> str:
-    return os.getenv("DRIFT_MONITOR_URL", "http://drift-monitor:8030").rstrip("/")
+    return os.getenv("DRIFT_MONITOR_URL", "http://mlops-drift-monitor:8030").rstrip("/")
 
 
 def _proxy_get(url: str) -> Response:
@@ -781,6 +952,21 @@ def get_control_action(
     return _proxy_get(f"{_get_policy_control_url()}/actions/{action_id}")
 
 
+@app.get("/controls/actuations", tags=["controls"])
+def list_control_actuations(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_policy_control_url()}/actuations")
+
+
+@app.get("/controls/actuations/{action_id}", tags=["controls"])
+def get_control_actuation(
+    action_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*control_roles))],
+) -> Any:
+    return _proxy_get(f"{_get_policy_control_url()}/actuations/{action_id}")
+
+
 @app.post("/controls/actions/{action_id}/approve", tags=["controls"])
 def approve_control_action(
     action_id: str,
@@ -805,6 +991,58 @@ def execute_control_action(
     return _proxy_post(f"{_get_policy_control_url()}/actions/{action_id}/execute")
 
 
+# ── Runtime service controls (Redis-backed flags) ─────────────────────────────
+
+@app.get("/runtime/services", tags=["runtime"])
+def list_runtime_services(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*runtime_reader_roles))],
+) -> dict[str, Any]:
+    items = [_read_runtime_service_state(service_name) for service_name in runtime_controlled_services]
+    return {"count": len(items), "items": items}
+
+
+@app.get("/runtime/services/{service_name}", tags=["runtime"])
+def get_runtime_service(
+    service_name: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*runtime_reader_roles))],
+) -> dict[str, Any]:
+    return _read_runtime_service_state(service_name)
+
+
+@app.patch("/runtime/services/{service_name}", tags=["runtime"])
+def patch_runtime_service(
+    service_name: str,
+    payload: RuntimeServicePatchRequest,
+    current_user: Annotated[AuthenticatedPrincipal, Depends(get_current_user)],
+) -> dict[str, Any]:
+    if service_name not in runtime_controlled_services:
+        raise HTTPException(status_code=404, detail=f"Unknown runtime service '{service_name}'.")
+    if not _can_write_runtime(service_name, current_user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to update runtime service flags.")
+
+    if payload.mode is not None and payload.mode not in {"auto", "manual", "disabled"}:
+        raise HTTPException(status_code=400, detail="mode must be one of: auto, manual, disabled")
+
+    current = _read_runtime_service_state(service_name)
+    next_enabled = payload.enabled if payload.enabled is not None else bool(current["enabled"])
+    next_mode = payload.mode if payload.mode is not None else str(current["mode"])
+
+    if next_mode == "disabled":
+        next_enabled = False
+    elif not next_enabled and payload.mode is None:
+        next_mode = "disabled"
+
+    reason = (payload.reason or "").strip() or str(current.get("reason") or "")
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    client = _runtime_redis_client()
+    client.set(_runtime_key(service_name, "enabled"), "true" if next_enabled else "false")
+    client.set(_runtime_key(service_name, "mode"), next_mode)
+    client.set(_runtime_key(service_name, "updated_at"), now_iso)
+    client.set(_runtime_key(service_name, "updated_by"), current_user.email)
+    client.set(_runtime_key(service_name, "reason"), reason)
+    return _read_runtime_service_state(service_name)
+
+
 # ── Drift monitor proxy routes ─────────────────────────────────────────────────
 
 @app.get("/controls/drift/status", tags=["controls"])
@@ -816,8 +1054,8 @@ def drift_status_proxy(
 
 @app.get("/controls/drift/events", tags=["controls"])
 def drift_events_proxy(
-    limit: int = Query(default=20, ge=1, le=100),
     _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=20, ge=1, le=100),
 ) -> Any:
     return _proxy_get(f"{_get_drift_monitor_url()}/drift/events?limit={limit}")
 

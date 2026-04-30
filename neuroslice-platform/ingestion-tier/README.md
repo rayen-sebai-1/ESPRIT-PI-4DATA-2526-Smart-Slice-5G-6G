@@ -4,6 +4,8 @@ Last verified: 2026-04-29.
 
 The ingestion tier receives simulator telemetry, normalizes heterogeneous payloads into a shared canonical event model, and forwards events to Redis, Kafka, and InfluxDB consumers.
 
+Fault-related records handled here come from the simulation tier and are used for scenario-driven testing, not from real network fault ingestion.
+
 ## Components
 
 - `adapter-ves/`: FastAPI ingress for VES-like telemetry
@@ -111,6 +113,6 @@ docker compose up --build redis zookeeper kafka influxdb adapter-ves adapter-net
 
 ## Current Limits
 
-- The adapters expose Prometheus-format `/metrics`, but the integrated Compose stack does not start Prometheus.
+- The adapters expose Prometheus-format `/metrics`; the integrated Compose stack includes Prometheus, but the default scrape config currently covers only a subset of services.
 - `normalizer` and `telemetry-exporter` are worker services and do not expose HTTP APIs.
 - Schema changes in `shared/` affect simulation, AIOps, and API services.

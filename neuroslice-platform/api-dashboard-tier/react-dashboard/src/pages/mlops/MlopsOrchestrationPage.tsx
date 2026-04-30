@@ -2,6 +2,12 @@ import { useEffect, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, FileText, AlertTriangle, CheckCircle, Clock, XCircle, Search, RefreshCw, X, Activity, Zap } from "lucide-react";
 import { getDriftStatus } from "@/api/controlApi";
+import {
+  listRuntimeServices,
+  patchRuntimeService,
+  type RuntimeServiceMode,
+  type RuntimeServiceState,
+} from "@/api/runtimeApi";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/hooks/useAuth";
@@ -220,9 +226,38 @@ export function MlopsOrchestrationPage() {
     },
   });
 
+  const { data: runtimeServicesData, isLoading: runtimeLoading } = useQuery({
+    queryKey: ["runtime", "services"],
+    queryFn: listRuntimeServices,
+    refetchInterval: 8000,
+  });
+
+  const runtimePatchMutation = useMutation({
+    mutationFn: ({
+      serviceName,
+      enabled,
+      mode,
+      reason,
+    }: {
+      serviceName: string;
+      enabled: boolean;
+      mode: RuntimeServiceMode;
+      reason: string;
+    }) => patchRuntimeService(serviceName, { enabled, mode, reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["runtime", "services"] });
+    },
+    onError: (error: any) => {
+      const msg = error.response?.data?.detail || error.message || String(error);
+      alert(`Runtime update failed: ${msg}`);
+    },
+  });
+
   const canExecute = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
+  const canWriteRuntime = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
 
   const lastDriftRun = runs.find((r) => r.trigger_source === "drift");
+  const runtimeServices = runtimeServicesData?.items ?? [];
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -253,6 +288,104 @@ export function MlopsOrchestrationPage() {
           </div>
         )}
       </div>
+
+      {/* Runtime controls */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-lg font-medium text-slate-200">
+            <Activity className="size-5 text-accent" />
+            Runtime Service Controls
+          </h2>
+          <p className="text-xs text-slate-500">
+            Redis contract: <code>runtime:service:{"{name}"}:*</code>
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {runtimeServices.map((svc: RuntimeServiceState) => (
+            <div key={svc.service_name} className="rounded-xl border border-white/5 bg-cardAlt/50 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-200">{svc.service_name}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Updated {svc.updated_at ? new Date(svc.updated_at).toLocaleString() : "never"} by {svc.updated_by || "system"}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase",
+                    svc.enabled
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                      : "border-slate-500/20 bg-slate-500/10 text-slate-400",
+                  )}
+                >
+                  {svc.enabled ? "enabled" : "disabled"}
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 text-xs">
+                <span className="text-slate-500">Mode:</span>
+                <span className="rounded bg-white/5 px-2 py-0.5 font-mono text-slate-300">{svc.mode}</span>
+              </div>
+
+              <p className="mt-3 min-h-8 text-xs text-slate-400">
+                {svc.reason || "No reason provided."}
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  disabled={!canWriteRuntime || runtimePatchMutation.isPending || svc.enabled}
+                  onClick={() =>
+                    runtimePatchMutation.mutate({
+                      serviceName: svc.service_name,
+                      enabled: true,
+                      mode: "auto",
+                      reason: `Enabled by ${user?.email ?? "operator"} from orchestration view`,
+                    })
+                  }
+                  className="rounded-lg bg-emerald-600/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40"
+                >
+                  Enable
+                </button>
+                <button
+                  disabled={!canWriteRuntime || runtimePatchMutation.isPending || !svc.enabled}
+                  onClick={() =>
+                    runtimePatchMutation.mutate({
+                      serviceName: svc.service_name,
+                      enabled: false,
+                      mode: "disabled",
+                      reason: `Disabled by ${user?.email ?? "operator"} from orchestration view`,
+                    })
+                  }
+                  className="rounded-lg bg-red-600/20 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-600/30 disabled:opacity-40"
+                >
+                  Disable
+                </button>
+                <button
+                  disabled={!canWriteRuntime || runtimePatchMutation.isPending}
+                  onClick={() =>
+                    runtimePatchMutation.mutate({
+                      serviceName: svc.service_name,
+                      enabled: svc.enabled,
+                      mode: "manual",
+                      reason: `Set manual mode by ${user?.email ?? "operator"} from orchestration view`,
+                    })
+                  }
+                  className="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-600/30 disabled:opacity-40"
+                >
+                  Manual Mode
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {!runtimeLoading && runtimeServices.length === 0 && (
+            <div className="col-span-full rounded-xl border border-white/5 bg-card p-5 text-sm text-slate-400">
+              Runtime services are unavailable from the dashboard-backend.
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Actions Grid */}
       <section>

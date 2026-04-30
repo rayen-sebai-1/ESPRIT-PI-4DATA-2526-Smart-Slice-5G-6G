@@ -1,0 +1,131 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "AIOps Prediction Rate",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (service, model_name, prediction) (rate(neuroslice_aiops_predictions_total[5m]))",
+          "legendFormat": "{{service}}/{{model_name}} -> {{prediction}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "AIOps Events Processed Rate",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (service, model_name) (rate(neuroslice_aiops_events_processed_total[5m]))",
+          "legendFormat": "{{service}}/{{model_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Fallback Mode by Model",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "max by (service, model_name) (neuroslice_aiops_fallback_mode)",
+          "legendFormat": "{{service}}/{{model_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Model Loaded Status",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "max by (service, model_name) (neuroslice_aiops_model_loaded)",
+          "legendFormat": "{{service}}/{{model_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Inference Latency (P95)",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, service, model_name) (rate(neuroslice_aiops_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{service}}/{{model_name}} p95",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "AIOps Service Enabled",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "expr": "max by (service) (neuroslice_aiops_service_enabled)",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Online Evaluation F1 by Model",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "targets": [
+        {
+          "expr": "max by (model_name) (neuroslice_aiops_eval_f1)",
+          "legendFormat": "{{model_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Online Evaluation Samples",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "targets": [
+        {
+          "expr": "sum by (model_name) (rate(neuroslice_aiops_eval_samples_total[5m]))",
+          "legendFormat": "{{model_name}} samples/s",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["neuroslice", "aiops", "scenario-b"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "NeuroSlice AIOps Dashboard",
+  "version": 1,
+  "weekStart": ""
+}

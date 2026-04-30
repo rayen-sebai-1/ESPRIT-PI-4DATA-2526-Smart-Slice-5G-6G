@@ -21,10 +21,12 @@ import {
   approveControlAction,
   rejectControlAction,
   executeControlAction,
+  listControlActuations,
   getDriftStatus,
   getDriftEvents,
   triggerDriftCheck,
   type ControlAction,
+  type ControlActuation,
   type ActionStatus,
 } from "@/api/controlApi";
 
@@ -189,6 +191,11 @@ export function ControlActionsPage() {
   const [actionErr, setActionErr] = useState<string | null>(null);
 
   const canControl = user?.role === "ADMIN" || user?.role === "NETWORK_OPERATOR";
+  const canViewDrift =
+    user?.role === "ADMIN" ||
+    user?.role === "NETWORK_MANAGER" ||
+    user?.role === "DATA_MLOPS_ENGINEER";
+  const canTriggerDrift = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
 
   const { data: actionsData, isLoading: actionsLoading, error: actionsError } = useQuery({
     queryKey: ["controls", "actions"],
@@ -200,12 +207,19 @@ export function ControlActionsPage() {
     queryKey: ["controls", "drift", "status"],
     queryFn: getDriftStatus,
     refetchInterval: 15000,
+    enabled: canViewDrift,
   });
 
   const { data: driftEvents } = useQuery({
     queryKey: ["controls", "drift", "events"],
     queryFn: () => getDriftEvents(10),
     refetchInterval: 15000,
+    enabled: canViewDrift,
+  });
+  const { data: actuationsData } = useQuery({
+    queryKey: ["controls", "actuations"],
+    queryFn: listControlActuations,
+    refetchInterval: 8000,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["controls"] });
@@ -235,6 +249,7 @@ export function ControlActionsPage() {
     approveMut.isPending || rejectMut.isPending || executeMut.isPending;
 
   const actions = actionsData?.items ?? [];
+  const actuations = actuationsData?.items ?? [];
   const pending = actions.filter((a) => a.status === "PENDING_APPROVAL");
   const others = actions.filter((a) => a.status !== "PENDING_APPROVAL");
 
@@ -258,6 +273,13 @@ export function ControlActionsPage() {
         <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-slate-200">
           <Activity className="size-4 text-accent" /> Drift Monitor
         </h2>
+        {!canViewDrift && (
+          <div className="rounded-xl border border-white/5 bg-cardAlt/40 p-4 text-sm text-slate-400">
+            Drift monitor status is restricted to MLOps read roles.
+          </div>
+        )}
+        {canViewDrift && (
+          <>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className={cn(
             "rounded-xl border p-4",
@@ -290,7 +312,7 @@ export function ControlActionsPage() {
               <p className={cn("text-sm font-semibold", driftStatus?.pipeline_enabled ? "text-emerald-400" : "text-slate-500")}>
                 {driftStatus?.pipeline_enabled ? "ENABLED" : "DISABLED"}
               </p>
-              {canControl && (
+              {canTriggerDrift && (
                 <button
                   onClick={() => driftTriggerMut.mutate()}
                   disabled={driftTriggerMut.isPending || driftStatus?.cooldown_active}
@@ -335,6 +357,8 @@ export function ControlActionsPage() {
               </tbody>
             </table>
           </div>
+        )}
+          </>
         )}
       </section>
 
@@ -404,6 +428,44 @@ export function ControlActionsPage() {
           {others.length === 0 && !actionsLoading && (
             <p className="py-4 text-center text-sm text-slate-600">No historical actions.</p>
           )}
+        </div>
+      </section>
+
+      {/* Simulated actuations */}
+      <section>
+        <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-slate-200">
+          <Zap className="size-4 text-emerald-400" /> Simulated Actuations
+        </h2>
+        <div className="overflow-x-auto rounded-xl border border-white/5 bg-card">
+          <table className="w-full text-left text-xs text-slate-400">
+            <thead className="border-b border-white/5 bg-black/20 text-[11px] font-medium uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-2">Time</th>
+                <th className="px-4 py-2">Action</th>
+                <th className="px-4 py-2">Entity</th>
+                <th className="px-4 py-2">Keys</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {actuations.map((item: ControlActuation) => (
+                <tr key={item.action_id}>
+                  <td className="px-4 py-2 font-mono">{new Date(item.timestamp).toLocaleString()}</td>
+                  <td className="px-4 py-2">{ACTION_TYPE_LABELS[item.action_type] ?? item.action_type}</td>
+                  <td className="px-4 py-2">{item.entity_id}</td>
+                  <td className="px-4 py-2 font-mono">
+                    {(item.keys_written ?? []).join(\", \") || \"—\"}
+                  </td>
+                </tr>
+              ))}
+              {actuations.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-slate-600" colSpan={4}>
+                    No simulated actuations recorded yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
