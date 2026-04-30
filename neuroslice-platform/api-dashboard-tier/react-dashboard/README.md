@@ -33,6 +33,7 @@ Last verified: 2026-04-30.
 - `/predictions`
 - `/agentic/root-cause`
 - `/agentic/copilot`
+- `/control/actions`
 - `/mlops`
 - `/mlops/models`
 - `/mlops/runs`
@@ -49,9 +50,15 @@ Current route guards in the router:
 
 - all authenticated users can access the dashboard shell
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
+- `/live-state`: `ADMIN`, `NETWORK_OPERATOR`
 - `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER` (write/run action hidden for `NETWORK_MANAGER`)
+- `/control/actions`: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`
 - `/mlops/*`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (write actions hidden / disabled for `NETWORK_MANAGER`)
 - `/admin/users`: `ADMIN`
+
+## Topbar
+
+The topbar displays a pulsing `DATA SOURCE: LIVE` badge when `DASHBOARD_DATA_PROVIDER=bff` is active, indicating that dashboard data is sourced from live AIOps streams rather than mock fixtures.
 
 ## MLOps Control Center
 
@@ -106,13 +113,16 @@ npm run preview
 
 ## Docker Runtime
 
-The Docker image:
+The Docker image is a multi-stage production build:
 
-- uses `node:20-alpine`
-- runs `npm ci`
-- starts `npm run dev -- --host 0.0.0.0 --port 5173`
+- **Stage 1 (builder)**: `node:20-alpine` — runs `npm ci` and `npm run build` to produce a static `dist/` bundle
+- **Stage 2 (runner)**: `nginx:1.27-alpine` — serves the static bundle on port 5173
 
-This is a development-oriented container, not a production static build image.
+The nginx config (`nginx.conf`) handles:
+
+- gzip compression and long-lived static asset caching
+- `/api/` reverse proxy to `kong-gateway:8000/api/` with SSE streaming support
+- SPA fallback (`try_files $uri $uri/ /index.html`) for client-side routing
 
 ## Verification
 

@@ -29,6 +29,7 @@ Kong is currently doing routing, CORS, and rate limiting only. Authentication an
 - `/api/dashboard/predictions*` -> `dashboard-backend:8002/predictions*`
 - `/api/dashboard/models` -> `dashboard-backend:8002/models`
 - `/api/dashboard/agentic*` -> `dashboard-backend:8002/agentic*` (JWT-validated agentic proxy)
+- `/api/dashboard/controls*` -> `dashboard-backend:8002/controls*`
 - other `/api/dashboard/*` routes -> `dashboard-backend:8002/dashboard/*`
 
 Agentic routes (`/api/dashboard/agentic/*`) go through `dashboard-backend`, which validates the Bearer token and enforces role checks before proxying to internal agent services. The old direct agentic routes (`/api/agentic/*`) have been removed.
@@ -39,10 +40,11 @@ Global plugin:
 
 - CORS with credentials enabled for `http://localhost:5173` and `http://127.0.0.1:5173`
 
-Route-level rate limits:
+Route-level plugins:
 
-- login route: `5` requests per minute and `100` per hour
-- protected dashboard routes: `120` requests per minute and `5000` per hour
+- login route: rate limit `5` requests per minute and `100` per hour
+- protected dashboard routes: rate limit `120` requests per minute and `5000` per hour
+- all `/api/dashboard/*` routes: `request-transformer` injects `X-Kong-Authenticated: true` header so downstream services can verify the request passed through the gateway
 
 ## Validation
 
@@ -58,4 +60,5 @@ curl -i http://localhost:8008/api/auth/me
 
 - there is no second gateway configuration in this repository
 - health routes for `auth-service` and `dashboard-backend` are internal and are not exposed through Kong
-- JWT validation is not implemented in Kong; protected services validate tokens themselves
+- JWT validation is not implemented in Kong; protected services (`auth-service`, `dashboard-backend`) validate tokens themselves
+- the `request-transformer` plugin marks gateway-routed requests with `X-Kong-Authenticated: true` but does not perform token verification itself

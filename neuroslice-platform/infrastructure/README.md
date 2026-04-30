@@ -6,7 +6,7 @@ The infrastructure layer is the canonical local entry point for NeuroSlice. It w
 
 ## Runtime Modes
 
-Default platform runtime:
+Default platform runtime (includes mlops-runner and drift-monitor):
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -20,14 +20,14 @@ cd neuroslice-platform/infrastructure
 docker compose --profile mlops up --build
 ```
 
-Platform runtime plus Scenario B drift detection:
+Platform runtime plus Scenario B statistical drift detection (alibi-detect):
 
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose --profile drift up --build
 ```
 
-Platform runtime plus MLOps and drift detection:
+Platform runtime plus MLOps and statistical drift detection:
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -50,9 +50,23 @@ docker compose config
 
 ## Scenario B Drift Detection
 
-The `drift-monitor` service is started with the `drift` profile. It is separate because `alibi-detect[torch]` (PyTorch) adds significant build time and image size.
+There are two drift detection services in the platform:
 
-Environment variables for drift detection:
+**mlops-tier drift-monitor** (default runtime, always-on):
+
+A lightweight FastAPI service that counts anomaly events in the `events.anomaly` Redis stream over a sliding window. When the count exceeds the threshold it calls `mlops-runner` to trigger the full pipeline automatically. Relevant environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DRIFT_ANOMALY_THRESHOLD` | `5` | Anomaly events in window before triggering |
+| `DRIFT_WINDOW_SECONDS` | `120` | Sliding window length in seconds |
+| `DRIFT_COOLDOWN_SECONDS` | `600` | Minimum seconds between consecutive triggers |
+| `DRIFT_POLL_INTERVAL_SECONDS` | `30` | Polling interval |
+| `MLOPS_PIPELINE_ENABLED` | `true` | Set `false` to disable auto-trigger |
+
+**aiops-tier drift-monitor** (`drift` profile, optional):
+
+A statistically rigorous service using `alibi-detect[torch]` (PyTorch MMD test) that requires pre-built drift reference artifacts. It is a separate profile because PyTorch adds significant build time and image size.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -62,7 +76,7 @@ Environment variables for drift detection:
 | `DRIFT_P_VALUE_THRESHOLD` | `0.01` | MMD p-value threshold |
 | `DRIFT_TEST_INTERVAL_SEC` | `60` | Seconds between drift tests |
 | `DRIFT_EMIT_COOLDOWN_SEC` | `300` | Seconds between repeated drift alerts per model |
-| `DRIFT_MONITOR_PORT` | `7012` | Host port for drift-monitor |
+| `DRIFT_MONITOR_PORT` | `7012` | Host port for aiops-tier drift-monitor |
 
 See `SCENARIO_B_DRIFT_DETECTION.md` for the full architecture and verification guide.
 
@@ -112,6 +126,8 @@ Important behavior:
 - `policy-control`
 - `root-cause`
 - `copilot-agent`
+- `mlops-runner` (internal-only; no published port)
+- `drift-monitor` (mlops-tier; internal-only at port 8030)
 
 The integrated MLOps services start only with the `mlops` profile.
 
@@ -127,11 +143,11 @@ The `mlops` profile starts:
 - `logstash`
 - `kibana`
 - `mlops-api`
-- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend`)
+- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend` and `drift-monitor`)
 
 The `mlops-worker` profile runs the offline training/promotion pipeline manually.
 
-`mlops-runner` is the only service that owns the Docker socket. It accepts a single `POST /run-pipeline` call from `dashboard-backend` and executes the fixed pipeline command. Toggling `MLOPS_PIPELINE_ENABLED=false` immediately disables the dashboard "Run Offline MLOps Pipeline" button. See `mlops-tier/mlops-runner/README.md`.
+`mlops-runner` is the only service that owns the Docker socket. It accepts `POST /run-action` calls with a fixed action map (e.g. `full_pipeline`) and executes the corresponding make target inside the mlops-api container. Toggling `MLOPS_PIPELINE_ENABLED=false` immediately disables pipeline execution. See `mlops-tier/mlops-runner/README.md`.
 
 ## Published URLs
 
@@ -219,8 +235,9 @@ Primary variables are wired through Compose and optional `.env` files:
 - AIOps: `CONGESTION_THRESHOLD`, `SLICE_MISMATCH_CONFIDENCE_THRESHOLD`, `SLA_RISK_THRESHOLD`, `MODEL_POLL_INTERVAL_SEC`
 - ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`, `RCA_AGENT_PORT`, `COPILOT_AGENT_PORT`
 - MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`, `KIBANA_PORT`
-- dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER`
-- MLOps Operations Center (dashboard-backend + mlops-runner): `MLOPS_PIPELINE_ENABLED` (default `false`), `MLOPS_PIPELINE_TIMEOUT_SECONDS` (default `7200`), `MLOPS_RUNNER_TOKEN` (optional shared secret), `MLOPS_TOOLS_*_URL` (default `http://localhost:*` so the browser opens host-published UIs)
+- dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER` (default `bff`)
+- MLOps Operations Center (dashboard-backend + mlops-runner): `MLOPS_PIPELINE_ENABLED` (default `true`), `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS` (default `7200`), `MLOPS_RUNNER_TOKEN` (optional shared secret), `MLOPS_TOOLS_*_URL` (default `http://localhost:*` so the browser opens host-published UIs)
+- drift-monitor (mlops-tier): `DRIFT_ANOMALY_THRESHOLD`, `DRIFT_WINDOW_SECONDS`, `DRIFT_COOLDOWN_SECONDS`, `DRIFT_POLL_INTERVAL_SECONDS`
 - agentic: `OLLAMA_BASE_URL`, `RCA_OLLAMA_MODEL`, `COPILOT_OLLAMA_MODEL`
 
 ## Common Operations
@@ -243,5 +260,5 @@ docker compose down -v
 
 - Local-development credentials are present in Compose and should not be used as production secrets.
 - `mlops-worker` is manual and does not start during `docker compose --profile mlops up --build`.
-- `drift-monitor` is not part of the default runtime; start with `--profile drift`.
+- The aiops-tier `drift-monitor` (statistical, alibi-detect) requires the `drift` profile; the mlops-tier `drift-monitor` (anomaly-count based) is part of the default runtime.
 - AIOps model-backed inference requires promoted artifacts to exist locally under `batch-orchestrator/models/promoted/`.
