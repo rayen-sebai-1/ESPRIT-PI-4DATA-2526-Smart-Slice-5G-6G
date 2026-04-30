@@ -11,6 +11,7 @@ const tabs = [
   { to: "/mlops/artifacts", label: "Artefacts" },
   { to: "/mlops/promotions", label: "Promotions" },
   { to: "/mlops/monitoring", label: "Monitoring" },
+  { to: "/mlops/drift", label: "Drift" },
   { to: "/mlops/operations", label: "Operations" },
   { to: "/mlops/orchestration", label: "Orchestration" },
 ];

@@ -1,8 +1,26 @@
 # MLOps Tier
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 The MLOps tier owns NeuroSlice offline preprocessing, training, MLflow tracking, model registry metadata, ONNX export, FP16 conversion, promotion, and the prediction API. The active project is `batch-orchestrator/`.
+
+## Scenario B Drift References
+
+When the MLOps pipeline promotes a model (`promote_onnx_artifacts`), it now also generates drift reference artifacts alongside each promoted model:
+
+```
+models/promoted/{model_name}/current/drift_reference.npz
+models/promoted/{model_name}/current/drift_feature_schema.json
+```
+
+These are loaded by the `drift-monitor` service at startup. If they are absent, the drift-monitor reports `reference_missing` and continues operating in degraded mode.
+
+To generate them without running the full pipeline:
+
+```bash
+cd neuroslice-platform/mlops-tier/batch-orchestrator
+python -m src.mlops.drift_reference models/promoted data/processed
+```
 
 ## Runtime Modes
 
@@ -75,6 +93,8 @@ models/promoted/{model_name}/current/model.onnx
 models/promoted/{model_name}/current/model_fp16.onnx
 models/promoted/{model_name}/current/metadata.json
 models/promoted/{model_name}/current/version.txt
+models/promoted/{model_name}/current/drift_reference.npz
+models/promoted/{model_name}/current/drift_feature_schema.json
 ```
 
 Production metadata includes:

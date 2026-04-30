@@ -178,7 +178,7 @@ def promote_onnx_artifacts(
     _write_json_atomic(current_metadata, metadata)
     _write_text_atomic(current_dir / "version.txt", version_str)
 
-    return PromotionResult(
+    result = PromotionResult(
         model_name=model_name,
         version=version_str,
         raw_path=version_raw,
@@ -189,6 +189,37 @@ def promote_onnx_artifacts(
         current_metadata_path=current_metadata,
         metadata=metadata,
     )
+
+    # Generate drift reference artifacts alongside the promoted model.
+    # Failure is non-fatal: the drift-monitor handles reference_missing gracefully.
+    try:
+        from mlops.drift_reference import generate_drift_reference
+
+        drift_result = generate_drift_reference(
+            model_name=model_name,
+            current_dir=current_dir,
+        )
+        if drift_result.get("status") == "ok":
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "[%s] Drift reference generated: n_samples=%s",
+                model_name,
+                drift_result.get("n_samples"),
+            )
+        else:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "[%s] Drift reference not generated: %s",
+                model_name,
+                drift_result.get("status"),
+            )
+    except Exception as _exc:  # noqa: BLE001
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "[%s] Drift reference generation failed (non-fatal): %s", model_name, _exc
+        )
+
+    return result
 
 
 def validate_promoted_artifacts(raw_onnx_path: Path | str, fp16_onnx_path: Path | str) -> None:

@@ -1,6 +1,6 @@
 # Infrastructure Layer
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 The infrastructure layer is the canonical local entry point for NeuroSlice. It wires simulators, ingestion, runtime AIOps, control-tier services, dashboard services, agentic services, observability, and the optional integrated MLOps stack.
 
@@ -20,6 +20,20 @@ cd neuroslice-platform/infrastructure
 docker compose --profile mlops up --build
 ```
 
+Platform runtime plus Scenario B drift detection:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile drift up --build
+```
+
+Platform runtime plus MLOps and drift detection:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops --profile drift up --build
+```
+
 Run the offline MLOps worker against integrated services:
 
 ```bash
@@ -33,6 +47,24 @@ Validate Compose configuration:
 cd neuroslice-platform/infrastructure
 docker compose config
 ```
+
+## Scenario B Drift Detection
+
+The `drift-monitor` service is started with the `drift` profile. It is separate because `alibi-detect[torch]` (PyTorch) adds significant build time and image size.
+
+Environment variables for drift detection:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DRIFT_AUTO_TRIGGER_MLOPS` | `false` | Set `true` to attempt MLOps pipeline trigger on drift |
+| `DRIFT_REQUIRE_REFERENCES` | `false` | Set `true` to fail hard if reference artifacts are missing |
+| `DRIFT_WINDOW_SIZE` | `500` | Rolling window sample count |
+| `DRIFT_P_VALUE_THRESHOLD` | `0.01` | MMD p-value threshold |
+| `DRIFT_TEST_INTERVAL_SEC` | `60` | Seconds between drift tests |
+| `DRIFT_EMIT_COOLDOWN_SEC` | `300` | Seconds between repeated drift alerts per model |
+| `DRIFT_MONITOR_PORT` | `7012` | Host port for drift-monitor |
+
+See `SCENARIO_B_DRIFT_DETECTION.md` for the full architecture and verification guide.
 
 ## PostgreSQL Initialization Notes
 
@@ -76,13 +108,10 @@ Important behavior:
 - `dashboard-backend`
 - `kong-gateway`
 - `react-dashboard`
+- `alert-management`
+- `policy-control`
 - `root-cause`
 - `copilot-agent`
-
-Control-tier services (not yet wired into the integrated Compose file; start them standalone — see `control-tier/README.md`):
-
-- `alert-management` (default port `7010`)
-- `policy-control` (default port `7011`)
 
 The integrated MLOps services start only with the `mlops` profile.
 
@@ -114,6 +143,7 @@ Default runtime:
 - Fault engine: `http://localhost:7004`
 - Root-cause agent: `http://localhost:7005`
 - Copilot agent: `http://localhost:7006`
+- Drift monitor API/metrics: `http://localhost:7012` with `drift` profile
 - React dashboard: `http://localhost:5173`
 - Kong gateway: `http://localhost:8008`
 - Grafana: `http://localhost:3000`
@@ -213,5 +243,5 @@ docker compose down -v
 
 - Local-development credentials are present in Compose and should not be used as production secrets.
 - `mlops-worker` is manual and does not start during `docker compose --profile mlops up --build`.
-- Prometheus-format adapter metrics are available, but there is no Prometheus service in the Compose stack.
+- `drift-monitor` is not part of the default runtime; start with `--profile drift`.
 - AIOps model-backed inference requires promoted artifacts to exist locally under `batch-orchestrator/models/promoted/`.

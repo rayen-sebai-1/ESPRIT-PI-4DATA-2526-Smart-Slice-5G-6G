@@ -20,3 +20,12 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # drift-monitor exposes neuroslice_drift_* metrics.
+  # Active only when the `drift` Docker Compose profile is running.
+  # Prometheus will report scrape failures silently if the target is absent.
+  - job_name: 'drift-monitor'
+    static_configs:
+      - targets: ['drift-monitor:7012']
+    metrics_path: /metrics
+    scrape_interval: 30s

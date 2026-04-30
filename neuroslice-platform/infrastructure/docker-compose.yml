@@ -886,6 +886,79 @@ services:
       kong-gateway:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # Drift Monitor — Alibi Detect MMD drift detection for Scenario B
+  #
+  # Uses the `drift` profile because alibi-detect[torch] adds a large PyTorch
+  # dependency that would bloat the default image.
+  #
+  # Start with drift detection:
+  #   docker compose --profile drift up --build
+  #
+  # The drift-monitor reads stream:norm.telemetry, maintains 500-sample rolling
+  # windows per model, and runs MMD drift tests every 60 s.  Results are stored
+  # in Redis aiops:drift:{model_name} and published to events.drift / Kafka
+  # drift.alert / InfluxDB aiops_drift.
+  #
+  # Auto-trigger of MLOps retraining is OFF by default (DRIFT_AUTO_TRIGGER_MLOPS=false).
+  # ---------------------------------------------------------------------------
+  drift-monitor:
+    build:
+      context: ..
+      dockerfile: aiops-tier/drift-monitor/Dockerfile
+    profiles: ["drift"]
+    restart: unless-stopped
+    volumes:
+      - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
+      - ../mlops-tier/batch-orchestrator/data:/mlops/data:ro
+    ports:
+      - "${DRIFT_MONITOR_PORT:-7012}:7012"
+    environment:
+      SERVICE_NAME: drift-monitor
+      SERVICE_PORT: "7012"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      INPUT_STREAM: stream:norm.telemetry
+      OUTPUT_STREAM: events.drift
+      CONSUMER_GROUP: aiops-drift-group
+      CONSUMER_NAME: drift-monitor-01
+      KAFKA_BROKER: kafka:9092
+      KAFKA_DRIFT_TOPIC: drift.alert
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: neuroslice_token_12345
+      INFLUXDB_ORG: neuroslice
+      INFLUXDB_BUCKET: telemetry
+      MODELS_BASE_PATH: /mlops/models/promoted
+      DRIFT_MODEL_NAMES: congestion_5g,sla_5g,slice_type_5g
+      DRIFT_WINDOW_SIZE: "500"
+      DRIFT_P_VALUE_THRESHOLD: "0.01"
+      DRIFT_MIN_REFERENCE_SAMPLES: "500"
+      DRIFT_TEST_INTERVAL_SEC: "60"
+      DRIFT_EMIT_COOLDOWN_SEC: "300"
+      DRIFT_AUTO_TRIGGER_MLOPS: ${DRIFT_AUTO_TRIGGER_MLOPS:-false}
+      DRIFT_REQUIRE_REFERENCES: ${DRIFT_REQUIRE_REFERENCES:-false}
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      normalizer:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:7012/health', timeout=3)); sys.exit(0 if data.get('status') in ('ok','degraded') else 1)",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
   prometheus:
     image: prom/prometheus:v2.51.2
     ports:

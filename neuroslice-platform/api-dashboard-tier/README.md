@@ -1,12 +1,12 @@
 # API Dashboard Tier
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 The API dashboard tier is the user-facing access layer for NeuroSlice. It combines a public telemetry BFF with a protected dashboard stack built from auth, backend, gateway, and frontend services.
 
 ## Components
 
-- `api-bff-service/`: public FastAPI service for KPIs, AIOps outputs, Live State, SSE, faults, scenarios, network insights, and export views
+- `api-bff-service/`: public FastAPI service for KPIs, AIOps outputs, Live State, SSE, faults, scenarios, network insights, export views, and **drift detection status** (`/api/v1/drift/*`)
 - `auth-service/`: PostgreSQL-backed authentication and user administration service
 - `dashboard-backend/`: protected dashboard domain API and metadata persistence layer
 - `kong-gateway/`: browser-facing API gateway for `/api/auth/*` and `/api/dashboard/*`
@@ -40,6 +40,7 @@ Served directly by `api-bff-service` on `http://localhost:8000`:
 - server-sent events streams
 - fault and scenario proxy endpoints
 - feature-view export endpoints for the MLOps project
+- drift detection status endpoints: `GET /api/v1/drift/latest`, `GET /api/v1/drift/latest/{model_name}`, `GET /api/v1/drift/events`
 
 ### Protected Dashboard Stack
 
@@ -65,12 +66,12 @@ Current React router exposure:
 
 - `/sessions`: `ADMIN`, `NETWORK_OPERATOR`
 - `/live-state`: `ADMIN`, `NETWORK_OPERATOR`
-- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
-- `/mlops`, `/mlops/models`, `/mlops/runs`, `/mlops/artifacts`, `/mlops/promotions`, `/mlops/monitoring`, `/mlops/operations`, `/mlops/orchestration`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (read-only for `NETWORK_MANAGER`)
+- `/predictions`: `ADMIN`, `NETWORK_OPERATOR`, `NETWORK_MANAGER`, `DATA_MLOPS_ENGINEER`
+- `/mlops`, `/mlops/models`, `/mlops/runs`, `/mlops/artifacts`, `/mlops/promotions`, `/mlops/monitoring`, `/mlops/drift`, `/mlops/operations`, `/mlops/orchestration`: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER` (read-only for `NETWORK_MANAGER`)
 - `/agentic/root-cause`, `/agentic/copilot`: all authenticated users
 - `/admin/users`: `ADMIN`
 
-That means `NETWORK_MANAGER` is allowed by the backend prediction API but does not currently get a predictions route in the shipped frontend.
+`NETWORK_MANAGER` is allowed on prediction APIs and is also included in the shipped frontend route guard for `/predictions`.
 
 ## MLOps Control Center
 
@@ -83,6 +84,9 @@ That means `NETWORK_MANAGER` is allowed by the backend prediction API but does n
 - `GET /api/dashboard/mlops/artifacts`
 - `GET /api/dashboard/mlops/promotions`
 - `GET /api/dashboard/mlops/monitoring/predictions`
+- `GET /api/dashboard/mlops/drift`
+- `GET /api/dashboard/mlops/drift/{model_name}`
+- `GET /api/dashboard/mlops/drift-events`
 - `POST /api/dashboard/mlops/promote`
 - `POST /api/dashboard/mlops/rollback`
 - `GET /api/dashboard/mlops/tools`

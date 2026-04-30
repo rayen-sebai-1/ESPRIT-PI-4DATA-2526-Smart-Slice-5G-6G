@@ -1,6 +1,6 @@
 # React Dashboard
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 `react-dashboard` is the protected React frontend for the NeuroSlice operations dashboard.
 
@@ -39,6 +39,7 @@ Last verified: 2026-04-29.
 - `/mlops/artifacts`
 - `/mlops/promotions`
 - `/mlops/monitoring`
+- `/mlops/drift`
 - `/mlops/operations`
 - `/mlops/orchestration`
 - `/admin/users`
@@ -54,7 +55,7 @@ Current route guards in the router:
 
 ## MLOps Control Center
 
-The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_ENGINEER`, and `NETWORK_MANAGER`. It groups six sub-views:
+The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_ENGINEER`, and `NETWORK_MANAGER`. It groups nine sub-views:
 
 - vue globale (KPI: modeles promus, quality gate pass/fail, runs en attente, sources)
 - modeles (selection + detail card, metriques cles, actions valider / promouvoir / rollback / rafraichir)
@@ -62,7 +63,9 @@ The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_E
 - artefacts (etat de `models/promoted/*/current/`)
 - promotions (historique des decisions promote/reject)
 - monitoring (lecture Elasticsearch `smart-slice-predictions`)
+- drift (etat de drift detection Scenario B: p-value, window fill, severite, et historique des evenements)
 - operations (Operations Center: liens externes, sante des services, lancement du pipeline offline, historique + logs)
+- orchestration (pilotage du cycle pipeline/operations selon les droits de role)
 
 Promote and rollback open confirmation modals before sending the action. The buttons are disabled for `NETWORK_MANAGER` because the backend rejects those calls for that role.
 

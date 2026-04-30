@@ -499,6 +499,78 @@ def get_mlops_orchestration_run_logs(
     return response
 
 
+# ---- Drift detection (reads from api-bff-service which reads Redis) ---------
+
+_BFF_BASE_URL = os.getenv("API_BFF_BASE_URL", "http://api-bff-service:8000").rstrip("/")
+_DRIFT_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
+
+
+@app.get("/mlops/drift", tags=["mlops"])
+def get_mlops_drift(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return latest drift detection state for all Scenario B models.
+
+    Reads from api-bff-service which proxies Redis aiops:drift:{model_name} hashes.
+    Returns empty valid response if no drift data has been collected yet.
+    """
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/drift/latest")
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    # Graceful empty response — drift-monitor may not be running
+    return {
+        "models": {
+            name: {"model_name": name, "status": "no_data"}
+            for name in _DRIFT_MODEL_NAMES
+        },
+        "timestamp": None,
+        "note": "drift-monitor not reachable or no data collected yet",
+    }
+
+
+@app.get("/mlops/drift/{model_name}", tags=["mlops"])
+def get_mlops_drift_model(
+    model_name: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return latest drift state for a single model."""
+    if model_name not in _DRIFT_MODEL_NAMES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown model '{model_name}'. Known: {_DRIFT_MODEL_NAMES}",
+        )
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/drift/latest/{model_name}")
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"model_name": model_name, "status": "no_data"}
+
+
+@app.get("/mlops/drift-events", tags=["mlops"])
+def get_mlops_drift_events(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    """Return recent drift alert events from events.drift stream."""
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(
+                f"{_BFF_BASE_URL}/api/v1/drift/events", params={"limit": limit}
+            )
+        if resp.status_code < 400:
+            return resp.json()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"events": [], "count": 0}
+
+
 # ---- MLOps pipeline config (read-only, for UI gating) ----------------------
 
 @app.get(

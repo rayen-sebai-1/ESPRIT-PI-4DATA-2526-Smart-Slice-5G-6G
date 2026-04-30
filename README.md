@@ -1,6 +1,6 @@
 # Smart Slice 5G/6G
 
-Last verified: 2026-04-29.
+Last verified: 2026-04-30.
 
 This repository contains the current NeuroSlice workspace: an end-to-end local 5G/6G network-slicing platform with simulation, ingestion, online AIOps, a dashboard/API stack, observability, agentic assistance services, and an offline MLOps project.
 
@@ -15,7 +15,7 @@ Implemented tiers:
 
 - `simulation-tier`: Core, Edge, and RAN simulators plus a fault engine
 - `ingestion-tier`: VES and NETCONF adapters, normalizer, telemetry exporter, and shared models
-- `aiops-tier`: congestion, SLA, and slice-classification workers using promoted ONNX FP16 models when available
+- `aiops-tier`: congestion, SLA, and slice-classification workers, plus optional Scenario B `drift-monitor` using Alibi Detect MMD
 - `api-dashboard-tier`: public BFF (with Redis Live State endpoints), auth service, dashboard backend, Kong gateway, and React dashboard
 - `agentic-ai-tier`: root-cause and copilot agent services backed by Ollama/LangChain
 - `control-tier`: deterministic alert management and policy-control services with human-in-the-loop lifecycle
@@ -28,13 +28,14 @@ Implemented tiers:
 2. `adapter-ves` and `adapter-netconf` receive raw payloads.
 3. `normalizer` writes canonical telemetry to Redis and Kafka.
 4. AIOps workers consume `stream:norm.telemetry` and emit congestion, SLA, and slice-classification events.
-5. AIOps workers load production models from `models/promoted/{model_name}/current/model_fp16.onnx` and hot reload when `metadata.json` changes.
-6. `api-bff-service` exposes KPI, AIOps, Live State, SSE, fault/scenario, network insights, and feature-view endpoints.
-7. `auth-service`, `dashboard-backend`, `kong-gateway`, and `react-dashboard` serve the protected dashboard.
-8. `root-cause` and `copilot-agent` provide optional operator-assistance APIs.
-9. `alert-management` normalizes AIOps events into lifecycle-managed alerts.
-10. `policy-control` converts unresolved alerts into operator-approved remediation recommendations.
-11. InfluxDB and Grafana expose telemetry and runtime views.
+5. Optional `drift-monitor` (profile `drift`) consumes `stream:norm.telemetry`, publishes `events.drift`, and stores latest drift state under `aiops:drift:*`.
+6. AIOps workers load production models from `models/promoted/{model_name}/current/model_fp16.onnx` and hot reload when `metadata.json` changes.
+7. `api-bff-service` exposes KPI, AIOps, Live State, SSE, fault/scenario, network insights, feature-view, and drift-status endpoints.
+8. `auth-service`, `dashboard-backend`, `kong-gateway`, and `react-dashboard` serve the protected dashboard.
+9. `root-cause` and `copilot-agent` provide optional operator-assistance APIs.
+10. `alert-management` normalizes AIOps events into lifecycle-managed alerts.
+11. `policy-control` converts unresolved alerts into operator-approved remediation recommendations.
+12. InfluxDB and Grafana expose telemetry and runtime views.
 
 ## Quick Start
 
@@ -48,6 +49,13 @@ Optional integrated MLOps services:
 ```bash
 cd neuroslice-platform/infrastructure
 docker compose --profile mlops up --build
+```
+
+Optional drift detection:
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile drift up --build
 ```
 
 Manual offline training/promotion worker:
@@ -70,6 +78,7 @@ docker compose --profile mlops --profile mlops-worker run --rm mlops-worker
 - Copilot agent: `http://localhost:7006`
 - Alert management: `http://localhost:7010`
 - Policy control: `http://localhost:7011`
+- Drift monitor API/metrics: `http://localhost:7012` with `drift` profile
 - Grafana: `http://localhost:3000`
 - InfluxDB: `http://localhost:8086`
 - MLflow UI: `http://localhost:5000` with `mlops` profile
@@ -95,6 +104,8 @@ models/promoted/{model_name}/{version}/model.onnx
 models/promoted/{model_name}/{version}/model_fp16.onnx
 models/promoted/{model_name}/current/model_fp16.onnx
 models/promoted/{model_name}/current/metadata.json
+models/promoted/{model_name}/current/drift_reference.npz
+models/promoted/{model_name}/current/drift_feature_schema.json
 ```
 
 AIOps services mount `mlops-tier/batch-orchestrator/models` as `/mlops/models:ro` and load from the promoted `current/` directory. They poll metadata with `MODEL_POLL_INTERVAL_SEC` and reload ONNX Runtime sessions without container restarts.
@@ -112,6 +123,7 @@ AIOps services mount `mlops-tier/batch-orchestrator/models` as `/mlops/models:ro
 - MLOps tier: `neuroslice-platform/mlops-tier/README.md`
 - Batch orchestrator: `neuroslice-platform/mlops-tier/batch-orchestrator/README.md`
 - Observability: `neuroslice-platform/infrastructure/observability/README.md`
+- Scenario B drift design: `neuroslice-platform/SCENARIO_B_DRIFT_DETECTION.md`
 
 ## Contributors
 

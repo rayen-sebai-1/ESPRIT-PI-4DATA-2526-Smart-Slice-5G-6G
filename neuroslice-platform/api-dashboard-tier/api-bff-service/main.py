@@ -50,6 +50,10 @@ AIOPS_STREAMS = {
     "events.slice.classification",
 }
 
+DRIFT_MODEL_NAMES = ["congestion_5g", "sla_5g", "slice_type_5g"]
+DRIFT_STATE_KEY = "aiops:drift:{model_name}"
+DRIFT_EVENTS_STREAM = "events.drift"
+
 app = FastAPI(
     title="neuroslice-sim API",
     description="5G AIOps NWDAF-like telemetry simulator API",
@@ -641,6 +645,79 @@ async def inject_fault(req: FaultInjectRequest) -> dict:
         return resp.json()
     except Exception as exc:
         raise HTTPException(503, f"fault-engine unavailable: {exc}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Drift Detection endpoints (reads from drift-monitor Redis state)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _decode_drift_state(raw: Dict[str, Any]) -> Dict[str, Any]:
+    result = {}
+    for k, v in raw.items():
+        if isinstance(v, str):
+            try:
+                result[k] = json.loads(v)
+            except Exception:
+                result[k] = v
+        else:
+            result[k] = v
+    return result
+
+
+def _empty_drift_state(model_name: str) -> Dict[str, Any]:
+    return {"model_name": model_name, "status": "no_data"}
+
+
+@app.get("/api/v1/drift/latest")
+def get_drift_latest() -> dict:
+    """Return latest drift detection state for all models."""
+    models = {}
+    for model_name in DRIFT_MODEL_NAMES:
+        key = DRIFT_STATE_KEY.format(model_name=model_name)
+        raw = get_r().hgetall(key)
+        if raw:
+            models[model_name] = _decode_drift_state(raw)
+        else:
+            models[model_name] = _empty_drift_state(model_name)
+    return {
+        "models": models,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/v1/drift/latest/{model_name}")
+def get_drift_latest_model(model_name: str) -> dict:
+    """Return latest drift state for one model."""
+    if model_name not in DRIFT_MODEL_NAMES:
+        raise HTTPException(
+            404,
+            f"Unknown model '{model_name}'. Known: {DRIFT_MODEL_NAMES}",
+        )
+    key = DRIFT_STATE_KEY.format(model_name=model_name)
+    raw = get_r().hgetall(key)
+    if raw:
+        return _decode_drift_state(raw)
+    return _empty_drift_state(model_name)
+
+
+@app.get("/api/v1/drift/events")
+def get_drift_events(limit: int = Query(50, ge=1, le=200)) -> dict:
+    """Return recent drift alert events from events.drift stream."""
+    try:
+        raw = get_r().xrevrange(DRIFT_EVENTS_STREAM, count=limit)
+    except Exception:
+        return {"events": [], "count": 0}
+    events = []
+    for _, fields in raw:
+        raw_event = fields.get("event")
+        if not raw_event:
+            continue
+        try:
+            events.append(json.loads(raw_event) if isinstance(raw_event, str) else raw_event)
+        except Exception:
+            continue
+    return {"events": events, "count": len(events)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
