@@ -257,7 +257,7 @@ export function ControlActionsPage() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Control Actions"
-        subtitle="Alert → Action → Approval → Execution pipeline (Scenario B simulated)"
+        description="Alert → Action → Approval → Execution pipeline (Scenario B simulated)"
       />
 
       {/* Error banner */}
@@ -453,7 +453,7 @@ export function ControlActionsPage() {
                   <td className="px-4 py-2">{ACTION_TYPE_LABELS[item.action_type] ?? item.action_type}</td>
                   <td className="px-4 py-2">{item.entity_id}</td>
                   <td className="px-4 py-2 font-mono">
-                    {(item.keys_written ?? []).join(\", \") || \"—\"}
+                    {(item.keys_written ?? []).join(", ") || "—"}
                   </td>
                 </tr>
               ))}
