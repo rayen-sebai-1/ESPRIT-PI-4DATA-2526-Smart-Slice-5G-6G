@@ -69,14 +69,14 @@ export function RootCauseAgentPage() {
       <PageHeader
         eyebrow="Agentic AI"
         title="Root Cause Agent"
-        description="Lance un scan RCA manuel pour une slice. L'agent interroge la telemetrie InfluxDB et l'etat live Redis, puis utilise un modele local pour proposer une cause racine et des actions correctives."
+        description="Run a manual RCA scan for a slice. The agent queries InfluxDB telemetry and Redis live state, then uses a local model to propose a root cause and corrective actions."
       />
 
       <Card className="p-6">
         <form className="grid gap-4 md:grid-cols-[2fr_1fr_auto]" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.22em] text-mutedText" htmlFor="rca-entity">
-              Entite a scanner (slice id)
+              Entity to scan (slice id)
             </label>
             <Input
               id="rca-entity"
@@ -89,14 +89,14 @@ export function RootCauseAgentPage() {
           </div>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.22em] text-mutedText" htmlFor="rca-domain">
-              Domaine (optionnel)
+              Domain (optional)
             </label>
             <Select
               id="rca-domain"
               value={domain}
               onChange={(event) => setDomain(event.target.value as "" | AgentDomain)}
             >
-              <option value="">Tous</option>
+              <option value="">All</option>
               <option value="core">core</option>
               <option value="edge">edge</option>
               <option value="ran">ran</option>
@@ -105,12 +105,12 @@ export function RootCauseAgentPage() {
           <div className="flex items-end">
             <Button type="submit" disabled={mutation.isPending || sliceId.trim().length === 0}>
               <ScanSearch size={16} />
-              {mutation.isPending ? "Scan en cours..." : "Lancer le scan"}
+              {mutation.isPending ? "Scan in progress..." : "Run scan"}
             </Button>
           </div>
         </form>
         <p className="mt-3 text-xs text-mutedText">
-          Fenetre d'analyse: 30 dernieres minutes. L'agent peut prendre jusqu'a une minute selon la charge du modele Ollama local.
+          Analysis window: last 30 minutes. The agent may take up to one minute depending on local Ollama model load.
         </p>
       </Card>
 
@@ -119,7 +119,7 @@ export function RootCauseAgentPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="text-red-400" size={20} />
             <div>
-              <h3 className="text-sm font-semibold text-red-300">Echec du scan</h3>
+              <h3 className="text-sm font-semibold text-red-300">Scan failed</h3>
               <p className="mt-1 text-sm text-mutedText">{errorMessage}</p>
             </div>
           </div>
@@ -131,23 +131,23 @@ export function RootCauseAgentPage() {
           <Card className="p-6">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-mutedText">
               <ShieldAlert size={14} className="text-accent" />
-              Resume operationnel
+              Operational summary
             </div>
             <p className="mt-3 text-base leading-7 text-white">{result.summary}</p>
           </Card>
 
           <Card className="p-6">
-            <h3 className="text-sm uppercase tracking-[0.22em] text-mutedText">Cause racine</h3>
+            <h3 className="text-sm uppercase tracking-[0.22em] text-mutedText">Root cause</h3>
             <p className="mt-3 text-sm leading-7 text-slate-200">{result.rootCause}</p>
           </Card>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="p-6">
               <h3 className="text-sm uppercase tracking-[0.22em] text-mutedText">
-                Entites affectees ({result.affectedEntities.length})
+                Affected entities ({result.affectedEntities.length})
               </h3>
               {result.affectedEntities.length === 0 ? (
-                <p className="mt-3 text-sm text-mutedText">Aucune entite explicitement affectee.</p>
+                <p className="mt-3 text-sm text-mutedText">No explicitly affected entity.</p>
               ) : (
                 <ul className="mt-3 space-y-2">
                   {result.affectedEntities.map((entity) => (
@@ -164,10 +164,10 @@ export function RootCauseAgentPage() {
 
             <Card className="p-6">
               <h3 className="text-sm uppercase tracking-[0.22em] text-mutedText">
-                Actions recommandees ({result.recommendedAction.length})
+                Recommended actions ({result.recommendedAction.length})
               </h3>
               {result.recommendedAction.length === 0 ? (
-                <p className="mt-3 text-sm text-mutedText">Aucune action recommandee.</p>
+                <p className="mt-3 text-sm text-mutedText">No recommended action.</p>
               ) : (
                 <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-200">
                   {result.recommendedAction.map((action, index) => (

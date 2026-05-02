@@ -23,13 +23,13 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   {
-    label: "Dashboard National",
+    label: "National Dashboard",
     to: "/dashboard/national",
     icon: BarChart3,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
   },
   {
-    label: "Dashboard Entite",
+    label: "Entity Dashboard",
     to: "/dashboard/region",
     icon: RadioTower,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],

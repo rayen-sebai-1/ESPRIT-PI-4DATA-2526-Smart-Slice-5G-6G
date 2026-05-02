@@ -41,7 +41,7 @@ export function SlaTrendChart({
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-white">{title}</h3>
         <p className="text-sm text-mutedText">
-          {description ?? "Evolution des indicateurs exposes par dashboard-service."}
+          {description ?? "Trend of indicators exposed by dashboard-service."}
         </p>
       </div>
       <div className="mb-5 flex flex-wrap gap-3">

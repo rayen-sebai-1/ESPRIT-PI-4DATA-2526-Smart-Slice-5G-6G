@@ -395,7 +395,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
               <div className="rounded-2xl border border-border bg-background/70 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-mutedText">
                   <ShieldAlert size={14} />
-                  Risque
+                  Risk
                 </div>
                 <div className="mt-2 text-xl font-semibold text-white">
                   {formatNumber(activeRegion.high_risk_sessions_count)}

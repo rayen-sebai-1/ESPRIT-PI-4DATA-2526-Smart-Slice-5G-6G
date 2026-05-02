@@ -23,7 +23,7 @@ interface MlopsContext {
 }
 
 export function MlopsModelsPage() {
-  usePageTitle("MLOps - Modeles");
+  usePageTitle("MLOps - Models");
   const { readOnly } = useOutletContext<MlopsContext>();
   const queryClient = useQueryClient();
 
@@ -44,7 +44,7 @@ export function MlopsModelsPage() {
       setMessage(response.detail);
       await queryClient.invalidateQueries({ queryKey: ["mlops"] });
     },
-    onError: () => setMessage("Echec de la promotion."),
+    onError: () => setMessage("Promotion failed."),
   });
 
   const rollbackMutation = useMutation({
@@ -53,16 +53,16 @@ export function MlopsModelsPage() {
       setMessage(response.detail);
       await queryClient.invalidateQueries({ queryKey: ["mlops"] });
     },
-    onError: () => setMessage("Echec du rollback."),
+    onError: () => setMessage("Rollback failed."),
   });
 
   if (modelsQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement des modeles...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading models...</div>;
   }
 
   if (modelsQuery.isError || !modelsQuery.data) {
     return (
-      <EmptyState title="Modeles indisponibles" description="Le backend n'a pas pu lire la liste des modeles." />
+      <EmptyState title="Models unavailable" description="The backend could not read the models list." />
     );
   }
 
@@ -76,7 +76,7 @@ export function MlopsModelsPage() {
     }
     if (action === "validate") {
       void queryClient.invalidateQueries({ queryKey: ["mlops", "models", selected] });
-      setMessage(`Validation rafraichie pour ${selected}.`);
+      setMessage(`Validation refreshed for ${selected}.`);
     }
     setAction(null);
   };
@@ -91,12 +91,12 @@ export function MlopsModelsPage() {
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-white">Modeles disponibles</h3>
-              <p className="text-sm text-mutedText">Lecture du registre + dossier promoted/.</p>
+              <h3 className="text-lg font-semibold text-white">Available models</h3>
+              <p className="text-sm text-mutedText">Reading registry + promoted/ folder.</p>
             </div>
             <Button variant="secondary" onClick={() => void modelsQuery.refetch()}>
               <RefreshCcw size={16} />
-              Rafraichir
+              Refresh
             </Button>
           </div>
           <ul className="space-y-2">
@@ -116,7 +116,7 @@ export function MlopsModelsPage() {
                     <span className={healthClassName(row.health)}>{healthLabel(row.health)}</span>
                   </div>
                   <div className="mt-1 text-xs text-mutedText">
-                    {row.promoted?.framework ?? row.registry?.framework ?? "framework inconnu"} ·{" "}
+                    {row.promoted?.framework ?? row.registry?.framework ?? "unknown framework"} ·{" "}
                     v{row.promoted?.version ?? row.registry?.version ?? "?"}
                   </div>
                 </button>
@@ -127,16 +127,16 @@ export function MlopsModelsPage() {
 
         <Card className="p-5">
           {!selected ? (
-            <p className="text-sm text-mutedText">Selectionne un modele pour voir le detail.</p>
+            <p className="text-sm text-mutedText">Select a model to view details.</p>
           ) : detailQuery.isLoading || !detail ? (
-            <p className="text-sm text-mutedText">Chargement du detail...</p>
+            <p className="text-sm text-mutedText">Loading details...</p>
           ) : (
             <div className="space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-white">{detail.deployment_name}</h3>
                   <p className="text-sm text-mutedText">
-                    Sante: <span className={healthClassName(detail.health)}>{healthLabel(detail.health)}</span>
+                    Health: <span className={healthClassName(detail.health)}>{healthLabel(detail.health)}</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -148,14 +148,14 @@ export function MlopsModelsPage() {
                     }}
                   >
                     <ShieldCheck size={16} />
-                    Valider modele
+                    Validate model
                   </Button>
                   <Button
                     variant="secondary"
                     onClick={() => void detailQuery.refetch()}
                   >
                     <RefreshCcw size={16} />
-                    Rafraichir
+                    Refresh
                   </Button>
                   <Button
                     onClick={() => {
@@ -165,7 +165,7 @@ export function MlopsModelsPage() {
                     disabled={readOnly || promoteMutation.isPending}
                   >
                     <Rocket size={16} />
-                    Promouvoir
+                    Promote
                   </Button>
                   <Button
                     variant="danger"
@@ -191,21 +191,21 @@ export function MlopsModelsPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Card className="p-4">
-                  <h4 className="text-sm font-semibold text-white">Modele promu</h4>
+                  <h4 className="text-sm font-semibold text-white">Promoted model</h4>
                   {detail.promoted ? (
                     <dl className="mt-3 space-y-1 text-xs text-mutedText">
-                      <Row label="Modele" value={detail.promoted.model_name} />
+                      <Row label="Model" value={detail.promoted.model_name} />
                       <Row label="Version" value={detail.promoted.version} />
                       <Row label="Framework" value={detail.promoted.framework} />
                       <Row label="Run id" value={detail.promoted.run_id} />
-                      <Row label="Mis a jour" value={detail.promoted.updated_at} />
+                      <Row label="Updated at" value={detail.promoted.updated_at} />
                       <Row
-                        label="Artefact ONNX"
-                        value={detail.promoted.artifact_available ? "disponible" : "absent"}
+                        label="ONNX artifact"
+                        value={detail.promoted.artifact_available ? "available" : "missing"}
                       />
                     </dl>
                   ) : (
-                    <p className="mt-3 text-xs text-mutedText">Pas de version promue.</p>
+                    <p className="mt-3 text-xs text-mutedText">No promoted version.</p>
                   )}
                 </Card>
 
@@ -218,16 +218,16 @@ export function MlopsModelsPage() {
                       <Row label="Quality gate" value={detail.registry.quality_gate_status} />
                       <Row label="Promotion" value={detail.registry.promotion_status} />
                       <Row label="ONNX export" value={detail.registry.onnx_export_status} />
-                      <Row label="Cree le" value={detail.registry.created_at} />
+                      <Row label="Created at" value={detail.registry.created_at} />
                     </dl>
                   ) : (
-                    <p className="mt-3 text-xs text-mutedText">Pas d'entree dans le registry.</p>
+                    <p className="mt-3 text-xs text-mutedText">No entry in registry.</p>
                   )}
                 </Card>
               </div>
 
               <Card className="p-4">
-                <h4 className="text-sm font-semibold text-white">Metriques cles</h4>
+                <h4 className="text-sm font-semibold text-white">Key metrics</h4>
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
                   {Object.entries(detail.promoted?.metrics ?? detail.registry?.metrics ?? {}).map(
                     ([key, value]) => (
@@ -248,16 +248,16 @@ export function MlopsModelsPage() {
 
       <ConfirmModal
         open={action === "promote"}
-        title="Promouvoir le modele ?"
-        description={`Tu vas demander la promotion du modele "${selected}". Cette action est tracee.`}
+        title="Promote model?"
+        description={`You are about to request promotion of model "${selected}". This action is logged.`}
         onConfirm={onConfirm}
         onCancel={() => setAction(null)}
-        confirmLabel="Promouvoir"
+        confirmLabel="Promote"
       />
       <ConfirmModal
         open={action === "rollback"}
-        title="Rollback du modele ?"
-        description={`Tu vas demander un rollback du modele "${selected}". L'action est consideree dangereuse.`}
+        title="Rollback model?"
+        description={`You are about to request rollback of model "${selected}". This action is considered risky.`}
         onConfirm={onConfirm}
         onCancel={() => setAction(null)}
         confirmLabel="Rollback"
@@ -265,11 +265,11 @@ export function MlopsModelsPage() {
       />
       <ConfirmModal
         open={action === "validate"}
-        title="Valider la metadata ?"
-        description={`Re-lecture des metadonnees pour "${selected}". Aucune modification cote serveur.`}
+        title="Validate metadata?"
+        description={`Re-reading metadata for "${selected}". No server-side modification.`}
         onConfirm={onConfirm}
         onCancel={() => setAction(null)}
-        confirmLabel="Valider"
+        confirmLabel="Validate"
       />
     </div>
   );

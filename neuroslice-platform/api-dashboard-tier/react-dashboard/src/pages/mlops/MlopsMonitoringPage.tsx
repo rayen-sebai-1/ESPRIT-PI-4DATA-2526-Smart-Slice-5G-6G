@@ -333,7 +333,7 @@ export function MlopsMonitoringPage() {
   });
 
   if (query.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement du monitoring...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading monitoring...</div>;
   }
   if (query.isError || !query.data) {
     return (

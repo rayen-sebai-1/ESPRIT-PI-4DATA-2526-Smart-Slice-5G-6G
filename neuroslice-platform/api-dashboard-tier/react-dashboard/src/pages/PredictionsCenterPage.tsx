@@ -34,7 +34,7 @@ function sortPredictions(items: PredictionResponse[], tab: PredictionTab) {
 }
 
 export function PredictionsCenterPage() {
-  usePageTitle("Prediction simple");
+  usePageTitle("Simple predictions");
 
   const { user } = useAuth();
   // NETWORK_MANAGER has read-only access; only ADMIN and NETWORK_OPERATOR can rerun
@@ -66,12 +66,12 @@ export function PredictionsCenterPage() {
   const runMutation = useMutation({
     mutationFn: runPrediction,
     onSuccess: async () => {
-      setMessage("Prediction relancee avec succes.");
+      setMessage("Prediction rerun successfully.");
       await queryClient.invalidateQueries({ queryKey: ["predictions"] });
       await queryClient.invalidateQueries({ queryKey: ["sessions"] });
     },
     onError: () => {
-      setMessage("La relance a echoue. Verifie le service central.");
+      setMessage("Rerun failed. Check the central service.");
     },
   });
 
@@ -93,14 +93,14 @@ export function PredictionsCenterPage() {
   }, [predictionsQuery.data?.items]);
 
   if (predictionsQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement des predictions...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading predictions...</div>;
   }
 
   if (predictionsQuery.isError) {
     return (
       <EmptyState
-        title="Predictions indisponibles"
-        description="Impossible de contacter le service central pour recuperer les scores."
+        title="Predictions unavailable"
+        description="Unable to contact the central service to fetch scores."
       />
     );
   }
@@ -109,12 +109,12 @@ export function PredictionsCenterPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Predictive monitoring"
-        title="Prediction simple"
-        description="Lecture simple des scores automatiques pour aider l'operateur a prioriser les sessions a surveiller."
+        title="Simple predictions"
+        description="Quick view of automatic scores to help the operator prioritize sessions to monitor."
         actions={
           <>
             <Select value={region} onChange={(event) => setRegion(event.target.value)}>
-              <option value="">Toutes les regions</option>
+              <option value="">All regions</option>
               {regionsQuery.data?.regions.map((item) => (
                 <option key={item.region_id} value={item.code}>
                   {item.name}
@@ -122,7 +122,7 @@ export function PredictionsCenterPage() {
               ))}
             </Select>
             <Select value={risk} onChange={(event) => setRisk(event.target.value as "" | RiskLevel)}>
-              <option value="">Tous les risques</option>
+              <option value="">All risks</option>
               <option value="LOW">LOW</option>
               <option value="MEDIUM">MEDIUM</option>
               <option value="HIGH">HIGH</option>
@@ -130,7 +130,7 @@ export function PredictionsCenterPage() {
             </Select>
             <Button variant="secondary" onClick={() => void predictionsQuery.refetch()}>
               <RefreshCcw size={16} />
-              Rafraichir
+              Refresh
             </Button>
           </>
         }
@@ -162,30 +162,30 @@ export function PredictionsCenterPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          title="SLA moyen"
+          title="Average SLA"
           value={formatPercent(stats.avgSla * 100)}
-          subtitle="Sur la page courante"
+          subtitle="On the current page"
           icon={<Gauge size={20} />}
           tone="accent"
         />
         <KpiCard
-          title="Congestion moyenne"
+          title="Average congestion"
           value={formatPercent(stats.avgCongestion * 100)}
-          subtitle="Sessions chargees"
+          subtitle="Loaded sessions"
           icon={<Waves size={20} />}
           tone={stats.avgCongestion >= 0.6 ? "warning" : "neutral"}
         />
         <KpiCard
-          title="Anomalie moyenne"
+          title="Average anomaly"
           value={formatPercent(stats.avgAnomaly * 100)}
-          subtitle="Sessions chargees"
+          subtitle="Loaded sessions"
           icon={<ShieldAlert size={20} />}
           tone={stats.avgAnomaly >= 0.6 ? "danger" : "neutral"}
         />
         <KpiCard
           title="Sessions high risk"
           value={formatNumber(stats.highRiskCount)}
-          subtitle="Scores critiques ou eleves"
+          subtitle="Critical or high scores"
           icon={<BarChart3 size={20} />}
           tone={stats.highRiskCount > 0 ? "danger" : "accent"}
         />
@@ -206,9 +206,9 @@ export function PredictionsCenterPage() {
 
             <Card className="p-5">
               <div className="mb-5">
-                <h3 className="text-lg font-semibold text-white">Focus prioritaire</h3>
+                <h3 className="text-lg font-semibold text-white">Priority focus</h3>
                 <p className="text-sm text-mutedText">
-                  Sessions les plus importantes selon l'onglet actif.
+                  Most important sessions based on the active tab.
                 </p>
               </div>
               <div className="space-y-3">
@@ -217,7 +217,7 @@ export function PredictionsCenterPage() {
                     <div className="text-sm font-medium text-white">{item.session_code}</div>
                     <div className="mt-1 text-xs text-mutedText">{item.region.name}</div>
                     <div className="mt-3 text-sm text-slate-200">
-                      {activeTab === "sla" ? "SLA " : activeTab === "congestion" ? "Congestion " : "Anomalie "}
+                      {activeTab === "sla" ? "SLA " : activeTab === "congestion" ? "Congestion " : "Anomaly "}
                       {activeTab === "sla"
                         ? formatPercent(item.sla_score * 100)
                         : activeTab === "congestion"
@@ -233,26 +233,26 @@ export function PredictionsCenterPage() {
           <Card className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
             <div className="text-sm text-mutedText">
               Page {predictionsQuery.data?.pagination.page} / {predictionsQuery.data?.pagination.total_pages} ·{" "}
-              {formatNumber(predictionsQuery.data?.pagination.total ?? 0)} predictions au total
+              {formatNumber(predictionsQuery.data?.pagination.total ?? 0)} total predictions
             </div>
             <div className="flex gap-3">
               <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
-                Precedent
+                Previous
               </Button>
               <Button
                 variant="secondary"
                 disabled={page >= (predictionsQuery.data?.pagination.total_pages ?? 1)}
                 onClick={() => setPage((value) => value + 1)}
               >
-                Suivant
+                Next
               </Button>
             </div>
           </Card>
         </>
       ) : (
         <EmptyState
-          title="Aucune prediction"
-          description="Aucun enregistrement ne correspond aux filtres actifs."
+          title="No prediction"
+          description="No record matches the active filters."
         />
       )}
     </div>

@@ -49,15 +49,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 600m
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVER_JVMFLAGS: "-Xms128m -Xmx256m"
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -72,6 +81,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
@@ -79,6 +89,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
   influxdb:
     image: influxdb:2.7
@@ -91,8 +105,13 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: neuroslice
       DOCKER_INFLUXDB_INIT_BUCKET: telemetry
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: neuroslice_token_12345
+      DOCKER_INFLUXDB_INIT_RETENTION: 72h
     volumes:
       - influxdb_data:/var/lib/influxdb2
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   postgres:
     image: postgres:16
@@ -123,6 +142,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   mlops-postgres:
     image: postgres:16-alpine
@@ -144,6 +167,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   minio:
     image: minio/minio:RELEASE.2024-06-29T01-20-47Z
@@ -162,6 +189,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
@@ -179,6 +210,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MLFLOW_ARTIFACT_BUCKET: ${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}
+    deploy:
+      resources:
+        limits:
+          memory: 128m
 
   mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.13.0
@@ -223,6 +258,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -230,6 +269,7 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
       - target: 9200
         published: 9200
@@ -237,6 +277,10 @@ services:
         mode: host
     volumes:
       - es_data:/usr/share/elasticsearch/data
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
@@ -253,6 +297,11 @@ services:
       - "8081:8081"
     volumes:
       - ../mlops-tier/batch-orchestrator/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     profiles: ["mlops"]
@@ -264,6 +313,10 @@ services:
       XPACK_SECURITY_ENABLED: "false"
     ports:
       - "${KIBANA_PORT:-5601}:5601"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   mlops-api:
     build:
@@ -295,6 +348,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
 
   mlops-worker:
     build:
@@ -314,6 +371,11 @@ services:
         condition: service_started
       elasticsearch:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
 
   mlops-runner:
     build:
@@ -343,6 +405,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   mlops-drift-monitor:
     build:
@@ -379,6 +445,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   adapter-ves:
     build:
@@ -395,6 +465,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   adapter-netconf:
     build:
@@ -411,6 +485,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   normalizer:
     build:
@@ -426,6 +504,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   congestion-detector:
     build:
@@ -477,6 +559,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   slice-classifier:
     build:
@@ -529,6 +615,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   sla-assurance:
     build:
@@ -581,6 +671,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   online-evaluator:
     build:
@@ -612,6 +706,10 @@ services:
         condition: service_started
       slice-classifier:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   alert-management:
     build:
@@ -627,6 +725,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   policy-control:
     build:
@@ -644,6 +746,10 @@ services:
         condition: service_healthy
       alert-management:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   fault-engine:
     build:
@@ -660,6 +766,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   simulator-core:
     build:
@@ -679,6 +789,10 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   simulator-edge:
     build:
@@ -698,6 +812,10 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   simulator-ran:
     build:
@@ -717,6 +835,10 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   root-cause:
     build:
@@ -744,6 +866,10 @@ services:
         condition: service_healthy
       influxdb:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   copilot-agent:
     build:
@@ -770,6 +896,10 @@ services:
         condition: service_healthy
       influxdb:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   api-bff-service:
     build:
@@ -795,6 +925,10 @@ services:
         condition: service_started
       fault-engine:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   telemetry-exporter:
     build:
@@ -813,6 +947,10 @@ services:
         condition: service_healthy
       influxdb:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   auth-service:
     build:
@@ -854,6 +992,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   dashboard-backend:
     build:
@@ -917,6 +1059,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   kong-gateway:
     build:
@@ -943,6 +1089,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   react-dashboard:
     build:
@@ -956,6 +1106,10 @@ services:
     depends_on:
       kong-gateway:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
 
   # ---------------------------------------------------------------------------
   # Drift Monitor — Alibi Detect MMD drift detection for Scenario B
@@ -1030,6 +1184,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 800m
 
   prometheus:
     image: prom/prometheus:v2.51.2
@@ -1041,6 +1199,8 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=2GB"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
@@ -1054,6 +1214,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   grafana:
     image: grafana/grafana:10.4.2
@@ -1073,6 +1237,10 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - influxdb
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
 volumes:
   redis_data:

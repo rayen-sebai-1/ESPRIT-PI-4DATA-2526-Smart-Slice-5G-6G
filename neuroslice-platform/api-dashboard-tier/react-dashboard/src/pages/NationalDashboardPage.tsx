@@ -81,7 +81,7 @@ function riskTone(value: number) {
 }
 
 export function NationalDashboardPage() {
-  usePageTitle("Dashboard National");
+  usePageTitle("National Dashboard");
   const navigate = useNavigate();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -151,14 +151,14 @@ export function NationalDashboardPage() {
   }, [liveEntities]);
 
   if (isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement du dashboard national...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading national dashboard...</div>;
   }
 
   if (isError || !data) {
     return (
       <EmptyState
-        title="Dashboard indisponible"
-        description="Les donnees du tableau de bord ne sont pas disponibles pour le moment. Tu peux relancer la page."
+        title="Dashboard unavailable"
+        description="Dashboard data is currently unavailable. You can refresh the page."
       />
     );
   }
@@ -177,59 +177,59 @@ export function NationalDashboardPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Network operations center"
-        title="Dashboard National"
-        description="Supervision temps reel de l'etat global du reseau: entites degradees, faults actifs, congestion, SLA et signaux AIOps."
+        title="National Dashboard"
+        description="Real-time supervision of overall network state: degraded entities, active faults, congestion, SLA, and AIOps signals."
         actions={
           <button
             className="rounded-2xl border border-border bg-cardAlt/70 px-4 py-3 text-sm text-slate-200 transition hover:border-accent/40 hover:bg-card"
             onClick={() => void refetch()}
             type="button"
           >
-            Derniere generation {formatDate(overview.generated_at)}
+            Latest generation {formatDate(overview.generated_at)}
           </button>
         }
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <KpiCard
-          title="Health reseau"
+          title="Network health"
           value={formatPercent(networkHealth)}
-          subtitle="Moyenne live des health scores"
+          subtitle="Live average health scores"
           icon={<Gauge size={20} />}
           tone={healthTone(networkHealth)}
         />
         <KpiCard
-          title="Latence moyenne"
+          title="Average latency"
           value={`${overview.avg_latency_ms.toFixed(1)} ms`}
-          subtitle="Signal de performance bout-en-bout"
+          subtitle="End-to-end performance signal"
           icon={<Activity size={20} />}
           tone="neutral"
         />
         <KpiCard
-          title="Congestion reseau"
+          title="Network congestion"
           value={formatPercent(networkCongestion)}
-          subtitle="Moyenne live des scores congestion"
+          subtitle="Live average congestion scores"
           icon={<Network size={20} />}
           tone={riskTone(networkCongestion)}
         />
         <KpiCard
-          title="Faults actifs"
+          title="Active faults"
           value={formatNumber(activeFaults)}
-          subtitle="Incidents ouverts sur le reseau"
+          subtitle="Open incidents on the network"
           icon={<AlertTriangle size={20} />}
           tone={activeFaults > 0 ? "warning" : "neutral"}
         />
         <KpiCard
-          title="Entites live"
+          title="Live entities"
           value={formatNumber(liveOverview?.total_entities ?? liveEntities.length ?? overview.sessions_count)}
-          subtitle={`${formatNumber(liveNetworkStats.degradedEntities)} entites degradees`}
+          subtitle={`${formatNumber(liveNetworkStats.degradedEntities)} degraded entities`}
           icon={<RadioTower size={20} />}
           tone="accent"
         />
         <KpiCard
-          title="Alertes AIOps"
+          title="AIOps alerts"
           value={formatNumber(liveAiopsAlerts || overview.anomalies_count)}
-          subtitle="Congestion, SLA risk et mismatch"
+          subtitle="Congestion, SLA risk, and mismatch"
           icon={<ShieldAlert size={20} />}
           tone={(liveAiopsAlerts || overview.anomalies_count) > 0 ? "danger" : "neutral"}
         />
@@ -243,10 +243,10 @@ export function NationalDashboardPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <Card className="p-5">
           <div className="mb-5">
-            <h3 className="text-lg font-semibold text-white">Top entites a risque</h3>
+            <h3 className="text-lg font-semibold text-white">Top at-risk entities</h3>
             <p className="text-sm text-mutedText">
-              Entites avec le plus de signaux problematiques: health faible, congestion,
-              perte paquet, utilisation radio ou latence.
+              Entities with the most problematic signals: low health, congestion,
+              packet loss, radio utilization, or latency.
             </p>
           </div>
 
@@ -285,51 +285,51 @@ export function NationalDashboardPage() {
                     <span>Congestion {formatPercent(congestion * 100, 0)}</span>
                     {reasons.length
                       ? reasons.map((reason) => <span key={reason}>{reason}</span>)
-                      : <span>surveillance standard</span>}
+                      : <span>standard monitoring</span>}
                   </div>
                 </div>
               </button>
             ))}
             {!topRiskEntities.length ? (
               <div className="rounded-2xl border border-border bg-cardAlt/70 p-4 text-sm text-mutedText">
-                Aucune entite live disponible pour le classement. Le dashboard reste disponible avec
-                les indicateurs nationaux existants.
+                No live entity available for ranking. The dashboard remains available with
+                existing national indicators.
               </div>
             ) : null}
           </div>
         </Card>
 
         <EmptyState
-          title="Evolution SLA nationale en attente"
-          description="Cet espace est reserve a une future courbe d'evolution nationale. La mise en page est deja prete pour l'accueillir."
+          title="National SLA trend pending"
+          description="This space is reserved for a future national trend curve. The layout is already ready to host it."
         />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <Card className="p-5">
           <div className="mb-5">
-            <h3 className="text-lg font-semibold text-white">Synthese exploitation</h3>
+            <h3 className="text-lg font-semibold text-white">Operations summary</h3>
             <p className="text-sm text-mutedText">
-              Lecture rapide pour la coordination NOC nationale.
+              Quick read for national NOC coordination.
             </p>
           </div>
           <div className="space-y-4 text-sm leading-6 text-slate-200">
             <p>
-              L'entite actuellement la plus prioritaire est{" "}
-              <strong>{mostRiskyEntity?.entity.entityId ?? "N/A"}</strong>, avec un score risque de{" "}
+              The currently highest-priority entity is{" "}
+              <strong>{mostRiskyEntity?.entity.entityId ?? "N/A"}</strong>, with a risk score of{" "}
               {mostRiskyEntity?.riskScore ?? 0}.
             </p>
             <p>
-              Le reseau expose {formatNumber(activeFaults)} fault(s) actif(s) et{" "}
-              {formatNumber(liveNetworkStats.degradedEntities)} entite(s) sous health score critique.
+              The network has {formatNumber(activeFaults)} active fault(s) and{" "}
+              {formatNumber(liveNetworkStats.degradedEntities)} entity(s) under critical health score.
             </p>
             <p>
-              Les actions a prioriser cote NOC consistent a ouvrir les entites les plus degradees,
-              verifier les KPI associes, puis correlier les evenements dans le feed reseau national.
+              Priority actions for the NOC are to open the most degraded entities,
+              verify related KPIs, then correlate events in the national network feed.
             </p>
             <div className="rounded-2xl border border-border bg-cardAlt/70 p-4 text-mutedText">
               {truncateText(
-                "Cette synthese combine les donnees de dashboard existantes avec le live state Redis et les evenements InfluxDB pour donner une lecture operateur globale.",
+                "This summary combines existing dashboard data with Redis live state and InfluxDB events to provide an overall operator view.",
                 180,
               )}
             </div>
@@ -337,16 +337,16 @@ export function NationalDashboardPage() {
         </Card>
 
         <EmptyState
-          title="Distribution nationale des slices en attente"
-          description="Cet espace est reserve a une future vue de repartition des slices sans modifier la template actuelle."
+          title="National slice distribution pending"
+          description="This space is reserved for a future slice distribution view without changing the current template."
         />
       </section>
 
       <section className="space-y-4">
         <div>
-          <h3 className="text-lg font-semibold text-white">Logs reseau (national)</h3>
+          <h3 className="text-lg font-semibold text-white">Network logs (national)</h3>
           <p className="text-sm text-mutedText">
-            Chronologie live des faults, breaches KPI et predictions AIOps derivees d'InfluxDB.
+            Live timeline of faults, KPI breaches, and AIOps predictions derived from InfluxDB.
           </p>
         </div>
         <NetworkLogsFeed scope="national" />

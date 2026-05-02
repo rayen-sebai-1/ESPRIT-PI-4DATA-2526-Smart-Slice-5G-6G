@@ -91,7 +91,7 @@ function riskTone(value: number) {
 }
 
 export function RegionalDashboardPage() {
-  usePageTitle("Dashboard Entite");
+  usePageTitle("Entity Dashboard");
 
   const navigate = useNavigate();
   const params = useParams();
@@ -160,14 +160,14 @@ export function RegionalDashboardPage() {
   const utilization = asNumber(kpis.rbUtilizationPct ?? kpis.cpuUtilPct ?? kpis.queueDepthPct);
 
   if (entitiesQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement du dashboard entite...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading entity dashboard...</div>;
   }
 
   if (entitiesQuery.isError) {
     return (
       <EmptyState
-        title="Live entities indisponibles"
-        description="Le BFF live state n'est pas accessible pour le moment. Verifie api-bff-service et Redis."
+        title="Live entities unavailable"
+        description="The live state BFF is not accessible at the moment. Check api-bff-service and Redis."
       />
     );
   }
@@ -175,8 +175,8 @@ export function RegionalDashboardPage() {
   if (!entities.length) {
     return (
       <EmptyState
-        title="Aucune entite live"
-        description="Aucune entite n'est encore exposee dans le live state. Lance les simulateurs puis recharge cette page."
+        title="No live entity"
+        description="No entity is currently exposed in live state. Start the simulators, then reload this page."
       />
     );
   }
@@ -185,8 +185,8 @@ export function RegionalDashboardPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Entity supervision"
-        title={`Dashboard Entite - ${entityLabel(selectedEntity)}`}
-        description="Vue operationnelle par entite reseau: KPIs live, etats AIOps et logs InfluxDB filtres."
+        title={`Entity Dashboard - ${entityLabel(selectedEntity)}`}
+        description="Operational view by network entity: live KPIs, AIOps states, and filtered InfluxDB logs."
         actions={
           <Select
             className="min-w-72"
@@ -210,21 +210,21 @@ export function RegionalDashboardPage() {
         <KpiCard
           title="Health score"
           value={formatPercent(healthPercent)}
-          subtitle="Etat derive du normaliseur"
+          subtitle="State derived from the normalizer"
           icon={<HeartPulse size={20} />}
           tone={healthTone(healthPercent)}
         />
         <KpiCard
           title="Congestion"
           value={formatPercent(congestionPercent)}
-          subtitle="Score derive live"
+          subtitle="Live-derived score"
           icon={<Network size={20} />}
           tone={riskTone(congestionPercent)}
         />
         <KpiCard
           title="Packet loss"
           value={formatPacketLoss(packetLoss)}
-          subtitle="KPI telemetrie"
+          subtitle="Telemetry KPI"
           icon={<AlertTriangle size={20} />}
           tone={packetLoss >= 1 ? "warning" : "neutral"}
         />
@@ -242,8 +242,8 @@ export function RegionalDashboardPage() {
           <div className="border-b border-border p-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-white">Entites reseau</h3>
-                <p className="text-sm text-mutedText">{formatNumber(filteredEntities.length)} entites affichees</p>
+                <h3 className="text-lg font-semibold text-white">Network entities</h3>
+                <p className="text-sm text-mutedText">{formatNumber(filteredEntities.length)} displayed entities</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
                 <div className="relative">
@@ -252,11 +252,11 @@ export function RegionalDashboardPage() {
                     className="pl-9"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Chercher entite"
+                    placeholder="Search entity"
                   />
                 </div>
                 <Select value={domainFilter} onChange={(event) => setDomainFilter(event.target.value)}>
-                  <option value="">Tous domaines</option>
+                  <option value="">All domains</option>
                   <option value="core">Core</option>
                   <option value="edge">Edge</option>
                   <option value="ran">RAN</option>
@@ -307,7 +307,7 @@ export function RegionalDashboardPage() {
           <div className="mb-5">
             <h3 className="text-lg font-semibold text-white">Snapshot live</h3>
             <p className="text-sm text-mutedText">
-              Derniere mise a jour {formatDate(selectedEntity?.lastUpdated ?? selectedEntity?.timestamp ?? null)}
+              Latest update {formatDate(selectedEntity?.lastUpdated ?? selectedEntity?.timestamp ?? null)}
             </p>
           </div>
 
@@ -347,9 +347,9 @@ export function RegionalDashboardPage() {
 
       <section className="space-y-4">
         <div>
-          <h3 className="text-lg font-semibold text-white">Logs reseau - {selectedEntity?.entityId}</h3>
+          <h3 className="text-lg font-semibold text-white">Network logs - {selectedEntity?.entityId}</h3>
           <p className="text-sm text-mutedText">
-            Feed live filtre cote serveur sur l'entite selectionnee.
+            Live feed filtered server-side on the selected entity.
           </p>
         </div>
         <NetworkLogsFeed
