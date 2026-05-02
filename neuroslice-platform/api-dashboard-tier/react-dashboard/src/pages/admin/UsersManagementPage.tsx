@@ -64,7 +64,7 @@ function RoleBadge({ role }: { role: UserRole }) {
 }
 
 export function UsersManagementPage() {
-  usePageTitle("Gestion utilisateurs");
+  usePageTitle("User management");
 
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -94,7 +94,7 @@ export function UsersManagementPage() {
       setFormError(null);
     },
     onError: (error) => {
-      setFormError(extractErrorMessage(error, "La creation a echoue."));
+      setFormError(extractErrorMessage(error, "Creation failed."));
     },
   });
 
@@ -111,7 +111,7 @@ export function UsersManagementPage() {
       setResetError(null);
     },
     onError: (error) => {
-      const message = extractErrorMessage(error, "La mise a jour a echoue.");
+      const message = extractErrorMessage(error, "Update failed.");
       if (resetPasswordFor) {
         setResetError(message);
       } else {
@@ -144,11 +144,11 @@ export function UsersManagementPage() {
     event.preventDefault();
     setFormError(null);
     if (form.password.length < 8) {
-      setFormError("Le mot de passe doit contenir au moins 8 caracteres.");
+      setFormError("Password must contain at least 8 characters.");
       return;
     }
     if (form.full_name.trim().length < 3) {
-      setFormError("Le nom complet doit contenir au moins 3 caracteres.");
+      setFormError("Full name must contain at least 3 characters.");
       return;
     }
     createMutation.mutate(form);
@@ -189,7 +189,7 @@ export function UsersManagementPage() {
     event.preventDefault();
     if (!resetPasswordFor) return;
     if (newPassword.length < 8) {
-      setResetError("Le mot de passe doit contenir au moins 8 caracteres.");
+      setResetError("Password must contain at least 8 characters.");
       return;
     }
     updateMutation.mutate({
@@ -202,7 +202,7 @@ export function UsersManagementPage() {
     if (user.role === "ADMIN") return;
     if (currentUser?.id === user.id) return;
     const confirmed = window.confirm(
-      `Retirer le compte de ${user.full_name} (${user.email}) ? L'utilisateur sera desactive et conserve dans l'audit.`,
+      `Remove the account for ${user.full_name} (${user.email})? The user will be disabled and kept in audit logs.`,
     );
     if (!confirmed) return;
     deleteMutation.mutate(user.id);
@@ -212,8 +212,8 @@ export function UsersManagementPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Admin console"
-        title="Gestion des utilisateurs"
-        description="Provisionne les acces a la plateforme : NOC, Manager reseau et Data / MLOps Engineer. Les administrateurs ne sont ni modifiables ni supprimables depuis cette interface."
+        title="User management"
+        description="Provision platform access: NOC, Network Manager, and Data / MLOps Engineer. Administrators cannot be modified or deleted from this interface."
         actions={
           <Button
             type="button"
@@ -225,12 +225,12 @@ export function UsersManagementPage() {
             {isFormOpen ? (
               <>
                 <X size={16} />
-                Fermer le formulaire
+                Close form
               </>
             ) : (
               <>
                 <UserPlus size={16} />
-                Nouvel utilisateur
+                New user
               </>
             )}
           </Button>
@@ -244,12 +244,12 @@ export function UsersManagementPage() {
             <p className="mt-3 text-3xl font-semibold text-white">{totalsByRole[role]}</p>
             <p className="mt-2 text-xs text-mutedText">
               {role === "ADMIN"
-                ? "Administrateurs de la plateforme"
+                ? "Platform administrators"
                 : role === "NETWORK_OPERATOR"
-                  ? "NOC en supervision operationnelle"
+                  ? "NOC in operational supervision"
                   : role === "NETWORK_MANAGER"
-                    ? "Managers avec vue strategique"
-                    : "Data / MLOps orientes modeles & pipelines"}
+                    ? "Managers with strategic visibility"
+                    : "Data / MLOps focused on models and pipelines"}
             </p>
           </Card>
         ))}
@@ -257,15 +257,15 @@ export function UsersManagementPage() {
 
       {isFormOpen ? (
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-white">Creer un nouveau compte</h3>
+          <h3 className="text-lg font-semibold text-white">Create a new account</h3>
           <p className="mt-2 text-sm text-mutedText">
-            L'utilisateur pourra se connecter immediatement avec l'email et le mot de passe que tu
-            saisis. Tu peux changer le mot de passe plus tard via "Reinitialiser".
+            The user can sign in immediately with the email and password you enter.
+            You can change the password later via "Reset".
           </p>
           <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={handleCreate}>
             <div>
               <label className="mb-2 block text-sm text-slate-200" htmlFor="new_full_name">
-                Nom complet
+                Full name
               </label>
               <Input
                 id="new_full_name"
@@ -306,7 +306,7 @@ export function UsersManagementPage() {
             </div>
             <div>
               <label className="mb-2 block text-sm text-slate-200" htmlFor="new_password">
-                Mot de passe initial
+                Initial password
               </label>
               <Input
                 id="new_password"
@@ -324,7 +324,7 @@ export function UsersManagementPage() {
             ) : null}
             <div className="flex gap-3 md:col-span-2">
               <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Creation..." : "Creer le compte"}
+                {createMutation.isPending ? "Creating..." : "Create account"}
               </Button>
               <Button
                 type="button"
@@ -335,7 +335,7 @@ export function UsersManagementPage() {
                   setFormError(null);
                 }}
               >
-                Annuler
+                Cancel
               </Button>
             </div>
           </form>
@@ -344,32 +344,32 @@ export function UsersManagementPage() {
 
       <Card className="p-0">
         <div className="border-b border-white/5 p-5">
-          <h3 className="text-lg font-semibold text-white">Comptes provisionnes</h3>
+          <h3 className="text-lg font-semibold text-white">Provisioned accounts</h3>
           <p className="mt-1 text-sm text-mutedText">
-            {users.length} compte(s) enregistre(s) dans la plateforme.
+            {users.length} account(s) registered on the platform.
           </p>
         </div>
 
         {usersQuery.isLoading ? (
-          <div className="p-6 text-sm text-mutedText">Chargement des utilisateurs...</div>
+          <div className="p-6 text-sm text-mutedText">Loading users...</div>
         ) : usersQuery.isError ? (
           <EmptyState
-            title="Liste indisponible"
-            description="Impossible de recuperer les utilisateurs. Verifie que l'API auth est demarree."
+            title="List unavailable"
+            description="Unable to retrieve users. Check that the auth API is running."
           />
         ) : users.length === 0 ? (
           <EmptyState
-            title="Aucun utilisateur"
-            description="Cree le premier compte via le bouton 'Nouvel utilisateur'."
+            title="No user"
+            description="Create the first account using the 'New user' button."
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/5 text-xs uppercase tracking-[0.18em] text-mutedText">
-                  <th className="px-5 py-4">Utilisateur</th>
+                  <th className="px-5 py-4">User</th>
                   <th className="px-5 py-4">Role</th>
-                  <th className="px-5 py-4">Etat</th>
+                  <th className="px-5 py-4">Status</th>
                   <th className="px-5 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -402,7 +402,7 @@ export function UsersManagementPage() {
                               user.is_active ? "bg-emerald-300" : "bg-slate-400"
                             }`}
                           />
-                          {user.is_active ? "Actif" : "Desactive"}
+                          {user.is_active ? "Active" : "Disabled"}
                         </span>
                       </td>
                       <td className="px-5 py-4">
@@ -413,10 +413,10 @@ export function UsersManagementPage() {
                             size="sm"
                             onClick={() => openEdit(user)}
                             disabled={isAdminRow}
-                            title={isAdminRow ? "Le profil admin est protege" : "Modifier"}
+                            title={isAdminRow ? "Admin profile is protected" : "Edit"}
                           >
                             <Pencil size={14} />
-                            Modifier
+                            Edit
                           </Button>
                           <Button
                             type="button"
@@ -429,7 +429,7 @@ export function UsersManagementPage() {
                             }}
                           >
                             <KeyRound size={14} />
-                            Reinitialiser
+                            Reset
                           </Button>
                           <Button
                             type="button"
@@ -439,14 +439,14 @@ export function UsersManagementPage() {
                             disabled={isAdminRow || isSelf}
                             title={
                               isAdminRow
-                                ? "Un administrateur ne peut pas etre desactive"
+                                ? "An administrator cannot be disabled"
                                 : user.is_active
-                                  ? "Desactiver le compte"
-                                  : "Reactiver le compte"
+                                  ? "Disable account"
+                                  : "Re-enable account"
                             }
                           >
                             <Power size={14} />
-                            {user.is_active ? "Desactiver" : "Reactiver"}
+                            {user.is_active ? "Disable" : "Re-enable"}
                           </Button>
                           <Button
                             type="button"
@@ -456,14 +456,14 @@ export function UsersManagementPage() {
                             disabled={isAdminRow || isSelf}
                             title={
                               isAdminRow
-                                ? "Un administrateur ne peut pas etre supprime"
+                                ? "An administrator cannot be deleted"
                                 : isSelf
-                                  ? "Tu ne peux pas supprimer ton propre compte"
-                                  : "Supprimer"
+                                  ? "You cannot delete your own account"
+                                  : "Delete"
                             }
                           >
                             <Trash2 size={14} />
-                            Supprimer
+                            Delete
                           </Button>
                         </div>
                       </td>
@@ -485,7 +485,7 @@ export function UsersManagementPage() {
           <Card className="w-full max-w-lg p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-mutedText">Modifier</p>
+                <p className="text-xs uppercase tracking-[0.24em] text-mutedText">Edit</p>
                 <h3 className="mt-2 text-lg font-semibold text-white">{editingUser.email}</h3>
               </div>
               <button
@@ -502,7 +502,7 @@ export function UsersManagementPage() {
             <form className="mt-5 space-y-4" onSubmit={handleEditSubmit}>
               <div>
                 <label className="mb-2 block text-sm text-slate-200" htmlFor="edit_full_name">
-                  Nom complet
+                  Full name
                 </label>
                 <Input
                   id="edit_full_name"
@@ -541,7 +541,7 @@ export function UsersManagementPage() {
               ) : null}
               <div className="flex gap-3">
                 <Button type="submit" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}
+                  {updateMutation.isPending ? "Saving..." : "Save"}
                 </Button>
                 <Button
                   type="button"
@@ -551,7 +551,7 @@ export function UsersManagementPage() {
                     setEditError(null);
                   }}
                 >
-                  Annuler
+                  Cancel
                 </Button>
               </div>
             </form>
@@ -569,14 +569,14 @@ export function UsersManagementPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-mutedText">
-                  Reinitialiser le mot de passe
+                  Reset password
                 </p>
                 <h3 className="mt-2 text-lg font-semibold text-white">
                   {resetPasswordFor.email}
                 </h3>
                 <p className="mt-2 text-sm text-mutedText">
-                  Le nouveau mot de passe remplace l'actuel. Transmets-le en lieu sur a
-                  l'utilisateur.
+                  The new password replaces the current one. Share it securely with
+                  the user.
                 </p>
               </div>
               <button
@@ -593,7 +593,7 @@ export function UsersManagementPage() {
             <form className="mt-5 space-y-4" onSubmit={handleResetPassword}>
               <div>
                 <label className="mb-2 block text-sm text-slate-200" htmlFor="reset_password">
-                  Nouveau mot de passe
+                  New password
                 </label>
                 <Input
                   id="reset_password"
@@ -611,7 +611,7 @@ export function UsersManagementPage() {
               ) : null}
               <div className="flex gap-3">
                 <Button type="submit" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? "Mise a jour..." : "Valider"}
+                  {updateMutation.isPending ? "Updating..." : "Confirm"}
                 </Button>
                 <Button
                   type="button"
@@ -621,7 +621,7 @@ export function UsersManagementPage() {
                     setResetError(null);
                   }}
                 >
-                  Annuler
+                  Cancel
                 </Button>
               </div>
             </form>

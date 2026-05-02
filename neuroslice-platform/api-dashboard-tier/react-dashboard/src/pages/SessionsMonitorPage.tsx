@@ -82,14 +82,14 @@ export function SessionsMonitorPage() {
   }, [filteredSessions]);
 
   if (sessionsQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement des sessions...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading sessions...</div>;
   }
 
   if (sessionsQuery.isError) {
     return (
       <EmptyState
-        title="Sessions indisponibles"
-        description="Impossible de recuperer la liste des sessions depuis session-service."
+        title="Sessions unavailable"
+        description="Unable to retrieve the sessions list from session-service."
       />
     );
   }
@@ -99,16 +99,16 @@ export function SessionsMonitorPage() {
       <PageHeader
         eyebrow="Operational sessions"
         title="Sessions Monitor"
-        description="Controle operationnel des sessions reseau, avec filtres par region, slice et niveau de risque, plus detail operateur a la demande."
+        description="Operational monitoring of network sessions, with filters by region, slice, and risk level, plus on-demand operator details."
         actions={
           <>
             <SearchInput
-              placeholder="Rechercher une session ou une region..."
+              placeholder="Search for a session or region..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
             <Select value={region} onChange={(event) => setRegion(event.target.value)}>
-              <option value="">Toutes les regions</option>
+              <option value="">All regions</option>
               {regionsQuery.data?.regions.map((item) => (
                 <option key={item.region_id} value={item.code}>
                   {item.name}
@@ -116,14 +116,14 @@ export function SessionsMonitorPage() {
               ))}
             </Select>
             <Select value={risk} onChange={(event) => setRisk(event.target.value as "" | RiskLevel)}>
-              <option value="">Tous les risques</option>
+              <option value="">All risks</option>
               <option value="LOW">LOW</option>
               <option value="MEDIUM">MEDIUM</option>
               <option value="HIGH">HIGH</option>
               <option value="CRITICAL">CRITICAL</option>
             </Select>
             <Select value={slice} onChange={(event) => setSlice(event.target.value as "" | SliceType)}>
-              <option value="">Tous les slices</option>
+              <option value="">All slices</option>
               <option value="eMBB">eMBB</option>
               <option value="URLLC">URLLC</option>
               <option value="mMTC">mMTC</option>
@@ -139,30 +139,30 @@ export function SessionsMonitorPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          title="Sessions affichees"
+          title="Displayed sessions"
           value={formatNumber(stats.itemsCount)}
-          subtitle="Resultat courant apres filtres"
+          subtitle="Current result after filters"
           icon={<Radar size={20} />}
           tone="accent"
         />
         <KpiCard
           title="High risk"
           value={formatNumber(stats.highRisk)}
-          subtitle="Sessions a escalader rapidement"
+          subtitle="Sessions to escalate quickly"
           icon={<ShieldAlert size={20} />}
           tone={stats.highRisk > 0 ? "danger" : "neutral"}
         />
         <KpiCard
-          title="Latency moyenne"
+          title="Average latency"
           value={`${stats.avgLatency.toFixed(1)} ms`}
-          subtitle="Sur la page courante"
+          subtitle="On the current page"
           icon={<Waves size={20} />}
           tone="neutral"
         />
         <KpiCard
-          title="Regions couvertes"
+          title="Covered regions"
           value={formatNumber(stats.coveredRegions)}
-          subtitle="Presence sur le snapshot filtre"
+          subtitle="Presence in the filtered snapshot"
           icon={<Filter size={20} />}
           tone="accent"
         />
@@ -176,26 +176,26 @@ export function SessionsMonitorPage() {
             <div className="text-sm text-mutedText">
               Page {sessionsQuery.data?.pagination.page} / {sessionsQuery.data?.pagination.total_pages} ·
               {" "}
-              {formatNumber(sessionsQuery.data?.pagination.total ?? 0)} sessions au total
+              {formatNumber(sessionsQuery.data?.pagination.total ?? 0)} total sessions
             </div>
             <div className="flex gap-3">
               <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
-                Precedent
+                Previous
               </Button>
               <Button
                 variant="secondary"
                 disabled={page >= (sessionsQuery.data?.pagination.total_pages ?? 1)}
                 onClick={() => setPage((value) => value + 1)}
               >
-                Suivant
+                Next
               </Button>
             </div>
           </Card>
         </>
       ) : (
         <EmptyState
-          title="Aucune session"
-          description="Aucune session ne correspond aux filtres selectionnes ou a la recherche locale en cours."
+          title="No session"
+          description="No session matches the selected filters or the current local search."
         />
       )}
 

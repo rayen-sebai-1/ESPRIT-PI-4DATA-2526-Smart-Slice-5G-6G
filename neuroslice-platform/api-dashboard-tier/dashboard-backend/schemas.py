@@ -410,6 +410,42 @@ class MlopsPipelineConfigResponse(BaseModel):
     message: str
 
 
+MlopsRetrainingRequestStatus = Literal[
+    "pending_approval",
+    "approved",
+    "rejected",
+    "running",
+    "completed",
+    "failed",
+    "skipped",
+]
+
+
+class MlopsRetrainingRequest(BaseModel):
+    id: str
+    model: str
+    model_internal: str | None = None
+    pipeline_action: str | None = None
+    reason: str
+    anomaly_count: int
+    threshold: int
+    status: MlopsRetrainingRequestStatus
+    created_at: str
+    approved_by: str | None = None
+    approved_at: str | None = None
+    executed_by: str | None = None
+    executed_at: str | None = None
+    completed_at: str | None = None
+    updated_at: str | None = None
+    execution_run_id: str | None = None
+    execution_detail: str | None = None
+
+
+class MlopsRetrainingRequestListResponse(BaseModel):
+    count: int
+    items: list[MlopsRetrainingRequest]
+
+
 class AgenticHealthResponse(BaseModel):
     root_cause: str
     copilot: str

@@ -6,7 +6,8 @@ import logging
 from datetime import datetime, timezone
 
 import redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 import uvicorn
 
 from .alert_store import AlertStore
@@ -59,6 +60,11 @@ def health() -> dict[str, str]:
         "redis": redis_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/alerts")

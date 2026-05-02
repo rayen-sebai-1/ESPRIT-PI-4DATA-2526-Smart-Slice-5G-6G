@@ -9,6 +9,12 @@ from consumer import SlaConsumer
 from inference import SlaInferencer
 from model_loader import SlaModelLoader
 from publisher import SlaPublisher
+from shared.metrics import (
+    aiops_fallback_mode,
+    aiops_model_loaded,
+    aiops_service_enabled,
+    start_metrics_server,
+)
 from shared.model_hot_reload import should_reload_promoted_model
 from shared.redis_client import get_redis
 
@@ -65,6 +71,14 @@ async def _hot_reload_models(
                 or next_bundle.model_mtime_ns != current.model_mtime_ns
             ):
                 inferencer.update_bundle(next_bundle)
+                aiops_model_loaded.labels(
+                    service=cfg.service_name,
+                    model_name=cfg.registry_model_name,
+                ).set(1 if next_bundle.loaded else 0)
+                aiops_fallback_mode.labels(
+                    service=cfg.service_name,
+                    model_name=cfg.registry_model_name,
+                ).set(1 if next_bundle.fallback_mode else 0)
                 logger.info(
                     "Hot-reloaded SLA model to version=%s source=%s",
                     next_bundle.model_version,
@@ -79,11 +93,19 @@ async def _hot_reload_models(
 async def main() -> None:
     cfg = get_config()
     logger.info("Starting %s", cfg.service_name)
+    start_metrics_server(cfg.metrics_port)
+    aiops_service_enabled.labels(service=cfg.service_name).set(1)
 
     redis_client = await _wait_for_redis()
 
     loader = SlaModelLoader(cfg)
     model_bundle = loader.load()
+    aiops_model_loaded.labels(service=cfg.service_name, model_name=cfg.registry_model_name).set(
+        1 if model_bundle.loaded else 0
+    )
+    aiops_fallback_mode.labels(service=cfg.service_name, model_name=cfg.registry_model_name).set(
+        1 if model_bundle.fallback_mode else 0
+    )
     inferencer = SlaInferencer(cfg, model_bundle)
 
     publisher = SlaPublisher(cfg, redis_client)

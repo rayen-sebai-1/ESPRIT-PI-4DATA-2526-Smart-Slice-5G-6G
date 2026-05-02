@@ -23,13 +23,13 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   {
-    label: "Dashboard National",
+    label: "National Dashboard",
     to: "/dashboard/national",
     icon: BarChart3,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
   },
   {
-    label: "Dashboard Entite",
+    label: "Entity Dashboard",
     to: "/dashboard/region",
     icon: RadioTower,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
@@ -77,7 +77,7 @@ export const navItems: NavItem[] = [
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
-    label: "Gestion utilisateurs",
+    label: "User Management",
     to: "/admin/users",
     icon: Users,
     roles: ["ADMIN"],
@@ -85,14 +85,14 @@ export const navItems: NavItem[] = [
 ];
 
 export const authlessNav = {
-  label: "Deconnexion",
+  label: "Sign Out",
   icon: LogOut,
 };
 
 export const roleLabels: Record<UserRole, string> = {
-  ADMIN: "Administrateur",
-  NETWORK_OPERATOR: "Operateur reseau (NOC)",
-  NETWORK_MANAGER: "Manager reseau",
+  ADMIN: "Administrator",
+  NETWORK_OPERATOR: "Network Operator (NOC)",
+  NETWORK_MANAGER: "Network Manager",
   DATA_MLOPS_ENGINEER: "Data / MLOps Engineer",
 };
 
@@ -111,8 +111,8 @@ export const roleDefaultRoute: Record<UserRole, string> = {
 
 export const appSections = {
   fallbackInsight:
-    "Cette visualisation sera enrichie des qu'un endpoint agrege dedie sera disponible cote backend.",
+    "This visualization will be enriched once a dedicated aggregated endpoint is available on the backend.",
   nocSummary:
-    "Plateforme de supervision reseau 5G/6G pour la Tunisie, orientee exploitation operationnelle.",
+    "5G/6G network supervision platform for Tunisia, focused on operational management.",
   securityIcon: ShieldCheck,
 };

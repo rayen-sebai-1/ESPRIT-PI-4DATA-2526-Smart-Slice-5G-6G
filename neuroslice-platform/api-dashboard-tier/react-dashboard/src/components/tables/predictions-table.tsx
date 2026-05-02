@@ -20,9 +20,9 @@ export function PredictionsTable({
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-white/5 px-5 py-4">
-        <h3 className="text-lg font-semibold text-white">Predictions automatiques</h3>
+        <h3 className="text-lg font-semibold text-white">Automatic predictions</h3>
         <p className="text-sm text-mutedText">
-          Lecture simple des scores SLA, congestion et anomalie pour aider l'operateur.
+          Quick view of SLA, congestion, and anomaly scores to support the operator.
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -33,9 +33,9 @@ export function PredictionsTable({
               <th className="px-5 py-4">Region</th>
               <th className="px-5 py-4">SLA</th>
               <th className="px-5 py-4">Congestion</th>
-              <th className="px-5 py-4">Anomalie</th>
-              <th className="px-5 py-4">Risque</th>
-              <th className="px-5 py-4">Action recommandee</th>
+              <th className="px-5 py-4">Anomaly</th>
+              <th className="px-5 py-4">Risk</th>
+              <th className="px-5 py-4">Recommended action</th>
               <th className="px-5 py-4">Run</th>
             </tr>
           </thead>
@@ -70,10 +70,10 @@ export function PredictionsTable({
                       onClick={() => onRun(prediction.session_id)}
                     >
                       {isRunning ? <Zap size={16} className="animate-pulse" /> : <Play size={16} />}
-                      Relancer
+                      Rerun
                     </Button>
                   ) : (
-                    <span className="text-xs text-mutedText">lecture seule</span>
+                    <span className="text-xs text-mutedText">read-only</span>
                   )}
                 </td>
               </tr>

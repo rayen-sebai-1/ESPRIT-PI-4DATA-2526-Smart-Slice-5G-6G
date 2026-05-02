@@ -5,13 +5,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/cn";
 
 const tabs = [
-  { to: "/mlops", label: "Vue globale", end: true },
-  { to: "/mlops/models", label: "Modeles" },
+  { to: "/mlops", label: "Overview", end: true },
+  { to: "/mlops/models", label: "Models" },
   { to: "/mlops/runs", label: "Runs" },
-  { to: "/mlops/artifacts", label: "Artefacts" },
+  { to: "/mlops/artifacts", label: "Artifacts" },
   { to: "/mlops/promotions", label: "Promotions" },
   { to: "/mlops/monitoring", label: "Monitoring" },
   { to: "/mlops/drift", label: "Drift" },
+  { to: "/mlops/requests", label: "Requests" },
   { to: "/mlops/operations", label: "Operations" },
   { to: "/mlops/orchestration", label: "Orchestration" },
 ];
@@ -27,8 +28,8 @@ export function MlopsLayout() {
         title="MLOps Control Center"
         description={
           readOnly
-            ? "Lecture seule du cycle de vie MLOps : modeles promus, runs, artefacts et monitoring."
-            : "Supervision et controle du cycle de vie MLOps : modeles promus, runs, artefacts, promotions et monitoring."
+            ? "Read-only view of the MLOps lifecycle: promoted models, runs, artifacts and monitoring."
+            : "Supervision and control of the MLOps lifecycle: promoted models, runs, artifacts, promotions and monitoring."
         }
       />
 

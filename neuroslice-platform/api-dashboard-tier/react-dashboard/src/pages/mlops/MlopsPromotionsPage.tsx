@@ -10,29 +10,29 @@ export function MlopsPromotionsPage() {
   const query = useQuery({ queryKey: ["mlops", "promotions"], queryFn: () => getMlopsPromotions(80) });
 
   if (query.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement des promotions...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading promotions...</div>;
   }
   if (query.isError || !query.data) {
-    return <EmptyState title="Promotions indisponibles" description="Echec de la lecture du registre." />;
+    return <EmptyState title="Promotions unavailable" description="Failed to read the registry." />;
   }
 
   return (
     <Card className="p-5">
-      <h3 className="text-lg font-semibold text-white">Historique des promotions</h3>
+      <h3 className="text-lg font-semibold text-white">Promotion history</h3>
       <p className="text-sm text-mutedText">
-        Lignes promoted=true ou promotion_status=rejected.
+        Rows with promoted=true or promotion_status=rejected.
       </p>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.22em] text-mutedText">
             <tr>
-              <th className="pb-3 pr-4">Modele</th>
+              <th className="pb-3 pr-4">Model</th>
               <th className="pb-3 pr-4">Version</th>
               <th className="pb-3 pr-4">Stage</th>
-              <th className="pb-3 pr-4">Statut</th>
+              <th className="pb-3 pr-4">Status</th>
               <th className="pb-3 pr-4">Run id</th>
               <th className="pb-3 pr-4">Date</th>
-              <th className="pb-3 pr-4">Raison</th>
+              <th className="pb-3 pr-4">Reason</th>
             </tr>
           </thead>
           <tbody className="text-slate-100">
@@ -60,7 +60,7 @@ export function MlopsPromotionsPage() {
             {query.data.length === 0 ? (
               <tr>
                 <td className="py-6 text-center text-mutedText" colSpan={7}>
-                  Aucun evenement de promotion.
+                  No promotion events.
                 </td>
               </tr>
             ) : null}

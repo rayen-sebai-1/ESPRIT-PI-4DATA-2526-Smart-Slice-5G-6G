@@ -21,6 +21,10 @@ services:
         condition: service_started
       elasticsearch:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
 
   mlops-postgres:
     image: postgres:16-alpine
@@ -37,6 +41,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   minio:
     image: minio/minio:RELEASE.2024-06-29T01-20-47Z
@@ -49,6 +57,10 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
@@ -64,6 +76,10 @@ services:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
       MLFLOW_ARTIFACT_BUCKET: "${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}"
+    deploy:
+      resources:
+        limits:
+          memory: 128m
 
   mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.13.0
@@ -89,16 +105,25 @@ services:
       BACKEND_URI=$${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://$${MLOPS_POSTGRES_USER:-mlflow}:$${MLOPS_POSTGRES_PASSWORD:-mlflow123}@mlops-postgres:5432/$${MLOPS_POSTGRES_DB:-mlflow}} &&
       mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$BACKEND_URI --default-artifact-root $$MLFLOW_ARTIFACT_ROOT
       "
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
       - "9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
@@ -112,6 +137,10 @@ services:
       - "8081:8081"
     volumes:
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
@@ -122,6 +151,10 @@ services:
     depends_on:
       elasticsearch:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
 volumes:
   postgres_data:

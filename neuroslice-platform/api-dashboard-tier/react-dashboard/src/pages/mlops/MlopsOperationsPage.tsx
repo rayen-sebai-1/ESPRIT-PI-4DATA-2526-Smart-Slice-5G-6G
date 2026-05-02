@@ -95,14 +95,14 @@ export function MlopsOperationsPage() {
   const triggerMutation = useMutation({
     mutationFn: triggerMlopsPipeline,
     onSuccess: async (response) => {
-      setMessage(`Pipeline lance (run ${response.run_id.slice(0, 8)}).`);
+      setMessage(`Pipeline launched (run ${response.run_id.slice(0, 8)}).`);
       await queryClient.invalidateQueries({ queryKey: ["mlops", "pipeline", "runs"] });
     },
     onError: (error) => {
       const detail =
         // axios error -> response.data.detail
         (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
-        ?? "Echec du lancement du pipeline.";
+        ?? "Failed to launch the pipeline.";
       setMessage(detail);
     },
   });
@@ -115,9 +115,9 @@ export function MlopsOperationsPage() {
 
       {/* A. Tool links */}
       <Card className="p-5">
-        <h3 className="text-lg font-semibold text-white">Outils MLOps</h3>
+        <h3 className="text-lg font-semibold text-white">MLOps Tools</h3>
         <p className="text-sm text-mutedText">
-          Ouvre les UIs externes (lien direct, ne traverse pas le backend).
+          Opens external UIs (direct link, does not go through the backend).
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {toolsQuery.data?.tools.map((tool) => (
@@ -143,14 +143,14 @@ export function MlopsOperationsPage() {
       <Card className="p-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Sante des services</h3>
+            <h3 className="text-lg font-semibold text-white">Service health</h3>
             <p className="text-sm text-mutedText">
-              Sondage cote dashboard-backend (auto-refresh toutes les 30 s).
+              Polled from the dashboard-backend (auto-refresh every 30 s).
             </p>
           </div>
           <Button variant="secondary" onClick={() => void healthQuery.refetch()}>
             <RefreshCcw size={16} />
-            Rafraichir
+            Refresh
           </Button>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -191,9 +191,9 @@ export function MlopsOperationsPage() {
       <Card className="p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Pipeline offline</h3>
+            <h3 className="text-lg font-semibold text-white">Offline pipeline</h3>
             <p className="text-sm text-mutedText">
-              Lance la sequence: training, MLflow, ONNX export, FP16, promotion.
+              Launches the sequence: training, MLflow, ONNX export, FP16, promotion.
             </p>
             {pipelineDisabledMessage ? (
               <p className="mt-2 text-xs text-amber-400">
@@ -218,10 +218,10 @@ export function MlopsOperationsPage() {
       {/* D. Pipeline runs */}
       <Card className="p-5">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Historique des executions</h3>
+          <h3 className="text-lg font-semibold text-white">Execution history</h3>
           <Button variant="secondary" onClick={() => void runsQuery.refetch()}>
             <RefreshCcw size={16} />
-            Rafraichir
+            Refresh
           </Button>
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -231,7 +231,7 @@ export function MlopsOperationsPage() {
                 <th className="pb-3 pr-4">Run</th>
                 <th className="pb-3 pr-4">Status</th>
                 <th className="pb-3 pr-4">Trigger</th>
-                <th className="pb-3 pr-4">Demarre</th>
+                <th className="pb-3 pr-4">Started</th>
                 <th className="pb-3 pr-4">Duree</th>
                 <th className="pb-3 pr-4">Exit</th>
                 <th className="pb-3 pr-4">Actions</th>
@@ -274,7 +274,7 @@ export function MlopsOperationsPage() {
               {(runsQuery.data?.length ?? 0) === 0 ? (
                 <tr>
                   <td className="py-6 text-center text-mutedText" colSpan={7}>
-                    Aucune execution enregistree.
+                    No executions recorded.
                   </td>
                 </tr>
               ) : null}
@@ -285,16 +285,16 @@ export function MlopsOperationsPage() {
 
       {toolsQuery.isError && healthQuery.isError ? (
         <EmptyState
-          title="Operations indisponibles"
-          description="Le backend n'a pas pu repondre. Verifie la connexion et le token."
+          title="Operations unavailable"
+          description="The backend did not respond. Check the connection and token."
         />
       ) : null}
 
       <ConfirmModal
         open={confirmOpen}
-        title="Lancer le pipeline offline ?"
-        description="Cela va demarrer le training, le logging MLflow, l'export ONNX, la conversion FP16 et la promotion. L'execution peut durer plusieurs minutes."
-        confirmLabel="Lancer"
+        title="Launch the offline pipeline?"
+        description="This will start training, MLflow logging, ONNX export, FP16 conversion and promotion. The run may take several minutes."
+        confirmLabel="Launch"
         destructive
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => {
@@ -341,13 +341,13 @@ function PipelineLogsModal({ runId, onClose }: { runId: string | null; onClose: 
             <p className="font-mono text-xs text-mutedText">{runId}</p>
           </div>
           <Button variant="secondary" onClick={onClose}>
-            Fermer
+            Close
           </Button>
         </div>
         {logsQuery.isLoading ? (
-          <p className="mt-4 text-sm text-mutedText">Chargement...</p>
+          <p className="mt-4 text-sm text-mutedText">Loading...</p>
         ) : logsQuery.isError || !logsQuery.data ? (
-          <p className="mt-4 text-sm text-red-300">Logs indisponibles.</p>
+          <p className="mt-4 text-sm text-red-300">Logs unavailable.</p>
         ) : (
           <div className="mt-4 space-y-3">
             <div className="text-xs uppercase tracking-[0.22em] text-mutedText">
@@ -356,13 +356,13 @@ function PipelineLogsModal({ runId, onClose }: { runId: string | null; onClose: 
             <div>
               <div className="text-xs uppercase tracking-[0.22em] text-mutedText">stdout</div>
               <pre className="mt-1 max-h-64 overflow-auto rounded-xl border border-border bg-black/40 p-3 font-mono text-xs text-slate-200">
-                {logsQuery.data.stdout || "(vide)"}
+                {logsQuery.data.stdout || "(empty)"}
               </pre>
             </div>
             <div>
               <div className="text-xs uppercase tracking-[0.22em] text-mutedText">stderr</div>
               <pre className="mt-1 max-h-64 overflow-auto rounded-xl border border-border bg-black/40 p-3 font-mono text-xs text-red-200">
-                {logsQuery.data.stderr || "(vide)"}
+                {logsQuery.data.stderr || "(empty)"}
               </pre>
             </div>
           </div>

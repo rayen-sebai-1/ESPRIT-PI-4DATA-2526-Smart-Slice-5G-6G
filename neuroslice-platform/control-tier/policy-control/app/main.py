@@ -6,7 +6,8 @@ import logging
 from datetime import datetime, timezone
 
 import redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 import uvicorn
 
 from .action_store import ActionStore
@@ -14,6 +15,7 @@ from .config import get_config
 from .consumer import PolicyConsumer
 from .policy_engine import PolicyEngine
 from .redis_client import get_redis
+from .simulation_actuator import SimulationActuator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 logger = logging.getLogger("policy-control")
@@ -60,6 +62,11 @@ def health() -> dict[str, str]:
         "redis": redis_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/actions")
@@ -109,6 +116,20 @@ def execute_action(action_id: str) -> dict:
     return action
 
 
+@app.get("/actuations")
+def list_actuations() -> dict:
+    items = get_store().list_actuations()
+    return {"count": len(items), "items": items}
+
+
+@app.get("/actuations/{action_id}")
+def get_actuation(action_id: str) -> dict:
+    actuation = get_store().get_actuation(action_id)
+    if actuation is None:
+        raise HTTPException(status_code=404, detail=f"Actuation '{action_id}' not found.")
+    return actuation
+
+
 @app.on_event("startup")
 async def startup() -> None:
     global _redis, _store, _consumer, _consumer_task
@@ -116,7 +137,7 @@ async def startup() -> None:
         try:
             _redis = get_redis(cfg)
             _redis.ping()
-            _store = ActionStore(cfg, _redis, PolicyEngine())
+            _store = ActionStore(cfg, _redis, PolicyEngine(), SimulationActuator(cfg, _redis))
             _consumer = PolicyConsumer(cfg, _redis, _store)
             _consumer_task = asyncio.create_task(_consumer.run_forever())
             logger.info("Policy Control connected to Redis")

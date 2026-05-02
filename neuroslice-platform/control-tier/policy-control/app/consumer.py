@@ -10,6 +10,7 @@ import redis
 
 from .action_store import ActionStore
 from .config import PolicyControlConfig
+from .metrics import mark_event_processed
 from .redis_client import ack_message, ensure_consumer_group, read_group
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class PolicyConsumer:
                 for msg_id, fields in messages:
                     try:
                         alert = self._extract_alert(fields)
+                        mark_event_processed(self.cfg.service_name)
                         if str(alert.get("status") or "").upper() != "RESOLVED":
                             self.store.upsert_from_alert(alert)
                     except Exception as exc:  # noqa: BLE001

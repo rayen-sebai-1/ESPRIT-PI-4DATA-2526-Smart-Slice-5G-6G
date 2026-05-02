@@ -39,7 +39,7 @@ The design adapts the architecture report's "Alibi Detect sidecars" concept to D
 |------|--------|
 | `mlops-tier/batch-orchestrator/src/mlops/promotion.py` | Calls `generate_drift_reference()` after promotion |
 | `infrastructure/docker-compose.yml` | Added `drift-monitor` service (profile: `drift`) |
-| `infrastructure/observability/prometheus.yml` | Added `drift-monitor:7012/metrics` scrape job |
+| `infrastructure/observability/prometheus.yml` | Added `aiops-drift-monitor:7012/metrics` scrape job |
 | `api-dashboard-tier/api-bff-service/main.py` | Added `/api/v1/drift/*` endpoints |
 | `api-dashboard-tier/dashboard-backend/main.py` | Added `/mlops/drift*` endpoints (RBAC-gated) |
 | `api-dashboard-tier/react-dashboard/src/api/mlopsApi.ts` | Added drift API functions + types |
@@ -260,7 +260,7 @@ Tests covered:
 
 3. **`drift` Docker Compose profile**: The service is not started by default (`docker compose up`). Use `docker compose --profile drift up` to include it. This avoids adding the large PyTorch image to the default runtime for users who do not need drift detection.
 
-4. **Prometheus scrape target optional**: The Prometheus config includes the `drift-monitor:7012/metrics` scrape job, but Prometheus will silently fail to scrape if the service is not running.
+4. **Prometheus scrape target optional**: The Prometheus config includes the `aiops-drift-monitor:7012/metrics` scrape job, but Prometheus will silently fail to scrape if the service is not running.
 
 5. **No per-model sidecar split yet**: All three models are monitored by a single service. The code is structured so that splitting into sidecars later requires only Dockerfile/compose changes.
 

@@ -146,6 +146,9 @@ class DriftConsumer:
         self._running = True
         while self._running:
             try:
+                if not self._is_runtime_enabled(r):
+                    await asyncio.sleep(0.5)
+                    continue
                 raw = r.xreadgroup(
                     self.cfg.consumer_group,
                     self.cfg.consumer_name,
@@ -195,8 +198,13 @@ class DriftConsumer:
 
     async def run_drift_tests(self) -> None:
         """Background periodic drift test; runs independently of consumer loop."""
+        from redis_client import get_redis
+
+        r = get_redis()
         while True:
             await asyncio.sleep(self.cfg.drift_test_interval_sec)
+            if not self._is_runtime_enabled(r):
+                continue
             now = time.monotonic()
             for model_name in self.cfg.drift_model_names:
                 try:
@@ -309,3 +317,20 @@ class DriftConsumer:
             severity,
             event.drift_id,
         )
+
+    def _is_runtime_enabled(self, r) -> bool:
+        enabled_raw = r.get(self._runtime_key("enabled"))
+        mode = str(r.get(self._runtime_key("mode")) or "").strip().lower()
+        enabled = self._parse_bool(enabled_raw, default=True)
+        if mode == "disabled":
+            return False
+        return enabled
+
+    def _runtime_key(self, suffix: str) -> str:
+        return f"runtime:service:{self.cfg.runtime_service_name}:{suffix}"
+
+    @staticmethod
+    def _parse_bool(value: Any, default: bool = True) -> bool:
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}

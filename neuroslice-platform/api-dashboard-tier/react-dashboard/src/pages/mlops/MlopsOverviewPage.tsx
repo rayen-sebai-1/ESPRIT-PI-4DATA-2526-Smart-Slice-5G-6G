@@ -9,19 +9,19 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { healthClassName, healthLabel } from "./mlopsHelpers";
 
 export function MlopsOverviewPage() {
-  usePageTitle("MLOps - Vue globale");
+  usePageTitle("MLOps - Overview");
 
   const overviewQuery = useQuery({ queryKey: ["mlops", "overview"], queryFn: getMlopsOverview });
 
   if (overviewQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement de la vue MLOps...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading MLOps overview...</div>;
   }
 
   if (overviewQuery.isError || !overviewQuery.data) {
     return (
       <EmptyState
-        title="MLOps indisponible"
-        description="Impossible de contacter le backend dashboard pour les donnees MLOps."
+        title="MLOps unavailable"
+        description="Unable to contact the dashboard backend for MLOps data."
       />
     );
   }
@@ -32,30 +32,30 @@ export function MlopsOverviewPage() {
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          title="Modeles promus"
+          title="Promoted models"
           value={String(data.promoted_models_count)}
-          subtitle="Repertoires sous models/promoted/*/current"
+          subtitle="Directories under models/promoted/*/current"
           icon={<Layers size={20} />}
           tone="accent"
         />
         <KpiCard
           title="Quality gate: pass"
           value={String(data.models_with_pass_gate)}
-          subtitle="Runs au-dessus du seuil"
+          subtitle="Runs above the threshold"
           icon={<CheckCircle2 size={20} />}
           tone="accent"
         />
         <KpiCard
           title="Quality gate: fail"
           value={String(data.models_with_fail_gate)}
-          subtitle="Runs sous le seuil"
+          subtitle="Runs below the threshold"
           icon={<AlertTriangle size={20} />}
           tone={data.models_with_fail_gate > 0 ? "warning" : "neutral"}
         />
         <KpiCard
-          title="Runs en attente"
+          title="Pending runs"
           value={String(data.pending_runs)}
-          subtitle="Promotion non finalisee"
+          subtitle="Promotion not finalized"
           icon={<Activity size={20} />}
           tone={data.pending_runs > 0 ? "warning" : "neutral"}
         />
@@ -64,9 +64,9 @@ export function MlopsOverviewPage() {
       <Card className="p-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Sources de donnees</h3>
+            <h3 className="text-lg font-semibold text-white">Data sources</h3>
             <p className="text-sm text-mutedText">
-              Etat des integrations MLOps cote dashboard-backend.
+              MLOps integration status on the dashboard-backend side.
             </p>
           </div>
           <Database size={20} className="text-accent" />
@@ -80,25 +80,25 @@ export function MlopsOverviewPage() {
           ))}
         </div>
         <div className="mt-4 text-xs text-mutedText">
-          Dernier snapshot: {data.generated_at ?? "non disponible"}
+          Last snapshot: {data.generated_at ?? "unavailable"}
         </div>
       </Card>
 
       <Card className="p-5">
-        <h3 className="text-lg font-semibold text-white">Modeles promus</h3>
+        <h3 className="text-lg font-semibold text-white">Promoted models</h3>
         <p className="text-sm text-mutedText">
-          Synthese des metadonnees lues sous models/promoted/*/current/metadata.json.
+          Summary of metadata read from models/promoted/*/current/metadata.json.
         </p>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="text-xs uppercase tracking-[0.22em] text-mutedText">
               <tr>
                 <th className="pb-3 pr-4">Deployment</th>
-                <th className="pb-3 pr-4">Modele</th>
+                <th className="pb-3 pr-4">Model</th>
                 <th className="pb-3 pr-4">Version</th>
                 <th className="pb-3 pr-4">Framework</th>
-                <th className="pb-3 pr-4">Sante</th>
-                <th className="pb-3 pr-4">Mis a jour</th>
+                <th className="pb-3 pr-4">Health</th>
+                <th className="pb-3 pr-4">Updated</th>
               </tr>
             </thead>
             <tbody className="text-slate-100">
@@ -117,7 +117,7 @@ export function MlopsOverviewPage() {
               {data.promoted_models.length === 0 ? (
                 <tr>
                   <td className="py-6 text-center text-mutedText" colSpan={6}>
-                    Aucun modele promu n'est actuellement disponible.
+                    No promoted model is currently available.
                   </td>
                 </tr>
               ) : null}

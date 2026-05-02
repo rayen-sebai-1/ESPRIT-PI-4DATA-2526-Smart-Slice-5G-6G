@@ -6,6 +6,7 @@ from typing import Any
 import redis
 
 from .config import AlertManagementConfig
+from .metrics import record_alert_state
 from .redis_client import decode_hash, encode_hash, publish_event
 from .schemas import Alert, AlertStatus, utc_now_iso
 
@@ -33,6 +34,7 @@ class AlertStore:
             data = alert.model_dump(mode="json")
             self._save(data)
             self.redis.set(self._dedup_key(alert.dedup_key), alert.alert_id)
+            record_alert_state(data)
             self._publish("alert.created", data)
             return data, "alert.created"
 
@@ -45,6 +47,7 @@ class AlertStore:
         existing["event_count"] = int(existing.get("event_count") or 0) + 1
         existing["updated_at"] = utc_now_iso()
         self._save(existing)
+        record_alert_state(existing)
         self._publish("alert.updated", existing)
         return existing, "alert.updated"
 
@@ -57,6 +60,7 @@ class AlertStore:
         alert["status"] = AlertStatus.ACKNOWLEDGED.value
         alert["updated_at"] = utc_now_iso()
         self._save(alert)
+        record_alert_state(alert)
         self._publish("alert.acknowledged", alert)
         return alert
 
@@ -70,6 +74,7 @@ class AlertStore:
         alert["updated_at"] = utc_now_iso()
         self._save(alert)
         self.redis.delete(self._dedup_key(str(alert.get("dedup_key"))))
+        record_alert_state(alert)
         self._publish("alert.resolved", alert)
         return alert
 

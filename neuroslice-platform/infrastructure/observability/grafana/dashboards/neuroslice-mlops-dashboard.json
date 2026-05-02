@@ -1,0 +1,103 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "MLOps Drift Anomaly Events",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "rate(neuroslice_mlops_drift_anomaly_events_total[5m])",
+          "legendFormat": "anomaly events/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "MLOps Drift Trigger Attempts by Status",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(neuroslice_mlops_drift_triggers_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "AIOps Drift p-value",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "max by (model_name) (neuroslice_drift_p_value)",
+          "legendFormat": "{{model_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "MLOps Runner Requests",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (action, status, trigger_source) (rate(neuroslice_mlops_runner_requests_total[5m]))",
+          "legendFormat": "{{action}}/{{status}}/{{trigger_source}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "MLOps Runner Duration (P95)",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, action, trigger_source) (rate(neuroslice_mlops_runner_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{action}}/{{trigger_source}} p95",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Dashboard Pipeline Requests",
+      "datasource": {"type": "prometheus", "uid": "P1809F7CD0C75ACF3"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(neuroslice_dashboard_mlops_pipeline_requests_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["neuroslice", "mlops", "scenario-b"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "NeuroSlice MLOps Dashboard",
+  "version": 1,
+  "weekStart": ""
+}

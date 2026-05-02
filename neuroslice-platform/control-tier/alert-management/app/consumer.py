@@ -10,6 +10,7 @@ import redis
 
 from .alert_store import AlertStore
 from .config import AlertManagementConfig
+from .metrics import mark_event_processed
 from .redis_client import ack_message, ensure_consumer_group, read_group
 from .schemas import Alert, AlertSeverity, AlertType
 
@@ -63,6 +64,7 @@ class AlertConsumer:
                     try:
                         payload = self._extract_payload(fields)
                         alert = self._build_alert(stream, payload)
+                        mark_event_processed(self.cfg.service_name)
                         if alert is not None:
                             self.store.upsert_from_event(alert)
                     except Exception as exc:  # noqa: BLE001

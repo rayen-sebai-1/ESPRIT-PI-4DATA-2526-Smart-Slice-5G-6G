@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getMlopsDrift, getMlopsPredictionMonitoring, type DriftModelState } from "@/api/mlopsApi";
+import {
+  getMlopsDrift,
+  getMlopsEvaluation,
+  getMlopsPredictionMonitoring,
+  type DriftModelState,
+  type EvaluationModelState,
+} from "@/api/mlopsApi";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -165,7 +171,7 @@ function DriftSection() {
     return (
       <Card className="p-5">
         <h3 className="mb-3 text-lg font-semibold text-white">Drift Detection</h3>
-        <p className="text-sm text-mutedText">Chargement...</p>
+        <p className="text-sm text-mutedText">Loading...</p>
       </Card>
     );
   }
@@ -187,7 +193,7 @@ function DriftSection() {
           ) : null}
         </div>
         <Button variant="secondary" size="sm" onClick={() => void driftQuery.refetch()}>
-          Rafraichir
+          Refresh
         </Button>
       </div>
 
@@ -213,6 +219,107 @@ function DriftSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Online evaluation section
+// ---------------------------------------------------------------------------
+
+function EvalModelCard({ state }: { state: EvaluationModelState }) {
+  const hasTruth = Boolean(state.pseudo_ground_truth_available);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-white">{state.model_name}</p>
+        <span
+          className={`rounded px-2 py-0.5 text-xs ${
+            hasTruth ? "bg-emerald-900/50 text-emerald-300" : "bg-amber-900/50 text-amber-300"
+          }`}
+        >
+          {hasTruth ? "Ground truth: available" : "Ground truth: pending"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <span className="text-mutedText">Samples</span>
+        <span className="font-mono text-slate-200">{state.samples_total ?? 0}</span>
+
+        <span className="text-mutedText">Accuracy</span>
+        <span className="font-mono text-slate-200">
+          {state.accuracy != null ? `${(state.accuracy * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">Precision</span>
+        <span className="font-mono text-slate-200">
+          {state.precision != null ? `${(state.precision * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">Recall</span>
+        <span className="font-mono text-slate-200">
+          {state.recall != null ? `${(state.recall * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">F1</span>
+        <span className="font-mono text-slate-200">
+          {state.f1 != null ? `${(state.f1 * 100).toFixed(1)}%` : "—"}
+        </span>
+
+        <span className="text-mutedText">FP / FN</span>
+        <span className="font-mono text-slate-200">
+          {state.false_positive_count ?? 0} / {state.false_negative_count ?? 0}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function EvaluationSection() {
+  const evalQuery = useQuery({
+    queryKey: ["mlops", "evaluation"],
+    queryFn: getMlopsEvaluation,
+    refetchInterval: 30_000,
+  });
+
+  if (evalQuery.isLoading) {
+    return (
+      <Card className="p-5">
+        <h3 className="mb-3 text-lg font-semibold text-white">Online Evaluation</h3>
+        <p className="text-sm text-mutedText">Loading...</p>
+      </Card>
+    );
+  }
+
+  const evalData = evalQuery.data;
+  const models = evalData?.models ?? {};
+
+  return (
+    <Card className="p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Online Model Evaluation</h3>
+          <p className="text-xs text-mutedText">
+            Rolling metrics against Scenario B pseudo-ground-truth.
+          </p>
+          {evalData?.note ? <p className="mt-1 text-xs text-amber-300">{evalData.note}</p> : null}
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => void evalQuery.refetch()}>
+          Refresh
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {Object.entries(models).map(([name, state]) => (
+          <EvalModelCard key={name} state={state} />
+        ))}
+        {Object.keys(models).length === 0 ? (
+          <p className="col-span-3 py-4 text-center text-sm text-mutedText">
+            online-evaluator not reachable or no data collected yet.
+          </p>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -226,11 +333,11 @@ export function MlopsMonitoringPage() {
   });
 
   if (query.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement du monitoring...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading monitoring...</div>;
   }
   if (query.isError || !query.data) {
     return (
-      <EmptyState title="Monitoring indisponible" description="Echec de la requete Elasticsearch." />
+      <EmptyState title="Monitoring unavailable" description="Elasticsearch query failed." />
     );
   }
 
@@ -240,21 +347,22 @@ export function MlopsMonitoringPage() {
     <div className="space-y-6">
       {/* Drift Detection section */}
       <DriftSection />
+      <EvaluationSection />
 
       {/* Prediction monitoring section */}
       <Card className="p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Monitoring des predictions</h3>
+            <h3 className="text-lg font-semibold text-white">Prediction monitoring</h3>
             <p className="text-sm text-mutedText">
-              Source: {data.source} - {data.available ? "disponible" : "indisponible"}
+              Source: {data.source} - {data.available ? "available" : "unavailable"}
             </p>
             {data.note ? <p className="mt-1 text-xs text-amber-300">{data.note}</p> : null}
           </div>
           <div className="flex items-end gap-2">
             <div>
               <label className="text-xs uppercase tracking-[0.22em] text-mutedText">
-                Filtrer par modele
+                Filter by model
               </label>
               <Input
                 value={model}
@@ -263,7 +371,7 @@ export function MlopsMonitoringPage() {
               />
             </div>
             <Button variant="secondary" onClick={() => void query.refetch()}>
-              Rafraichir
+              Refresh
             </Button>
           </div>
         </div>
@@ -272,7 +380,7 @@ export function MlopsMonitoringPage() {
       <Card className="p-5">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold text-white">
-            Dernieres predictions ({data.total})
+            Latest predictions ({data.total})
           </h4>
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -280,7 +388,7 @@ export function MlopsMonitoringPage() {
             <thead className="text-xs uppercase tracking-[0.22em] text-mutedText">
               <tr>
                 <th className="pb-3 pr-4">Timestamp</th>
-                <th className="pb-3 pr-4">Modele</th>
+                <th className="pb-3 pr-4">Model</th>
                 <th className="pb-3 pr-4">Region</th>
                 <th className="pb-3 pr-4">Risk</th>
                 <th className="pb-3 pr-4">SLA</th>
@@ -299,7 +407,7 @@ export function MlopsMonitoringPage() {
               {data.items.length === 0 ? (
                 <tr>
                   <td className="py-6 text-center text-mutedText" colSpan={5}>
-                    Aucun evenement disponible.
+                    No events available.
                   </td>
                 </tr>
               ) : null}

@@ -59,6 +59,7 @@ class SlaAssuranceConfig:
     scaler_path: str = field(
         default_factory=lambda: os.getenv("SLA_SCALER_PATH", "/mlops/data/processed/scaler_sla_5g.pkl")
     )
+    metrics_port: int = field(default_factory=lambda: int(os.getenv("METRICS_PORT", "9102")))
 
     sla_risk_threshold: float = field(default_factory=lambda: float(os.getenv("SLA_RISK_THRESHOLD", "0.5")))
     default_site_id: str = field(default_factory=lambda: os.getenv("SITE_ID", "TT-SFAX-02"))

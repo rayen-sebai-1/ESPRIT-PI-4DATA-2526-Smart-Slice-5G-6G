@@ -21,17 +21,17 @@ export function LogDetailDrawer({ event, onClose }: LogDetailDrawerProps) {
             <h3 className="mt-1 text-lg font-semibold text-white">{event.message}</h3>
             <p className="mt-2 text-sm text-mutedText">{formatDate(event.ts)}</p>
           </div>
-          <Button size="icon" variant="ghost" type="button" onClick={onClose} aria-label="Fermer">
+          <Button size="icon" variant="ghost" type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </Button>
         </div>
 
         <div className="grid gap-3 border-b border-border p-5 text-sm text-slate-200 sm:grid-cols-2">
-          <Detail label="Severite" value={`S${event.severity}`} />
-          <Detail label="Domaine" value={event.domain ?? "N/A"} />
-          <Detail label="Entite" value={event.entity_id ?? "N/A"} />
+          <Detail label="Severity" value={`S${event.severity}`} />
+          <Detail label="Domain" value={event.domain ?? "N/A"} />
+          <Detail label="Entity" value={event.entity_id ?? "N/A"} />
           <Detail label="Slice" value={event.slice_id ?? "N/A"} />
-          <Detail label="Type entite" value={event.entity_type ?? "N/A"} />
+          <Detail label="Entity type" value={event.entity_type ?? "N/A"} />
           <Detail label="Type slice" value={event.slice_type ?? "N/A"} />
         </div>
 

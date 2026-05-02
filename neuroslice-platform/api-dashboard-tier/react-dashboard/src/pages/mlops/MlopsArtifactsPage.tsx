@@ -15,14 +15,14 @@ function StatusIcon({ ok }: { ok: boolean }) {
 }
 
 export function MlopsArtifactsPage() {
-  usePageTitle("MLOps - Artefacts");
+  usePageTitle("MLOps - Artifacts");
   const query = useQuery({ queryKey: ["mlops", "artifacts"], queryFn: getMlopsArtifacts });
 
   if (query.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement des artefacts...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading artifacts...</div>;
   }
   if (query.isError || !query.data) {
-    return <EmptyState title="Artefacts indisponibles" description="Echec de la lecture du dossier promoted/." />;
+    return <EmptyState title="Artifacts unavailable" description="Failed to read the promoted/ directory." />;
   }
 
   return (
@@ -42,12 +42,12 @@ export function MlopsArtifactsPage() {
             </li>
           </ul>
           <div className="mt-3 text-xs text-mutedText">
-            {artifact.files.length} fichiers detectes sous /current
+            {artifact.files.length} files detected under /current
           </div>
         </Card>
       ))}
       {query.data.length === 0 ? (
-        <EmptyState title="Aucun artefact" description="Aucun modele promu n'a ete trouve." />
+        <EmptyState title="No artifact" description="No promoted model was found." />
       ) : null}
     </div>
   );

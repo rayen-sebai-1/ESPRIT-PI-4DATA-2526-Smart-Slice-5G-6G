@@ -61,6 +61,7 @@ class SliceClassifierConfig:
             "SLICE_LABEL_ENCODER_PATH", "/mlops/data/processed/label_encoder_slice_type_5g.pkl"
         )
     )
+    metrics_port: int = field(default_factory=lambda: int(os.getenv("METRICS_PORT", "9103")))
 
     mismatch_confidence_threshold: float = field(
         default_factory=lambda: float(os.getenv("SLICE_MISMATCH_CONFIDENCE_THRESHOLD", "0.8"))

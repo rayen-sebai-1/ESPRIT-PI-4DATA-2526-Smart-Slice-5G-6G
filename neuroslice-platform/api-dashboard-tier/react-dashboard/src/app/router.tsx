@@ -23,6 +23,7 @@ import { MlopsOperationsPage } from "@/pages/mlops/MlopsOperationsPage";
 import { MlopsOrchestrationPage } from "@/pages/mlops/MlopsOrchestrationPage";
 import { ControlActionsPage } from "@/pages/ControlActionsPage";
 import { MlopsDriftPage } from "@/pages/mlops/MlopsDriftPage";
+import { MlopsRequestsPage } from "@/pages/mlops/MlopsRequestsPage";
 
 export const router = createBrowserRouter([
   {
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
                   { path: "promotions", element: <MlopsPromotionsPage /> },
                   { path: "monitoring", element: <MlopsMonitoringPage /> },
                   { path: "drift", element: <MlopsDriftPage /> },
+                  { path: "requests", element: <MlopsRequestsPage /> },
                   { path: "operations", element: <MlopsOperationsPage /> },
                   { path: "orchestration", element: <MlopsOrchestrationPage /> },
                 ],

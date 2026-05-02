@@ -14,14 +14,14 @@ export function ModelsCatalog({
   isError: boolean;
 }) {
   if (isLoading) {
-    return <Card className="p-6 text-sm text-mutedText">Chargement du catalogue des modeles...</Card>;
+    return <Card className="p-6 text-sm text-mutedText">Loading model catalogue...</Card>;
   }
 
   if (isError) {
     return (
       <EmptyState
-        title="Catalogue indisponible"
-        description="Le backend expose bien l'idee de catalogue, mais l'endpoint /models est actuellement en erreur. La page garde un fallback propre sans casser l'existant."
+        title="Catalogue unavailable"
+        description="The backend exposes the catalogue concept, but the /models endpoint is currently returning an error."
         icon={<FileWarning size={24} />}
       />
     );
@@ -30,8 +30,8 @@ export function ModelsCatalog({
   if (!models?.length) {
     return (
       <EmptyState
-        title="Aucun modele expose"
-        description="Aucun modele n'est encore visible depuis prediction-service."
+        title="No models available"
+        description="No models are currently visible from the prediction service."
         icon={<PackageSearch size={24} />}
       />
     );
@@ -69,7 +69,7 @@ export function ModelsCatalog({
             </div>
             <div className="rounded-2xl border border-border bg-cardAlt/70 px-4 py-3">
               <div className="text-xs uppercase tracking-[0.22em] text-mutedText">Artifact</div>
-              <div className="mt-2 text-sm text-white">{model.artifact_path ?? "Non encore exporte"}</div>
+              <div className="mt-2 text-sm text-white">{model.artifact_path ?? "Not yet exported"}</div>
             </div>
           </div>
         </Card>

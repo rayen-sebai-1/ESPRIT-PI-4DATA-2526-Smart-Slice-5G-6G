@@ -1,17 +1,66 @@
 # Smart Slice Observability
 
+Last verified: 2026-04-30.
+
 This folder contains observability assets for Smart Slice AIOps: Prometheus metrics scraping and an ELK stack for prediction monitoring.
 
 ## Prometheus
 
-`prometheus.yml` configures Prometheus (started automatically with `docker compose up`) to scrape:
+`prometheus.yml` configures Prometheus (started automatically with `docker compose up`) to scrape all critical Scenario B services:
 
-- `adapter-ves:7001/metrics` — VES adapter Prometheus metrics
-- `adapter-netconf:7002/metrics` — NETCONF adapter Prometheus metrics
-- `localhost:9090/metrics` — Prometheus self-metrics
-- `drift-monitor:7012/metrics` — drift detection metrics (active when `--profile drift` is used)
+- `adapter-ves:7001/metrics`
+- `adapter-netconf:7002/metrics`
+- `congestion-detector:9101/metrics`
+- `sla-assurance:9102/metrics`
+- `slice-classifier:9103/metrics`
+- `online-evaluator:7013/metrics`
+- `alert-management:7010/metrics`
+- `policy-control:7011/metrics`
+- `dashboard-backend:8002/metrics`
+- `api-bff-service:8000/metrics`
+- `mlops-runner:8020/metrics`
+- `mlops-drift-monitor:8030/metrics`
+- `aiops-drift-monitor:7012/metrics` (active when `--profile drift` is used)
+- `localhost:9090/metrics` (Prometheus self-metrics)
 
 Prometheus UI: `http://localhost:9090`
+
+### Scenario B Metrics Coverage
+
+The following metric families are source-wired:
+
+- AIOps workers:
+  - `neuroslice_aiops_events_processed_total`
+  - `neuroslice_aiops_predictions_total`
+  - `neuroslice_aiops_fallback_mode`
+  - `neuroslice_aiops_model_loaded`
+  - `neuroslice_aiops_last_event_timestamp`
+  - `neuroslice_aiops_inference_latency_seconds`
+  - `neuroslice_aiops_service_enabled`
+- Control tier:
+  - `neuroslice_control_alerts_total`
+  - `neuroslice_control_actions_total`
+  - `neuroslice_control_events_processed_total`
+  - `neuroslice_control_last_event_timestamp`
+- Dashboard/backend:
+  - `neuroslice_dashboard_requests_total`
+  - `neuroslice_dashboard_request_latency_seconds`
+  - `neuroslice_dashboard_mlops_pipeline_requests_total`
+  - `neuroslice_dashboard_auth_failures_total`
+- MLOps:
+  - `neuroslice_mlops_runner_requests_total`
+  - `neuroslice_mlops_runner_duration_seconds`
+  - `neuroslice_mlops_runner_enabled`
+  - `neuroslice_mlops_drift_anomaly_events_total`
+  - `neuroslice_mlops_drift_triggers_total`
+  - `neuroslice_mlops_drift_last_trigger_timestamp`
+  - `neuroslice_mlops_drift_enabled`
+- Online evaluator:
+  - `neuroslice_aiops_eval_accuracy`
+  - `neuroslice_aiops_eval_precision`
+  - `neuroslice_aiops_eval_recall`
+  - `neuroslice_aiops_eval_f1`
+  - `neuroslice_aiops_eval_samples_total`
 
 ### Drift Detection Metrics (drift profile)
 
@@ -27,6 +76,19 @@ When the `drift` profile is active, the following metrics are exposed:
 | `neuroslice_drift_events_emitted_total{model_name}` | Counter | Total drift alert events published |
 
 A Grafana datasource provisioning file at `grafana/provisioning/datasources/prometheus.yml` wires Prometheus into Grafana automatically (datasource UID `P1809F7CD0C75ACF3`).
+
+## Grafana Dashboards
+
+Scenario B dashboards are provisioned from `infrastructure/observability/grafana/dashboards/`:
+
+- `neuroslice-platform-overview.json`
+- `neuroslice-aiops-dashboard.json`
+- `neuroslice-control-dashboard.json`
+- `neuroslice-mlops-dashboard.json`
+
+Dashboard provisioning maps this folder to `/etc/grafana/dashboards`, and Grafana default home is set to:
+
+- `/etc/grafana/dashboards/neuroslice-platform-overview.json`
 
 ---
 

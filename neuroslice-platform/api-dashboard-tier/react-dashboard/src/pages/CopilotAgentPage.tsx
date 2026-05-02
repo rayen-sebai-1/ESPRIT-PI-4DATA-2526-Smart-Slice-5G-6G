@@ -69,7 +69,7 @@ export function CopilotAgentPage() {
       id: "welcome",
       role: "assistant",
       content:
-        "Bonjour, je suis le Copilot NeuroSlice. Demandez-moi un etat de slice, une investigation KPI ou un resume des dernieres anomalies.",
+        "Hello, I am the NeuroSlice Copilot. Ask me for a slice status, a KPI investigation, or a summary of recent anomalies.",
       createdAt: Date.now(),
     },
   ]);
@@ -83,7 +83,7 @@ export function CopilotAgentPage() {
         {
           id: generateId(),
           role: "assistant",
-          content: data.answer || "(reponse vide)",
+          content: data.answer || "(empty response)",
           createdAt: Date.now(),
         },
       ]);
@@ -126,7 +126,7 @@ export function CopilotAgentPage() {
       <PageHeader
         eyebrow="Agentic AI"
         title="Copilot Agent"
-        description="Assistant conversationnel NOC. Le copilot interroge la telemetrie InfluxDB, l'etat live Redis et les sorties AIOps avant de repondre. La memoire conversationnelle est rattachee a votre session."
+        description="NOC conversational assistant. The copilot queries InfluxDB telemetry, Redis live state, and AIOps outputs before answering. Conversation memory is tied to your session."
       />
 
       <Card className="flex h-[640px] flex-col">
@@ -139,7 +139,7 @@ export function CopilotAgentPage() {
               message={{
                 id: "pending",
                 role: "assistant",
-                content: "Analyse en cours... (interrogation Influx + Redis + Ollama)",
+                content: "Analysis in progress... (Influx + Redis + Ollama query)",
                 createdAt: Date.now(),
               }}
               pulsing
@@ -150,7 +150,7 @@ export function CopilotAgentPage() {
         <form className="border-t border-border p-4" onSubmit={handleSubmit}>
           <div className="flex items-end gap-3">
             <Input
-              placeholder="Posez une question (ex: Etat de slice-embb-01-02 sur 30 min)"
+              placeholder="Ask a question (e.g., status of slice-embb-01-02 over 30 min)"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               disabled={mutation.isPending}
@@ -158,7 +158,7 @@ export function CopilotAgentPage() {
             />
             <Button type="submit" disabled={mutation.isPending || draft.trim().length === 0}>
               <Send size={16} />
-              Envoyer
+              Send
             </Button>
           </div>
           <p className="mt-2 text-xs text-mutedText">

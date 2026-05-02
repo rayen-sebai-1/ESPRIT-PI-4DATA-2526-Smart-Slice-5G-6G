@@ -8,6 +8,7 @@ from dataclasses import dataclass
 @dataclass
 class DriftConfig:
     service_name: str = ""
+    runtime_service_name: str = ""
     service_port: int = 0
 
     redis_host: str = ""
@@ -41,6 +42,10 @@ class DriftConfig:
 
     def __post_init__(self) -> None:
         self.service_name = os.environ.get("SERVICE_NAME", "drift-monitor")
+        self.runtime_service_name = os.environ.get(
+            "RUNTIME_SERVICE_NAME",
+            "aiops-drift-monitor",
+        )
         self.service_port = int(os.environ.get("SERVICE_PORT", "7012"))
 
         self.redis_host = os.environ.get("REDIS_HOST", "redis")

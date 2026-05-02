@@ -37,14 +37,14 @@ export function LiveStatePage() {
   });
 
   if (isOverviewLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement du Live State...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading Live State...</div>;
   }
 
   if (isOverviewError || !overview) {
     return (
       <EmptyState
-        title="Live State indisponible"
-        description="Le Live State Store Redis n'est pas accessible. Verifiez les logs de l'API BFF."
+        title="Live State unavailable"
+        description="The Redis Live State Store is not accessible. Check the BFF API logs."
       />
     );
   }
@@ -56,36 +56,36 @@ export function LiveStatePage() {
       <PageHeader
         eyebrow="Network Live State"
         title="Live State Store"
-        description="Suivi en temps reel de toutes les entites actives connectees via Redis Streams, normaliseur et AIOps."
+        description="Real-time tracking of all active entities connected via Redis Streams, normalizer and AIOps."
       />
 
       {/* Summary Cards */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <KpiCard
-          title="Total Entites"
+          title="Total Entities"
           value={String(overview.total_entities)}
-          subtitle="Entites actives dans le Live State"
+          subtitle="Active entities in the Live State"
           icon={<RadioTower size={20} />}
           tone="accent"
         />
         <KpiCard
-          title="Entites Unhealthy"
+          title="Unhealthy Entities"
           value={String(overview.unhealthy_entities_count)}
-          subtitle="Entites avec Health Score < 0.6"
+          subtitle="Entities with Health Score < 0.6"
           icon={<HeartPulse size={20} />}
           tone={overview.unhealthy_entities_count > 0 ? "danger" : "neutral"}
         />
         <KpiCard
-          title="Faults Actifs"
+          title="Active Faults"
           value={String(overview.active_faults_count)}
-          subtitle="Alarms injectees en cours"
+          subtitle="Currently injected alarms"
           icon={<AlertTriangle size={20} />}
           tone={overview.active_faults_count > 0 ? "warning" : "neutral"}
         />
         <KpiCard
-          title="Risques Congestion"
+          title="Congestion Risks"
           value={String(overview.congestion_alerts_count)}
-          subtitle="Anomalies AIOps de congestion"
+          subtitle="AIOps congestion anomalies"
           icon={<Activity size={20} />}
           tone={overview.congestion_alerts_count > 0 ? "danger" : "neutral"}
         />
@@ -109,7 +109,7 @@ export function LiveStatePage() {
       {overview.latest_aiops_events.length > 0 && (
           <section>
               <Card className="p-5">
-                  <h3 className="text-lg font-semibold text-white mb-4">Derniers Evenements AIOps</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">Latest AIOps Events</h3>
                   <div className="space-y-3">
                       {overview.latest_aiops_events.slice(0,3).map((ev: any, idx: number) => (
                           <div key={idx} className="flex justify-between items-center text-sm p-3 bg-cardAlt rounded-xl">
@@ -127,11 +127,11 @@ export function LiveStatePage() {
       <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="flex flex-col h-[500px]">
           <div className="p-4 border-b border-border">
-            <h3 className="text-lg font-semibold text-white">Entites Reseau (Live)</h3>
+            <h3 className="text-lg font-semibold text-white">Network Entities (Live)</h3>
           </div>
           <div className="flex-1 overflow-auto p-4">
             {isEntitiesLoading ? (
-              <div className="text-sm text-mutedText">Chargement entites...</div>
+              <div className="text-sm text-mutedText">Loading entities...</div>
             ) : (
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="sticky top-0 bg-surfce/95 backdrop-blur z-10 text-xs uppercase text-mutedText border-b border-border">
@@ -159,7 +159,7 @@ export function LiveStatePage() {
                   ))}
                   {entities.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-mutedText">Aucun de donnees.</td>
+                      <td colSpan={5} className="py-6 text-center text-mutedText">No data available.</td>
                     </tr>
                   )}
                 </tbody>
@@ -174,7 +174,7 @@ export function LiveStatePage() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-white mb-1">Details: {selectedEntityId}</h3>
-                <p className="text-sm text-mutedText">Etats Live AIOps</p>
+                <p className="text-sm text-mutedText">Live AIOps states</p>
               </div>
               
               {isAiopsLoading ? (
@@ -228,8 +228,8 @@ export function LiveStatePage() {
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center">
               <Activity className="mx-auto mb-4 h-10 w-10 text-mutedText" />
-              <h3 className="text-lg font-medium text-slate-200 mb-2">Selectionez une entite</h3>
-              <p className="text-sm text-mutedText max-w-[200px]">Cliquez sur une ligne de la table pour visualiser les donnees AIOps.</p>
+              <h3 className="text-lg font-medium text-slate-200 mb-2">Select an entity</h3>
+              <p className="text-sm text-mutedText max-w-[200px]">Click on a table row to view AIOps data.</p>
             </div>
           )}
         </Card>

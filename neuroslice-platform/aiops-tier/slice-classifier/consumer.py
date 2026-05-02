@@ -4,11 +4,22 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from config import SliceClassifierConfig
 from inference import SliceInferencer
 from publisher import SlicePublisher
+from shared.metrics import (
+    aiops_events_processed,
+    aiops_fallback_mode,
+    aiops_inference_latency,
+    aiops_last_event_timestamp,
+    aiops_model_loaded,
+    aiops_predictions,
+    aiops_service_enabled,
+)
+from shared.runtime_control import RuntimeControlGate
 from shared.redis_client import ack_message, ensure_consumer_group, read_group
 
 logger = logging.getLogger(__name__)
@@ -26,6 +37,8 @@ class SliceConsumer:
         self.redis = redis_client
         self.inferencer = inferencer
         self.publisher = publisher
+        self._model_name = cfg.registry_model_name
+        self._runtime_gate = RuntimeControlGate(redis_client, cfg.service_name)
 
     async def run_forever(self) -> None:
         ensure_consumer_group(self.redis, self.cfg.input_stream, self.cfg.consumer_group)
@@ -38,6 +51,11 @@ class SliceConsumer:
 
         while True:
             try:
+                if not self._runtime_gate.is_enabled():
+                    aiops_service_enabled.labels(service=self.cfg.service_name).set(0)
+                    await asyncio.sleep(0.25)
+                    continue
+                aiops_service_enabled.labels(service=self.cfg.service_name).set(1)
                 messages = read_group(
                     self.redis,
                     self.cfg.input_stream,
@@ -57,8 +75,38 @@ class SliceConsumer:
                         if event is None:
                             continue
 
+                        started = time.perf_counter()
                         output = self.inferencer.infer(event)
+                        latency = time.perf_counter() - started
+                        bundle = self.inferencer.bundle
+                        now = time.time()
+
+                        aiops_events_processed.labels(
+                            service=self.cfg.service_name,
+                            model_name=self._model_name,
+                        ).inc()
+                        aiops_inference_latency.labels(
+                            service=self.cfg.service_name,
+                            model_name=self._model_name,
+                        ).observe(latency)
+                        aiops_last_event_timestamp.labels(
+                            service=self.cfg.service_name,
+                            model_name=self._model_name,
+                        ).set(now)
+                        aiops_model_loaded.labels(
+                            service=self.cfg.service_name,
+                            model_name=self._model_name,
+                        ).set(1 if bundle.loaded else 0)
+                        aiops_fallback_mode.labels(
+                            service=self.cfg.service_name,
+                            model_name=self._model_name,
+                        ).set(1 if bundle.fallback_mode else 0)
                         if output is not None:
+                            aiops_predictions.labels(
+                                service=self.cfg.service_name,
+                                model_name=self._model_name,
+                                prediction=output.prediction,
+                            ).inc()
                             await self.publisher.publish(output)
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Failed processing message %s: %s", msg_id, exc)

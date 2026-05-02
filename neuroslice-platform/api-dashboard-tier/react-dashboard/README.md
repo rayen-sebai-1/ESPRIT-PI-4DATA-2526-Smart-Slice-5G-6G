@@ -4,6 +4,8 @@ Last verified: 2026-04-30.
 
 `react-dashboard` is the protected React frontend for the NeuroSlice operations dashboard.
 
+Scope note: agentic pages are implemented, but `agentic-ai-tier` is excluded from current Scenario B validation scope.
+
 ## Stack
 
 - React 18
@@ -72,7 +74,9 @@ The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_E
 - monitoring (lecture Elasticsearch `smart-slice-predictions`)
 - drift (etat de drift detection Scenario B: p-value, window fill, severite, et historique des evenements)
 - operations (Operations Center: liens externes, sante des services, lancement du pipeline offline, historique + logs)
-- orchestration (pilotage du cycle pipeline/operations selon les droits de role)
+- orchestration (pilotage du cycle pipeline/operations selon les droits de role + runtime service controls)
+
+Monitoring now includes an **Online Evaluation** panel that renders rolling accuracy/precision/recall/F1 and FP/FN counters from `/api/dashboard/mlops/evaluation`.
 
 Promote and rollback open confirmation modals before sending the action. The buttons are disabled for `NETWORK_MANAGER` because the backend rejects those calls for that role.
 
@@ -84,7 +88,14 @@ The Operations tab adds:
 - a runs table with auto-refresh while a run is `RUNNING` or `QUEUED`
 - a logs modal showing redacted stdout/stderr in a monospace block, also auto-refreshing while the run is in progress
 
-The "Run Offline MLOps Pipeline" button queries `GET /mlops/pipeline/config` on mount and disables itself with an amber notice when `MLOPS_PIPELINE_ENABLED=false`. This prevents confusion when the pipeline is intentionally disabled in the running environment.
+The "Run Offline MLOps Pipeline" button queries `GET /mlops/pipeline/config` on mount and disables itself with an amber notice when `MLOPS_PIPELINE_ENABLED=false`. When enabled, the action calls `POST /mlops/pipeline/run`, and run history/log views use `GET /mlops/pipeline/runs` + `GET /mlops/pipeline/runs/{run_id}/logs`.
+
+The orchestration page also consumes runtime control APIs:
+
+- `GET /api/dashboard/runtime/services`
+- `PATCH /api/dashboard/runtime/services/{service_name}`
+
+These toggles update Redis runtime flags only; they do not start/stop Docker containers.
 
 Agentic features (Root Cause Agent, Copilot Agent) send requests to `/api/dashboard/agentic/*`, which is routed through Kong to `dashboard-backend` for JWT validation before proxying to the internal agent services.
 

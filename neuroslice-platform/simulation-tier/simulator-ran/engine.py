@@ -160,6 +160,15 @@ class RANSimulationEngine:
             scenario_id=self.current_scenario,
         ).model_dump()
 
+    @staticmethod
+    def _as_float(value, default: float = 0.0) -> float:
+        try:
+            if value is None:
+                return default
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
     async def _emit(self, events: list) -> None:
         if not self.http_client:
             return
@@ -173,6 +182,8 @@ class RANSimulationEngine:
         while True:
             hour = self._sim_hour()
             self._load_fault_state()
+            qos_boost = 0.0
+            reroute_bias = 0.0
 
             # Base UEs from core AMF (Redis)
             base_ues = 150
@@ -181,6 +192,11 @@ class RANSimulationEngine:
                     v = self.redis.get("core:active_ues")
                     if v:
                         base_ues = max(10, int(float(v) / 4))  # distribute across cells
+                    qos_boost = max(0.0, min(1.0, self._as_float(self.redis.get("control:sim:qos_boost"))))
+                    reroute_bias = max(
+                        0.0,
+                        min(1.0, self._as_float(self.redis.get("control:sim:reroute_bias"))),
+                    )
             except Exception:
                 pass
 
@@ -190,20 +206,55 @@ class RANSimulationEngine:
                 gnb.update(hour, base_ues)
                 max_congestion = max(max_congestion, gnb.congestion_score)
 
-                events.append(self._build_cell_ves(gnb.gnb_id, gnb.cells[0]))  # gNB-level summary
-
                 for cell in gnb.cells:
-                    events.append(self._build_cell_ves(gnb.gnb_id, cell))
                     for sl in cell.slices:
+                        slice_reroute_bias = reroute_bias
+                        if self.redis and sl.slice_id:
+                            slice_reroute_bias = max(
+                                slice_reroute_bias,
+                                max(
+                                    0.0,
+                                    min(
+                                        1.0,
+                                        self._as_float(
+                                            self.redis.get(f"control:sim:reroute_bias:{sl.slice_id}")
+                                        ),
+                                    ),
+                                ),
+                            )
+
+                        if qos_boost > 0.0:
+                            qos_factor = 1.0 - min(0.6, qos_boost)
+                            sl.rb_utilization_pct = max(0.0, sl.rb_utilization_pct * qos_factor)
+                            sl.latency_ms = max(0.1, sl.latency_ms * (1.0 - min(0.5, qos_boost)))
+                            sl.packet_loss_pct = max(0.0, sl.packet_loss_pct * (1.0 - min(0.7, qos_boost)))
+
+                        if slice_reroute_bias > 0.0:
+                            reroute_factor = 1.0 - min(0.6, slice_reroute_bias)
+                            sl.ue_count = max(1, int(sl.ue_count * reroute_factor))
+                            sl.rb_utilization_pct = max(0.0, sl.rb_utilization_pct * reroute_factor)
+                            sl.latency_ms = max(0.1, sl.latency_ms * reroute_factor)
+                            sl.packet_loss_pct = max(0.0, sl.packet_loss_pct * reroute_factor)
+                            if sl.slice_type == "URLLC":
+                                sl.misrouting_active = False
+                                sl.actual_upf = sl.expected_upf
+                                sl.qos_profile_actual = sl.qos_profile_expected
+
+                        max_congestion = max(max_congestion, sl.congestion_score)
                         events.append(self._build_slice_ves(gnb.gnb_id, cell.cell_id, sl))
+                    events.append(self._build_cell_ves(gnb.gnb_id, cell))
+                events.append(self._build_cell_ves(gnb.gnb_id, gnb.cells[0]))  # gNB-level summary
 
             # Publish RAN congestion score for other domains to consume
             try:
                 if self.redis:
+                    active_ues_total = sum(c.total_ues() for g in self.gnbs for c in g.cells)
                     self.redis.set("ran:congestion_score", max_congestion)
-                    self.redis.set("core:active_ues", sum(
-                        c.total_ues() for g in self.gnbs for c in g.cells
-                    ))
+                    self.redis.set("core:active_ues", active_ues_total)
+                    # Backward-compatible alias used by simulator-edge.
+                    self.redis.set("core:active_sessions", active_ues_total)
+                    self.redis.set("ran:qos_boost", qos_boost)
+                    self.redis.set("ran:reroute_bias", reroute_bias)
             except Exception:
                 pass
 

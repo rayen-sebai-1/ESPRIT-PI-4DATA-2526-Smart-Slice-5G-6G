@@ -6,9 +6,11 @@ from typing import Any
 import redis
 
 from .config import PolicyControlConfig
+from .metrics import record_action_state
 from .policy_engine import PolicyEngine
 from .redis_client import decode_hash, encode_hash, publish_event
 from .schemas import Action, ActionStatus, utc_now_iso
+from .simulation_actuator import SimulationActuator
 
 
 TERMINAL_STATUSES = {
@@ -19,10 +21,17 @@ TERMINAL_STATUSES = {
 
 
 class ActionStore:
-    def __init__(self, cfg: PolicyControlConfig, redis_client: redis.Redis, policy_engine: PolicyEngine) -> None:
+    def __init__(
+        self,
+        cfg: PolicyControlConfig,
+        redis_client: redis.Redis,
+        policy_engine: PolicyEngine,
+        actuator: SimulationActuator,
+    ) -> None:
         self.cfg = cfg
         self.redis = redis_client
         self.policy_engine = policy_engine
+        self.actuator = actuator
 
     def list_actions(self) -> list[dict[str, Any]]:
         action_ids = list(self.redis.smembers("control:actions:index"))
@@ -50,6 +59,7 @@ class ActionStore:
             if str(existing.get("status")) == ActionStatus.PENDING_APPROVAL.value:
                 updated = self._apply_latest_decision(existing, alert)
                 self._save(updated)
+                record_action_state(updated)
                 self._publish("action.updated", updated)
                 return updated, "action.updated"
             return existing, "action.unchanged"
@@ -69,6 +79,7 @@ class ActionStore:
         ).model_dump(mode="json")
         self._save(action)
         self.redis.set(self._by_alert_key(alert_id), action["action_id"])
+        record_action_state(action)
         self._publish("action.created", action)
         return action, "action.created"
 
@@ -81,6 +92,7 @@ class ActionStore:
         action["status"] = ActionStatus.APPROVED.value
         action["updated_at"] = utc_now_iso()
         self._save(action)
+        record_action_state(action)
         self._publish("action.approved", action)
         return action
 
@@ -93,6 +105,7 @@ class ActionStore:
         action["status"] = ActionStatus.REJECTED.value
         action["updated_at"] = utc_now_iso()
         self._save(action)
+        record_action_state(action)
         self._publish("action.rejected", action)
         return action
 
@@ -102,12 +115,21 @@ class ActionStore:
             return None
         if action.get("status") != ActionStatus.APPROVED.value:
             raise ValueError("Only APPROVED actions can be executed.")
+        actuation_result = self.actuator.apply(action)
         action["status"] = ActionStatus.EXECUTED_SIMULATED.value
         action["execution_note"] = "Simulated execution — no real PCF/RAN integration in Scenario B."
+        action["actuation_result"] = actuation_result
         action["updated_at"] = utc_now_iso()
         self._save(action)
+        record_action_state(action)
         self._publish("action.executed_simulated", action)
         return action
+
+    def list_actuations(self) -> list[dict[str, Any]]:
+        return self.actuator.list_actuations()
+
+    def get_actuation(self, action_id: str) -> dict[str, Any] | None:
+        return self.actuator.get_actuation(action_id)
 
     def _apply_latest_decision(self, action: dict[str, Any], alert: dict[str, Any]) -> dict[str, Any]:
         decision = self.policy_engine.decide(alert)

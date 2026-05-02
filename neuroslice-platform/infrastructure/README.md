@@ -4,9 +4,11 @@ Last verified: 2026-04-30.
 
 The infrastructure layer is the canonical local entry point for NeuroSlice. It wires simulators, ingestion, runtime AIOps, control-tier services, dashboard services, agentic services, observability, and the optional integrated MLOps stack.
 
+Scope note: `agentic-ai-tier` services are included in Compose but are excluded from current Scenario B validation scope.
+
 ## Runtime Modes
 
-Default platform runtime (includes mlops-runner and drift-monitor):
+Default platform runtime (includes `mlops-runner` and `mlops-drift-monitor`):
 
 ```bash
 cd neuroslice-platform/infrastructure
@@ -52,7 +54,7 @@ docker compose config
 
 There are two drift detection services in the platform:
 
-**mlops-tier drift-monitor** (default runtime, always-on):
+**mlops-tier `mlops-drift-monitor`** (default runtime, always-on):
 
 A lightweight FastAPI service that counts anomaly events in the `events.anomaly` Redis stream over a sliding window. When the count exceeds the threshold it calls `mlops-runner` to trigger the full pipeline automatically. Relevant environment variables:
 
@@ -64,7 +66,7 @@ A lightweight FastAPI service that counts anomaly events in the `events.anomaly`
 | `DRIFT_POLL_INTERVAL_SECONDS` | `30` | Polling interval |
 | `MLOPS_PIPELINE_ENABLED` | `true` | Set `false` to disable auto-trigger |
 
-**aiops-tier drift-monitor** (`drift` profile, optional):
+**aiops-tier `aiops-drift-monitor`** (`drift` profile, optional):
 
 A statistically rigorous service using `alibi-detect[torch]` (PyTorch MMD test) that requires pre-built drift reference artifacts. It is a separate profile because PyTorch adds significant build time and image size.
 
@@ -76,7 +78,7 @@ A statistically rigorous service using `alibi-detect[torch]` (PyTorch MMD test) 
 | `DRIFT_P_VALUE_THRESHOLD` | `0.01` | MMD p-value threshold |
 | `DRIFT_TEST_INTERVAL_SEC` | `60` | Seconds between drift tests |
 | `DRIFT_EMIT_COOLDOWN_SEC` | `300` | Seconds between repeated drift alerts per model |
-| `DRIFT_MONITOR_PORT` | `7012` | Host port for aiops-tier drift-monitor |
+| `DRIFT_MONITOR_PORT` | `7012` | Host port for `aiops-drift-monitor` |
 
 See `SCENARIO_B_DRIFT_DETECTION.md` for the full architecture and verification guide.
 
@@ -113,10 +115,11 @@ Important behavior:
 - InfluxDB
 - PostgreSQL
 - Grafana
-- Prometheus (scrapes adapter-ves and adapter-netconf metrics on `:9090`)
+- Prometheus and Grafana with full Scenario B service scraping
 - simulation services
 - ingestion services
 - runtime AIOps workers
+- `online-evaluator` (runtime pseudo-ground-truth evaluation for AIOps predictions)
 - `api-bff-service`
 - `auth-service`
 - `dashboard-backend`
@@ -127,7 +130,33 @@ Important behavior:
 - `root-cause`
 - `copilot-agent`
 - `mlops-runner` (internal-only; no published port)
-- `drift-monitor` (mlops-tier; internal-only at port 8030)
+- `mlops-drift-monitor` (mlops-tier; internal-only at port 8030)
+
+## Runtime Service Flags (Dashboard-Controlled)
+
+Scenario B uses Redis-backed runtime flags rather than container start/stop commands:
+
+- `runtime:service:{service_name}:enabled`
+- `runtime:service:{service_name}:mode`
+- `runtime:service:{service_name}:updated_at`
+- `runtime:service:{service_name}:updated_by`
+- `runtime:service:{service_name}:reason`
+
+Controlled services:
+
+- `congestion-detector`
+- `sla-assurance`
+- `slice-classifier`
+- `aiops-drift-monitor`
+- `mlops-drift-monitor`
+
+Dashboard API surface:
+
+- `GET /api/dashboard/runtime/services`
+- `GET /api/dashboard/runtime/services/{service_name}`
+- `PATCH /api/dashboard/runtime/services/{service_name}`
+
+AIOps workers and drift monitors read these keys from Redis and skip processing or trigger actions when disabled.
 
 The integrated MLOps services start only with the `mlops` profile.
 
@@ -143,11 +172,11 @@ The `mlops` profile starts:
 - `logstash`
 - `kibana`
 - `mlops-api`
-- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend` and `drift-monitor`)
+- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend` and `mlops-drift-monitor`)
 
 The `mlops-worker` profile runs the offline training/promotion pipeline manually.
 
-`mlops-runner` is the only service that owns the Docker socket. It accepts `POST /run-action` calls with a fixed action map (e.g. `full_pipeline`) and executes the corresponding make target inside the mlops-api container. Toggling `MLOPS_PIPELINE_ENABLED=false` immediately disables pipeline execution. See `mlops-tier/mlops-runner/README.md`.
+`mlops-runner` is the only service that owns the Docker socket. It accepts `POST /run-action` calls with a fixed action map (e.g. `full_pipeline`) and executes the corresponding make target inside the mlops-api container. `MLOPS_ORCHESTRATION_ENABLED=false` disables execution inside `mlops-runner`; `MLOPS_PIPELINE_ENABLED=false` disables upstream trigger attempts from `dashboard-backend` and `mlops-drift-monitor`. See `mlops-tier/mlops-runner/README.md`.
 
 ## Published URLs
 
@@ -236,8 +265,9 @@ Primary variables are wired through Compose and optional `.env` files:
 - ports: `REDIS_PORT`, `API_PORT`, `VES_PORT`, `NETCONF_PORT`, `FAULT_ENGINE_PORT`, `GRAFANA_PORT`, `DASHBOARD_FRONTEND_PORT`, `DASHBOARD_KONG_PORT`, `RCA_AGENT_PORT`, `COPILOT_AGENT_PORT`
 - MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`, `KIBANA_PORT`
 - dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER` (default `bff`)
-- MLOps Operations Center (dashboard-backend + mlops-runner): `MLOPS_PIPELINE_ENABLED` (default `true`), `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS` (default `7200`), `MLOPS_RUNNER_TOKEN` (optional shared secret), `MLOPS_TOOLS_*_URL` (default `http://localhost:*` so the browser opens host-published UIs)
-- drift-monitor (mlops-tier): `DRIFT_ANOMALY_THRESHOLD`, `DRIFT_WINDOW_SECONDS`, `DRIFT_COOLDOWN_SECONDS`, `DRIFT_POLL_INTERVAL_SECONDS`
+- MLOps Operations Center (dashboard-backend + mlops-runner): `MLOPS_PIPELINE_ENABLED` (default `true`), `MLOPS_ORCHESTRATION_ENABLED` (default `true`), `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS` (default `7200`), `MLOPS_RUNNER_TOKEN` (optional shared secret), `MLOPS_TOOLS_*_URL` (default `http://localhost:*` so the browser opens host-published UIs)
+- `mlops-drift-monitor` (mlops-tier): `DRIFT_ANOMALY_THRESHOLD`, `DRIFT_WINDOW_SECONDS`, `DRIFT_COOLDOWN_SECONDS`, `DRIFT_POLL_INTERVAL_SECONDS`
+- online evaluator: `EVALUATION_WINDOW_SIZE`, `EVALUATION_PENDING_TTL_SECONDS`
 - agentic: `OLLAMA_BASE_URL`, `RCA_OLLAMA_MODEL`, `COPILOT_OLLAMA_MODEL`
 
 ## Common Operations
@@ -260,5 +290,9 @@ docker compose down -v
 
 - Local-development credentials are present in Compose and should not be used as production secrets.
 - `mlops-worker` is manual and does not start during `docker compose --profile mlops up --build`.
-- The aiops-tier `drift-monitor` (statistical, alibi-detect) requires the `drift` profile; the mlops-tier `drift-monitor` (anomaly-count based) is part of the default runtime.
+- The aiops-tier `aiops-drift-monitor` (statistical, alibi-detect) requires the `drift` profile; the mlops-tier `mlops-drift-monitor` (anomaly-count based) is part of the default runtime.
 - AIOps model-backed inference requires promoted artifacts to exist locally under `batch-orchestrator/models/promoted/`.
+
+## Observability Coverage (Scenario B)
+
+Prometheus scrape targets now include ingestion adapters, AIOps workers, control-tier services, dashboard-backend, api-bff-service, online evaluator, mlops-runner, mlops-drift-monitor, optional aiops-drift-monitor, and Prometheus self metrics.

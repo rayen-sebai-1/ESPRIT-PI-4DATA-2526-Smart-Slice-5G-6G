@@ -4,6 +4,8 @@ Last verified: 2026-04-29.
 
 The Control Tier contains the deterministic operations layer for NeuroSlice. It converts AIOps prediction events into lifecycle-managed alerts, then converts unresolved alerts into operator-approved remediation recommendations.
 
+Fault-originated alerts in Scenario B are simulator-driven test events, not real network-fault ingestion from production systems.
+
 This tier is intentionally rule based. It does not call LLMs, agent frameworks, Ollama, OpenAI APIs, PCF, NMS, orchestrators, or any real network remediation system. Execution is simulated and recorded as state.
 
 ## Directory Layout
@@ -169,6 +171,16 @@ Redis state:
 - `control:actions:{action_id}` hash
 - `control:actions:index` set
 - `control:actions:by_alert:{alert_id}` string
+- `control:actuations:{action_id}` hash
+- `control:actuations:index` set
+- `control:actuation:qos:{entity_id}`
+- `control:actuation:reroute:{entity_id}`
+- `control:actuation:scale:{entity_id}`
+- `control:actuation:inspect:{entity_id}`
+- `control:actuation:investigate:{entity_id}`
+- `control:sim:qos_boost`
+- `control:sim:reroute_bias` and optional `control:sim:reroute_bias:{slice_id}`
+- `control:sim:edge_capacity_boost` and optional `control:sim:edge_capacity_boost:{entity_id}`
 
 REST API:
 
@@ -178,6 +190,8 @@ REST API:
 - `POST /actions/{action_id}/approve`
 - `POST /actions/{action_id}/reject`
 - `POST /actions/{action_id}/execute`
+- `GET /actuations`
+- `GET /actuations/{action_id}`
 
 Action statuses:
 
@@ -257,7 +271,25 @@ Unmatched alerts are immediately marked `EXECUTED_SIMULATED`. Matching remediati
 6. Approved actions can be executed through `POST /actions/{action_id}/execute`.
 7. Execution records `EXECUTED_SIMULATED` and publishes an action update to `stream:control.actions`.
 
+During execution, `policy-control` applies a Redis-only simulation actuator (`simulation_actuator.py`) and publishes a lifecycle event to `stream:control.actuations`. This closes the Scenario B control loop without contacting any external PCF/NMS API.
+
 Rejected, executed, and failed actions are terminal. Simulated execution never calls a real PCF, NMS, orchestrator, or network API.
+
+## Metrics
+
+Both services expose `GET /metrics`.
+
+Alert-management metrics:
+
+- `neuroslice_control_alerts_total{severity,type,status}`
+- `neuroslice_control_events_processed_total{service}`
+- `neuroslice_control_last_event_timestamp{service}`
+
+Policy-control metrics:
+
+- `neuroslice_control_actions_total{action_type,status}`
+- `neuroslice_control_events_processed_total{service}`
+- `neuroslice_control_last_event_timestamp{service}`
 
 ## Run With Docker Compose
 
@@ -304,13 +336,13 @@ Each service can also be run directly if Redis is reachable:
 ```bash
 cd neuroslice-platform/control-tier/alert-management
 pip install -r requirements.txt
-$env:REDIS_HOST = "localhost"
+export REDIS_HOST=localhost
 uvicorn app.main:app --host 0.0.0.0 --port 7010
 ```
 
 ```bash
 cd neuroslice-platform/control-tier/policy-control
 pip install -r requirements.txt
-$env:REDIS_HOST = "localhost"
+export REDIS_HOST=localhost
 uvicorn app.main:app --host 0.0.0.0 --port 7011
 ```

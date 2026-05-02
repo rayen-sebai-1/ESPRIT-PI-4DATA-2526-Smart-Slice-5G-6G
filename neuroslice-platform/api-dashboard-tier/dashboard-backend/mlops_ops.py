@@ -340,7 +340,12 @@ class MlopsOpsService:
         try:
             with client_factory() as client:
                 response = client.post(
-                    f"{self.config.pipeline_runner_url.rstrip('/')}/run-pipeline",
+                    f"{self.config.pipeline_runner_url.rstrip('/')}/run-action",
+                    json={
+                        "action": "full_pipeline",
+                        "trigger_source": "manual",
+                        "parameters": {},
+                    },
                     headers=headers,
                 )
                 response.raise_for_status()

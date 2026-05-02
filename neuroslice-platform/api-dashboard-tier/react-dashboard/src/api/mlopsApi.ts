@@ -9,6 +9,8 @@ import type {
   MlopsPredictionMonitoringResponse,
   MlopsPromotePayload,
   MlopsPromotionEvent,
+  MlopsRetrainingRequest,
+  MlopsRetrainingRequestListResponse,
   MlopsRollbackPayload,
   MlopsRunSummary,
   MlopsToolsHealthResponse,
@@ -117,6 +119,44 @@ export async function getMlopsPipelineConfig(): Promise<MlopsPipelineConfig> {
   return data;
 }
 
+export async function getMlopsRequests(params: { status?: string; limit?: number } = {}) {
+  const { data } = await dashboardClient.get<MlopsRetrainingRequestListResponse>("/mlops/requests", {
+    params: {
+      status: params.status || undefined,
+      limit: params.limit ?? 200,
+    },
+  });
+  return data;
+}
+
+export async function getMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.get<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}`,
+  );
+  return data;
+}
+
+export async function approveMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.post<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}/approve`,
+  );
+  return data;
+}
+
+export async function rejectMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.post<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}/reject`,
+  );
+  return data;
+}
+
+export async function executeMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.post<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}/execute`,
+  );
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Drift Detection
 // ---------------------------------------------------------------------------
@@ -182,5 +222,43 @@ export async function getMlopsDriftEvents(limit = 50): Promise<DriftEventsRespon
   const { data } = await dashboardClient.get<DriftEventsResponse>("/mlops/drift-events", {
     params: { limit },
   });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Online evaluation
+// ---------------------------------------------------------------------------
+
+export interface EvaluationModelState {
+  model_name: string;
+  status?: string;
+  timestamp?: string;
+  window_size?: number;
+  window_capacity?: number;
+  samples_total?: number;
+  accuracy?: number;
+  precision?: number;
+  recall?: number;
+  f1?: number;
+  false_positive_count?: number;
+  false_negative_count?: number;
+  pseudo_ground_truth_available?: boolean;
+}
+
+export interface EvaluationLatestResponse {
+  models: Record<string, EvaluationModelState>;
+  timestamp?: string | null;
+  note?: string | null;
+}
+
+export async function getMlopsEvaluation(): Promise<EvaluationLatestResponse> {
+  const { data } = await dashboardClient.get<EvaluationLatestResponse>("/mlops/evaluation");
+  return data;
+}
+
+export async function getMlopsEvaluationModel(modelName: string): Promise<EvaluationModelState> {
+  const { data } = await dashboardClient.get<EvaluationModelState>(
+    `/mlops/evaluation/${encodeURIComponent(modelName)}`,
+  );
   return data;
 }

@@ -138,6 +138,8 @@ models/promoted/{model_name}/current/model.onnx
 models/promoted/{model_name}/current/model_fp16.onnx
 models/promoted/{model_name}/current/metadata.json
 models/promoted/{model_name}/current/version.txt
+models/promoted/{model_name}/current/drift_reference.npz
+models/promoted/{model_name}/current/drift_feature_schema.json
 ```
 
 `src/mlops/promotion.py` provides:
@@ -149,6 +151,8 @@ models/promoted/{model_name}/current/version.txt
 - `materialize_promoted_model_for_registry(...)`
 
 The promotion update validates that raw ONNX and FP16 ONNX exist, pass ONNX checker, and that FP16 loads with ONNX Runtime before `current/` metadata is updated.
+
+`drift_reference.npz` and `drift_feature_schema.json` are used by `aiops-drift-monitor` (Alibi Detect MMD) for Scenario B statistical drift detection.
 
 ## Registry Metadata
 
