@@ -95,7 +95,7 @@ function LogsModal({ runId, isOpen, onClose }: { runId: string | null; isOpen: b
         </div>
         <div className="flex-1 overflow-auto bg-[#0a0a0a] p-4 text-xs font-mono leading-relaxed text-slate-300">
           {!logs ? (
-            <div className="flex h-full items-center justify-center text-slate-500">Chargement...</div>
+            <div className="flex h-full items-center justify-center text-slate-500">Loading...</div>
           ) : (
             <>
               {logs.stdout && (
@@ -105,7 +105,7 @@ function LogsModal({ runId, isOpen, onClose }: { runId: string | null; isOpen: b
                 <div className="whitespace-pre-wrap text-red-400">{logs.stderr}</div>
               )}
               {!logs.stdout && !logs.stderr && (
-                <div className="text-slate-500 italic">Aucun log disponible.</div>
+                <div className="text-slate-500 italic">No logs available.</div>
               )}
             </>
           )}

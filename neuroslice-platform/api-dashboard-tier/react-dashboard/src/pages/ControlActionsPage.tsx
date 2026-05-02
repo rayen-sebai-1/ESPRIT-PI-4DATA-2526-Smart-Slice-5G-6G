@@ -268,132 +268,130 @@ export function ControlActionsPage() {
         </div>
       )}
 
-      {/* Drift status card */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-slate-200">
-          <Activity className="size-4 text-accent" /> Drift Monitor
-        </h2>
-        {!canViewDrift && (
-          <div className="rounded-xl border border-white/5 bg-cardAlt/40 p-4 text-sm text-slate-400">
-            Drift monitor status is restricted to MLOps read roles.
-          </div>
-        )}
-        {canViewDrift && (
-          <>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className={cn(
-            "rounded-xl border p-4",
-            driftStatus?.drift_detected
-              ? "border-red-500/30 bg-red-500/10"
-              : "border-white/5 bg-cardAlt/50",
-          )}>
-            <p className="text-xs text-slate-500 mb-1">Drift Status</p>
-            <p className={cn("text-lg font-semibold", driftStatus?.drift_detected ? "text-red-400" : "text-emerald-400")}>
-              {driftStatus?.drift_detected ? "DRIFT DETECTED" : "NOMINAL"}
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/5 bg-cardAlt/50 p-4">
-            <p className="text-xs text-slate-500 mb-1">Anomalies ({driftStatus?.window_seconds}s window)</p>
-            <p className="text-lg font-semibold text-slate-200">
-              {driftStatus?.anomaly_count ?? "—"} / {driftStatus?.threshold ?? "—"}
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/5 bg-cardAlt/50 p-4">
-            <p className="text-xs text-slate-500 mb-1">Last Drift Trigger</p>
-            <p className="text-sm text-slate-300">
-              {driftStatus?.last_trigger_time
-                ? new Date(driftStatus.last_trigger_time).toLocaleString()
-                : "Never"}
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/5 bg-cardAlt/50 p-4">
-            <p className="text-xs text-slate-500 mb-1">Auto MLOps Pipeline</p>
-            <div className="flex items-center justify-between">
-              <p className={cn("text-sm font-semibold", driftStatus?.pipeline_enabled ? "text-emerald-400" : "text-slate-500")}>
-                {driftStatus?.pipeline_enabled ? "ENABLED" : "DISABLED"}
-              </p>
-              {canTriggerDrift && (
-                <button
-                  onClick={() => driftTriggerMut.mutate()}
-                  disabled={driftTriggerMut.isPending || driftStatus?.cooldown_active}
-                  className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 hover:bg-accent hover:text-slate-950 transition disabled:opacity-40"
-                  title={driftStatus?.cooldown_active ? "Cooldown active" : "Trigger drift check now"}
-                >
-                  <Zap className="size-3" /> Trigger
-                </button>
-              )}
-            </div>
-            {driftStatus?.cooldown_active && (
-              <p className="mt-1 text-xs text-amber-400"><Clock className="inline size-3 mr-0.5" />Cooldown active</p>
-            )}
-          </div>
+      {/* ── Drift Monitor ───────────────────────────────────────────────────────── */}
+      <section className="rounded-2xl border border-white/8 bg-card shadow-sm">
+        <div className="flex items-center gap-2 border-b border-white/8 px-6 py-4">
+          <Activity className="size-4 text-accent" />
+          <h2 className="text-base font-semibold text-slate-200">Drift Monitor</h2>
         </div>
+        <div className="p-6">
+          {!canViewDrift && (
+            <div className="rounded-xl border border-white/5 bg-cardAlt/40 p-4 text-sm text-slate-400">
+              Drift monitor status is restricted to MLOps read roles.
+            </div>
+          )}
+          {canViewDrift && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className={cn(
+                  "rounded-xl border p-4",
+                  driftStatus?.drift_detected
+                    ? "border-red-500/30 bg-red-500/10"
+                    : "border-white/5 bg-cardAlt/50",
+                )}>
+                  <p className="text-xs text-slate-500 mb-1">Drift Status</p>
+                  <p className={cn("text-lg font-semibold", driftStatus?.drift_detected ? "text-red-400" : "text-emerald-400")}>
+                    {driftStatus?.drift_detected ? "DRIFT DETECTED" : "NOMINAL"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-cardAlt/50 p-4">
+                  <p className="text-xs text-slate-500 mb-1">Anomalies ({driftStatus?.window_seconds}s window)</p>
+                  <p className="text-lg font-semibold text-slate-200">
+                    {driftStatus?.anomaly_count ?? "—"} / {driftStatus?.threshold ?? "—"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-cardAlt/50 p-4">
+                  <p className="text-xs text-slate-500 mb-1">Last Drift Trigger</p>
+                  <p className="text-sm text-slate-300">
+                    {driftStatus?.last_trigger_time
+                      ? new Date(driftStatus.last_trigger_time).toLocaleString()
+                      : "Never"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-cardAlt/50 p-4">
+                  <p className="text-xs text-slate-500 mb-1">Auto MLOps Pipeline</p>
+                  <div className="flex items-center justify-between">
+                    <p className={cn("text-sm font-semibold", driftStatus?.pipeline_enabled ? "text-emerald-400" : "text-slate-500")}>
+                      {driftStatus?.pipeline_enabled ? "ENABLED" : "DISABLED"}
+                    </p>
+                    {canTriggerDrift && (
+                      <button
+                        onClick={() => driftTriggerMut.mutate()}
+                        disabled={driftTriggerMut.isPending || driftStatus?.cooldown_active}
+                        className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 hover:bg-accent hover:text-slate-950 transition disabled:opacity-40"
+                        title={driftStatus?.cooldown_active ? "Cooldown active" : "Trigger drift check now"}
+                      >
+                        <Zap className="size-3" /> Trigger
+                      </button>
+                    )}
+                  </div>
+                  {driftStatus?.cooldown_active && (
+                    <p className="mt-1 text-xs text-amber-400"><Clock className="inline size-3 mr-0.5" />Cooldown active</p>
+                  )}
+                </div>
+              </div>
 
-        {/* Recent drift events */}
-        {(driftEvents?.items?.length ?? 0) > 0 && (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-white/5 bg-card">
-            <table className="w-full text-left text-xs text-slate-400">
-              <thead className="border-b border-white/5 bg-black/20 text-[11px] font-medium uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-2">Time</th>
-                  <th className="px-4 py-2">Anomalies</th>
-                  <th className="px-4 py-2">Pipeline Triggered</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {driftEvents!.items.map((ev, i) => (
-                  <tr key={i}>
-                    <td className="px-4 py-2 font-mono">{new Date(ev.timestamp).toLocaleString()}</td>
-                    <td className="px-4 py-2">{ev.anomaly_count}</td>
-                    <td className="px-4 py-2">
-                      {ev.pipeline_triggered ? (
-                        <span className="text-emerald-400">Yes</span>
-                      ) : (
-                        <span className="text-slate-600">No</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-          </>
-        )}
+              {(driftEvents?.items?.length ?? 0) > 0 && (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-white/5 bg-card">
+                  <table className="w-full text-left text-xs text-slate-400">
+                    <thead className="border-b border-white/5 bg-black/20 text-[11px] font-medium uppercase text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2">Time</th>
+                        <th className="px-4 py-2">Anomalies</th>
+                        <th className="px-4 py-2">Pipeline Triggered</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {driftEvents!.items.map((ev, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-2 font-mono">{new Date(ev.timestamp).toLocaleString()}</td>
+                          <td className="px-4 py-2">{ev.anomaly_count}</td>
+                          <td className="px-4 py-2">
+                            {ev.pipeline_triggered ? (
+                              <span className="text-emerald-400">Yes</span>
+                            ) : (
+                              <span className="text-slate-600">No</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </section>
 
-      {/* Pending actions */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-slate-200">
+      {/* ── Pending Approval ─────────────────────────────────────────────────────── */}
+      <section className="rounded-2xl border border-amber-500/20 bg-card shadow-sm">
+        <div className="flex items-center gap-2 border-b border-amber-500/20 px-6 py-4">
           <AlertTriangle className="size-4 text-amber-400" />
-          Pending Approval
+          <h2 className="text-base font-semibold text-slate-200">Pending Approval</h2>
           {pending.length > 0 && (
             <span className="ml-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">
               {pending.length}
             </span>
           )}
-        </h2>
-
-        {actionsLoading && (
-          <div className="flex h-24 items-center justify-center rounded-xl border border-white/5 bg-card">
-            <RefreshCw className="size-5 animate-spin text-slate-500" />
-          </div>
-        )}
-
-        {!actionsLoading && actionsError && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">
-            Failed to load actions. Is policy-control running?
-          </div>
-        )}
-
-        {!actionsLoading && !actionsError && pending.length === 0 && (
-          <div className="rounded-xl border border-white/5 bg-card p-8 text-center text-sm text-slate-500">
-            <ShieldCheck className="mx-auto mb-2 size-8 text-slate-600" />
-            No actions pending approval.
-          </div>
-        )}
-
-        <div className="space-y-3">
+        </div>
+        <div className="p-6 space-y-3">
+          {actionsLoading && (
+            <div className="flex h-24 items-center justify-center rounded-xl border border-white/5 bg-card">
+              <RefreshCw className="size-5 animate-spin text-slate-500" />
+            </div>
+          )}
+          {!actionsLoading && actionsError && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">
+              Failed to load actions. Is policy-control running?
+            </div>
+          )}
+          {!actionsLoading && !actionsError && pending.length === 0 && (
+            <div className="rounded-xl border border-white/5 bg-card p-8 text-center text-sm text-slate-500">
+              <ShieldCheck className="mx-auto mb-2 size-8 text-slate-600" />
+              No actions pending approval.
+            </div>
+          )}
           {pending.map((a) => (
             <ActionRow
               key={a.action_id}
@@ -408,12 +406,13 @@ export function ControlActionsPage() {
         </div>
       </section>
 
-      {/* History */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-slate-200">
-          <Clock className="size-4 text-accent" /> Action History
-        </h2>
-        <div className="space-y-3">
+      {/* ── Action History ───────────────────────────────────────────────────────── */}
+      <section className="rounded-2xl border border-white/8 bg-card shadow-sm">
+        <div className="flex items-center gap-2 border-b border-white/8 px-6 py-4">
+          <Clock className="size-4 text-accent" />
+          <h2 className="text-base font-semibold text-slate-200">Action History</h2>
+        </div>
+        <div className="p-6 space-y-3">
           {others.map((a) => (
             <ActionRow
               key={a.action_id}
@@ -431,41 +430,44 @@ export function ControlActionsPage() {
         </div>
       </section>
 
-      {/* Simulated actuations */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-slate-200">
-          <Zap className="size-4 text-emerald-400" /> Simulated Actuations
-        </h2>
-        <div className="overflow-x-auto rounded-xl border border-white/5 bg-card">
-          <table className="w-full text-left text-xs text-slate-400">
-            <thead className="border-b border-white/5 bg-black/20 text-[11px] font-medium uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-2">Time</th>
-                <th className="px-4 py-2">Action</th>
-                <th className="px-4 py-2">Entity</th>
-                <th className="px-4 py-2">Keys</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {actuations.map((item: ControlActuation) => (
-                <tr key={item.action_id}>
-                  <td className="px-4 py-2 font-mono">{new Date(item.timestamp).toLocaleString()}</td>
-                  <td className="px-4 py-2">{ACTION_TYPE_LABELS[item.action_type] ?? item.action_type}</td>
-                  <td className="px-4 py-2">{item.entity_id}</td>
-                  <td className="px-4 py-2 font-mono">
-                    {(item.keys_written ?? []).join(", ") || "—"}
-                  </td>
-                </tr>
-              ))}
-              {actuations.length === 0 && (
+      {/* ── Simulated Actuations ─────────────────────────────────────────────────── */}
+      <section className="rounded-2xl border border-emerald-500/20 bg-card shadow-sm">
+        <div className="flex items-center gap-2 border-b border-emerald-500/20 px-6 py-4">
+          <Zap className="size-4 text-emerald-400" />
+          <h2 className="text-base font-semibold text-slate-200">Simulated Actuations</h2>
+        </div>
+        <div className="p-6">
+          <div className="overflow-x-auto rounded-xl border border-white/5 bg-card">
+            <table className="w-full text-left text-xs text-slate-400">
+              <thead className="border-b border-white/5 bg-black/20 text-[11px] font-medium uppercase text-slate-500">
                 <tr>
-                  <td className="px-4 py-6 text-center text-slate-600" colSpan={4}>
-                    No simulated actuations recorded yet.
-                  </td>
+                  <th className="px-4 py-2">Time</th>
+                  <th className="px-4 py-2">Action</th>
+                  <th className="px-4 py-2">Entity</th>
+                  <th className="px-4 py-2">Keys</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {actuations.map((item: ControlActuation) => (
+                  <tr key={item.action_id}>
+                    <td className="px-4 py-2 font-mono">{new Date(item.timestamp).toLocaleString()}</td>
+                    <td className="px-4 py-2">{ACTION_TYPE_LABELS[item.action_type] ?? item.action_type}</td>
+                    <td className="px-4 py-2">{item.entity_id}</td>
+                    <td className="px-4 py-2 font-mono">
+                      {(item.keys_written ?? []).join(", ") || "—"}
+                    </td>
+                  </tr>
+                ))}
+                {actuations.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-slate-600" colSpan={4}>
+                      No simulated actuations recorded yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>

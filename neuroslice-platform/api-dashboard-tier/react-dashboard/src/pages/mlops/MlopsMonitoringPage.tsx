@@ -171,7 +171,7 @@ function DriftSection() {
     return (
       <Card className="p-5">
         <h3 className="mb-3 text-lg font-semibold text-white">Drift Detection</h3>
-        <p className="text-sm text-mutedText">Chargement...</p>
+        <p className="text-sm text-mutedText">Loading...</p>
       </Card>
     );
   }
@@ -193,7 +193,7 @@ function DriftSection() {
           ) : null}
         </div>
         <Button variant="secondary" size="sm" onClick={() => void driftQuery.refetch()}>
-          Rafraichir
+          Refresh
         </Button>
       </div>
 
@@ -282,7 +282,7 @@ function EvaluationSection() {
     return (
       <Card className="p-5">
         <h3 className="mb-3 text-lg font-semibold text-white">Online Evaluation</h3>
-        <p className="text-sm text-mutedText">Chargement...</p>
+        <p className="text-sm text-mutedText">Loading...</p>
       </Card>
     );
   }
@@ -301,7 +301,7 @@ function EvaluationSection() {
           {evalData?.note ? <p className="mt-1 text-xs text-amber-300">{evalData.note}</p> : null}
         </div>
         <Button variant="secondary" size="sm" onClick={() => void evalQuery.refetch()}>
-          Rafraichir
+          Refresh
         </Button>
       </div>
 
@@ -337,7 +337,7 @@ export function MlopsMonitoringPage() {
   }
   if (query.isError || !query.data) {
     return (
-      <EmptyState title="Monitoring indisponible" description="Echec de la requete Elasticsearch." />
+      <EmptyState title="Monitoring unavailable" description="Elasticsearch query failed." />
     );
   }
 
@@ -353,16 +353,16 @@ export function MlopsMonitoringPage() {
       <Card className="p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white">Monitoring des predictions</h3>
+            <h3 className="text-lg font-semibold text-white">Prediction monitoring</h3>
             <p className="text-sm text-mutedText">
-              Source: {data.source} - {data.available ? "disponible" : "indisponible"}
+              Source: {data.source} - {data.available ? "available" : "unavailable"}
             </p>
             {data.note ? <p className="mt-1 text-xs text-amber-300">{data.note}</p> : null}
           </div>
           <div className="flex items-end gap-2">
             <div>
               <label className="text-xs uppercase tracking-[0.22em] text-mutedText">
-                Filtrer par modele
+                Filter by model
               </label>
               <Input
                 value={model}
@@ -371,7 +371,7 @@ export function MlopsMonitoringPage() {
               />
             </div>
             <Button variant="secondary" onClick={() => void query.refetch()}>
-              Rafraichir
+              Refresh
             </Button>
           </div>
         </div>
@@ -380,7 +380,7 @@ export function MlopsMonitoringPage() {
       <Card className="p-5">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold text-white">
-            Dernieres predictions ({data.total})
+            Latest predictions ({data.total})
           </h4>
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -388,7 +388,7 @@ export function MlopsMonitoringPage() {
             <thead className="text-xs uppercase tracking-[0.22em] text-mutedText">
               <tr>
                 <th className="pb-3 pr-4">Timestamp</th>
-                <th className="pb-3 pr-4">Modele</th>
+                <th className="pb-3 pr-4">Model</th>
                 <th className="pb-3 pr-4">Region</th>
                 <th className="pb-3 pr-4">Risk</th>
                 <th className="pb-3 pr-4">SLA</th>
@@ -407,7 +407,7 @@ export function MlopsMonitoringPage() {
               {data.items.length === 0 ? (
                 <tr>
                   <td className="py-6 text-center text-mutedText" colSpan={5}>
-                    Aucun evenement disponible.
+                    No events available.
                   </td>
                 </tr>
               ) : null}

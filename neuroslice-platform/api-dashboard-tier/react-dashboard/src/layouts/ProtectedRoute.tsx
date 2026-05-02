@@ -14,9 +14,9 @@ export function ProtectedRoute({ allowedRoles }: { allowedRoles?: UserRole[] }) 
       <div className="flex min-h-screen items-center justify-center bg-background px-6 text-white">
         <Card className="w-full max-w-md p-6 text-center">
           <div className="text-xs uppercase tracking-[0.24em] text-mutedText">NeuroSlice Tunisia</div>
-          <div className="mt-3 text-lg font-semibold">Chargement de la plateforme...</div>
+          <div className="mt-3 text-lg font-semibold">Loading platform...</div>
           <div className="mt-3 text-sm text-mutedText">
-            Validation du token JWT et synchronisation du profil utilisateur.
+            Validating JWT token and synchronizing user profile.
           </div>
         </Card>
       </div>

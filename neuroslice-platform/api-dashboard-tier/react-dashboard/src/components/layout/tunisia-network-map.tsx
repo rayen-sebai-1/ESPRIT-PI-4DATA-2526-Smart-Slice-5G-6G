@@ -81,7 +81,7 @@ function getRegionTone(region: RegionComparison, active: boolean): SeverityTone 
   if (isCritical) {
     return {
       rank: 4,
-      label: "Critique",
+      label: "Critical",
       fill: active ? "#fb7185" : "#e11d48",
       stroke: active ? "#ffe4e6" : "#fecdd3",
       glow: "drop-shadow(0 0 26px rgba(244,63,94,0.33))",
@@ -93,7 +93,7 @@ function getRegionTone(region: RegionComparison, active: boolean): SeverityTone 
   if (isHigh) {
     return {
       rank: 3,
-      label: "Sous tension",
+      label: "Under pressure",
       fill: active ? "#fb923c" : "#f97316",
       stroke: active ? "#ffedd5" : "#fed7aa",
       glow: "drop-shadow(0 0 24px rgba(249,115,22,0.28))",
@@ -105,7 +105,7 @@ function getRegionTone(region: RegionComparison, active: boolean): SeverityTone 
   if (isMedium) {
     return {
       rank: 2,
-      label: "Surveillee",
+      label: "Monitored",
       fill: active ? "#fbbf24" : "#f59e0b",
       stroke: active ? "#fef3c7" : "#fde68a",
       glow: "drop-shadow(0 0 22px rgba(245,158,11,0.22))",
@@ -192,7 +192,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
       anchor.setAttribute("tabindex", "0");
       anchor.setAttribute(
         "aria-label",
-        `${region.name}. ${tone.label}. ${coverage.join(", ")}. Charge ${Math.round(region.network_load)} pour cent.`,
+        `${region.name}. ${tone.label}. ${coverage.join(", ")}. Load ${Math.round(region.network_load)} percent.`,
       );
 
       path.setAttribute("fill", tone.fill);
@@ -235,7 +235,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
     return (
       <Card className="p-5">
         <div className="text-sm text-mutedText">
-          La carte Tunisie sera disponible des que les regions du dashboard national seront chargees.
+          The Tunisia map will be available once the national dashboard regions are loaded.
         </div>
       </Card>
     );
@@ -281,20 +281,20 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
 
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-white">Carte de supervision Tunisie</h3>
+          <h3 className="text-lg font-semibold text-white">Tunisia supervision map</h3>
           <p className="mt-1 max-w-2xl text-sm text-mutedText">
-            Carte nationale agregee par zones operationnelles. Chaque gouvernorat reprend la couleur
-            de sa region metier, avec un niveau de risque derive de la charge reseau, du SLA et des
-            sessions sous pression.
+            National map aggregated by operational zones. Each governorate inherits the color of its
+            business region, with a risk level derived from network load, SLA and high-pressure
+            sessions.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs">
           {[
             { label: "Stable", className: "border-teal-300/25 bg-teal-400/12 text-teal-50" },
-            { label: "Surveillee", className: "border-amber-300/25 bg-amber-400/12 text-amber-50" },
-            { label: "Sous tension", className: "border-orange-400/25 bg-orange-500/12 text-orange-100" },
-            { label: "Critique", className: "border-rose-400/25 bg-rose-500/12 text-rose-100" },
+            { label: "Monitored", className: "border-amber-300/25 bg-amber-400/12 text-amber-50" },
+            { label: "Under pressure", className: "border-orange-400/25 bg-orange-500/12 text-orange-100" },
+            { label: "Critical", className: "border-rose-400/25 bg-rose-500/12 text-rose-100" },
           ].map((item) => (
             <span
               key={item.label}
@@ -310,10 +310,10 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
         <div className="rounded-[30px] border border-border bg-cardAlt/70 p-4 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <div className="rounded-full border border-border bg-background/70 px-4 py-2 text-xs uppercase tracking-[0.2em] text-mutedText">
-              Aggregation territoriale en 8 regions
+              Territorial aggregation across 8 regions
             </div>
             <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs text-cyan-100">
-              Clique sur une zone pour ouvrir le dashboard regional
+              Click on an area to open the regional dashboard
             </div>
           </div>
 
@@ -331,8 +331,8 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
             </div>
 
             <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-border bg-background/55 px-4 py-3 text-xs text-mutedText">
-              <span>Zone active : {activeRegion.name}</span>
-              <span>{activeCoverage.length} gouvernorat(s) regroupes</span>
+              <span>Active zone: {activeRegion.name}</span>
+              <span>{activeCoverage.length} governorate(s) grouped</span>
             </div>
           </div>
         </div>
@@ -341,7 +341,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
           <div className="rounded-[30px] border border-border bg-cardAlt/80 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="text-xs uppercase tracking-[0.24em] text-mutedText">Zone active</div>
+                <div className="text-xs uppercase tracking-[0.24em] text-mutedText">Active zone</div>
                 <h4 className="mt-2 text-2xl font-semibold text-white">{activeRegion.name}</h4>
                 <p className="mt-2 text-sm leading-6 text-mutedText">
                   {activeCoverage.join(" • ")}
@@ -362,14 +362,14 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
                   {formatPercent(activeRegion.sla_percent)}
                 </div>
                 <div className="mt-1 text-xs text-mutedText">
-                  Latence {formatLatency(activeRegion.avg_latency_ms)}
+                  Latency {formatLatency(activeRegion.avg_latency_ms)}
                 </div>
               </div>
 
               <div className="rounded-2xl border border-border bg-background/70 p-4">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-mutedText">
                   <TriangleAlert size={14} />
-                  Charge reseau
+                  Network load
                 </div>
                 <div className="mt-2 text-xl font-semibold text-white">
                   {Math.round(activeRegion.network_load)}%
@@ -401,7 +401,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
                   {formatNumber(activeRegion.high_risk_sessions_count)}
                 </div>
                 <div className="mt-1 text-xs text-mutedText">
-                  {formatNumber(activeRegion.anomalies_count)} anomalies en cours
+                  {formatNumber(activeRegion.anomalies_count)} active anomalies
                 </div>
               </div>
             </div>
@@ -411,14 +411,14 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
               onClick={() => navigate(`/dashboard/region/${activeRegion.region_id}`)}
               type="button"
             >
-              <span>Ouvrir le dashboard regional</span>
+              <span>Open regional dashboard</span>
               <ArrowUpRight size={16} />
             </button>
           </div>
 
           <div className="rounded-[30px] border border-border bg-cardAlt/80 p-4">
             <div className="mb-3 text-xs uppercase tracking-[0.22em] text-mutedText">
-              Regions operationnelles
+              Operational regions
             </div>
 
             <div className="space-y-2">

@@ -52,10 +52,10 @@ export function LogFiltersBar({ filters, compact, onChange }: LogFiltersBarProps
           value={String(filters.min_severity ?? 0)}
           onChange={(event) => setPatch({ min_severity: Number(event.target.value) as LogSeverity })}
         >
-          <option value="0">Severite 0+</option>
-          <option value="1">Severite 1+</option>
-          <option value="2">Severite 2+</option>
-          <option value="3">Severite 3</option>
+          <option value="0">Severity 0+</option>
+          <option value="1">Severity 1+</option>
+          <option value="2">Severity 2+</option>
+          <option value="3">Severity 3</option>
         </Select>
         <Input
           value={filters.entity_id ?? ""}

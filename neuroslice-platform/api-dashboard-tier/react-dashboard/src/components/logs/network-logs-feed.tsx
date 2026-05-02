@@ -84,10 +84,10 @@ export function NetworkLogsFeed({ scope, regionId, defaultFilters, compact }: Ne
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">
-                {scope === "regional" ? "Logs reseau regional" : "Logs reseau national"}
+                {scope === "regional" ? "Regional network logs" : "National network logs"}
               </h3>
               <p className="mt-1 text-sm text-mutedText">
-                Evenements live derives des mesures InfluxDB faults, telemetry et AIOps.
+                Live events derived from InfluxDB faults, telemetry and AIOps measurements.
               </p>
             </div>
             <Button
@@ -115,21 +115,21 @@ export function NetworkLogsFeed({ scope, regionId, defaultFilters, compact }: Ne
         ) : logsQuery.isError ? (
           <div className="p-5">
             <EmptyState
-              title="Logs reseau indisponibles"
-              description="Le BFF n'a pas pu lire les mesures InfluxDB pour le moment."
+              title="Network logs unavailable"
+              description="The BFF could not read InfluxDB measurements at this time."
             />
           </div>
         ) : events.length === 0 ? (
           <div className="p-5">
             <EmptyState
-              title="Aucun evenement reseau"
-              description="Aucun fault, breach KPI ou signal AIOps ne correspond aux filtres actifs."
+              title="No network events"
+              description="No fault, KPI breach or AIOps signal matches the active filters."
             />
           </div>
         ) : (
           <div>
             <div className="flex items-center justify-between px-5 py-3 text-xs text-mutedText">
-              <span>{events.length} evenements affiches</span>
+              <span>{events.length} events displayed</span>
               <span>{logsQuery.data?.window.start ?? filters.start} vers now()</span>
             </div>
             <div>

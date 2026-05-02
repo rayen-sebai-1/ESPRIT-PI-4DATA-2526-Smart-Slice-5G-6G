@@ -16,8 +16,8 @@ export function RegionLoadChart({ data }: { data: RegionComparison[] }) {
   if (!data.length) {
     return (
       <EmptyState
-        title="Aucune region exploitable"
-        description="Le backend ne renvoie pas encore de regions avec niveau de charge."
+        title="No region data available"
+        description="The backend has not returned any regions with a load level yet."
       />
     );
   }
@@ -25,9 +25,9 @@ export function RegionLoadChart({ data }: { data: RegionComparison[] }) {
   return (
     <Card className="p-5">
       <div className="mb-5">
-        <h3 className="text-lg font-semibold text-white">Pression reseau par region</h3>
+        <h3 className="text-lg font-semibold text-white">Network load by region</h3>
         <p className="text-sm text-mutedText">
-          Charge reseau et exposition congestion sur les zones les plus sollicitees.
+          Network load and congestion exposure across the most stressed areas.
         </p>
       </div>
       <div className="h-80">
@@ -44,7 +44,7 @@ export function RegionLoadChart({ data }: { data: RegionComparison[] }) {
                 color: "#fff",
               }}
             />
-            <Bar dataKey="network_load" name="Charge" fill="#4ec3ff" radius={[10, 10, 0, 0]} />
+            <Bar dataKey="network_load" name="Load" fill="#4ec3ff" radius={[10, 10, 0, 0]} />
             <Bar dataKey="congestion_rate" name="Congestion" fill="#f97316" radius={[10, 10, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

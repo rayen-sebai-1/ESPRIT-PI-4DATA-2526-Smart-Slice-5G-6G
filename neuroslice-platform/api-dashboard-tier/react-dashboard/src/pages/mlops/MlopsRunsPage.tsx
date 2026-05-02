@@ -12,27 +12,27 @@ export function MlopsRunsPage() {
   const runsQuery = useQuery({ queryKey: ["mlops", "runs"], queryFn: () => getMlopsRuns(80) });
 
   if (runsQuery.isLoading) {
-    return <div className="py-10 text-sm text-mutedText">Chargement des runs...</div>;
+    return <div className="py-10 text-sm text-mutedText">Loading runs...</div>;
   }
   if (runsQuery.isError || !runsQuery.data) {
-    return <EmptyState title="Runs indisponibles" description="La lecture du registre MLOps a echoue." />;
+    return <EmptyState title="Runs unavailable" description="Reading the MLOps registry failed." />;
   }
 
   return (
     <Card className="p-5">
-      <h3 className="text-lg font-semibold text-white">Derniers runs MLflow</h3>
-      <p className="text-sm text-mutedText">Tries du plus recent au plus ancien.</p>
+      <h3 className="text-lg font-semibold text-white">Latest MLflow runs</h3>
+      <p className="text-sm text-mutedText">Sorted from most recent to oldest.</p>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.22em] text-mutedText">
             <tr>
-              <th className="pb-3 pr-4">Modele</th>
+              <th className="pb-3 pr-4">Model</th>
               <th className="pb-3 pr-4">Version</th>
               <th className="pb-3 pr-4">Stage</th>
               <th className="pb-3 pr-4">Quality gate</th>
               <th className="pb-3 pr-4">Promotion</th>
               <th className="pb-3 pr-4">Run id</th>
-              <th className="pb-3 pr-4">Cree le</th>
+              <th className="pb-3 pr-4">Created</th>
               <th className="pb-3 pr-4">F1</th>
               <th className="pb-3 pr-4">ROC AUC</th>
             </tr>
@@ -54,7 +54,7 @@ export function MlopsRunsPage() {
             {runsQuery.data.length === 0 ? (
               <tr>
                 <td className="py-6 text-center text-mutedText" colSpan={9}>
-                  Aucun run enregistre.
+                  No runs recorded.
                 </td>
               </tr>
             ) : null}
