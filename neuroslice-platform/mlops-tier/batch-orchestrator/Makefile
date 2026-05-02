@@ -33,7 +33,7 @@ export API_PORT MLFLOW_PORT
         train-sla-5g train-sla-6g train-congestion-5g train-congestion-6g \
         train-slice-type-5g train-slice-type-6g \
         train-all test model-report mlflow-ui serve docker-build docker-run \
-        docker-compose-up notebook pipeline pipeline-congestion-5g pipeline-all clean \
+        docker-compose-up notebook pipeline pipeline-congestion-5g pipeline-sla-5g pipeline-slice-type-5g pipeline-all clean \
         prepare-data train evaluate log-mlflow export-onnx convert-fp16 validate-model \
         promote-model rollback-model mlops-full
 
@@ -157,6 +157,10 @@ docker-compose-up:
 # Full Pipeline
 # ------------------------------------------------------------------------------
 pipeline-congestion-5g: data-congestion-5g validate-data-congestion-5g train-congestion-5g model-report
+
+pipeline-sla-5g: data-sla-5g validate-data-sla-5g train-sla-5g model-report
+
+pipeline-slice-type-5g: data-slice-type-5g validate-data-slice-type-5g train-slice-type-5g model-report
 
 pipeline: data-congestion-5g validate-data-congestion-5g train-congestion-5g \
           data-sla-5g validate-data-sla-5g train-sla-5g \

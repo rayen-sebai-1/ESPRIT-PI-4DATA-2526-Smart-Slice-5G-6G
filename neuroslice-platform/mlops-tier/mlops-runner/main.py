@@ -108,6 +108,9 @@ _ACTION_MAP = {
     "promote_model": "promote-model",
     "rollback_model": "rollback-model",
     "full_pipeline": "mlops-full",
+    "pipeline_congestion_5g": "pipeline-congestion-5g",
+    "pipeline_sla_5g": "pipeline-sla-5g",
+    "pipeline_slice_type_5g": "pipeline-slice-type-5g",
 }
 
 def _truncate(value: str, *, limit: int = 200_000) -> str:
