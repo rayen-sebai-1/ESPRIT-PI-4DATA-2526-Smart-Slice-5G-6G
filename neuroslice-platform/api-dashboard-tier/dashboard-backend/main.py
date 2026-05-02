@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 import time
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import httpx
@@ -41,6 +44,8 @@ from schemas import (
     MlopsPredictionMonitoringResponse,
     MlopsPromoteRequest,
     MlopsPromotionEvent,
+    MlopsRetrainingRequest,
+    MlopsRetrainingRequestListResponse,
     MlopsRollbackRequest,
     MlopsRunSummary,
     MlopsToolsHealthResponse,
@@ -70,6 +75,7 @@ def get_mlops_orchestration_service(db: Annotated[Session, Depends(get_db)]) -> 
     return MlopsOrchestrationService(db)
 
 app = FastAPI(title="NeuroSlice Dashboard Backend", version="2.0.0")
+logger = logging.getLogger("dashboard-backend")
 
 dashboard_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER")
 prediction_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
@@ -154,6 +160,48 @@ def _runtime_redis_client() -> redis.Redis:
     )
 
 
+_MLOPS_REQUEST_INDEX_KEY = "mlops:requests:index"
+_MLOPS_REQUEST_PREFIX = "mlops:request:"
+_MLOPS_MODEL_PENDING_PREFIX = "mlops:requests:pending:model:"
+_MLOPS_RUNNING_SET_KEY = "mlops:requests:running"
+_MLOPS_DECISION_LOCK_KEY = "mlops:requests:decision_lock"
+_MLOPS_COOLDOWN_PREFIX = "mlops:cooldown:last_executed:"
+_MLOPS_MODEL_LOCK_PREFIX = "mlops:lock:"
+
+_MLOPS_REQUEST_ACTION_BY_MODEL: dict[str, str] = {
+    "congestion-5g": "pipeline_congestion_5g",
+    "sla-5g": "pipeline_sla_5g",
+    "slice-type-5g": "pipeline_slice_type_5g",
+}
+
+_MLOPS_INTERNAL_TO_PUBLIC_MODEL: dict[str, str] = {
+    "congestion_5g": "congestion-5g",
+    "sla_5g": "sla-5g",
+    "slice_type_5g": "slice-type-5g",
+}
+
+_MLOPS_PUBLIC_TO_INTERNAL_MODEL: dict[str, str] = {
+    value: key for key, value in _MLOPS_INTERNAL_TO_PUBLIC_MODEL.items()
+}
+
+try:
+    _MAX_PARALLEL_TRAINING = max(1, int(os.getenv("MAX_PARALLEL_TRAINING", "1")))
+except ValueError:
+    _MAX_PARALLEL_TRAINING = 1
+
+try:
+    _MLOPS_RETRAIN_COOLDOWN_MINUTES = max(0, int(os.getenv("MLOPS_RETRAIN_COOLDOWN_MINUTES", "30")))
+except ValueError:
+    _MLOPS_RETRAIN_COOLDOWN_MINUTES = 30
+
+try:
+    _MLOPS_RUNNER_TIMEOUT_SECONDS = max(
+        60,
+        int(os.getenv("MLOPS_ORCHESTRATION_TIMEOUT_SECONDS", "7200")),
+    )
+except ValueError:
+    _MLOPS_RUNNER_TIMEOUT_SECONDS = 7200
+
 def _parse_bool(value: str | None, *, default: bool = True) -> bool:
     if value is None:
         return default
@@ -193,6 +241,197 @@ def _can_write_runtime(service_name: str, principal: AuthenticatedPrincipal) -> 
         return service_name in {"congestion-detector", "sla-assurance", "slice-classifier", "aiops-drift-monitor"}
     return False
 
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _request_key(request_id: str) -> str:
+    return f"{_MLOPS_REQUEST_PREFIX}{request_id}"
+
+
+def _request_pending_key(model_internal: str) -> str:
+    return f"{_MLOPS_MODEL_PENDING_PREFIX}{model_internal}"
+
+
+def _model_lock_key(model: str) -> str:
+    return f"{_MLOPS_MODEL_LOCK_PREFIX}{model}"
+
+
+def _request_cooldown_key(model: str) -> str:
+    return f"{_MLOPS_COOLDOWN_PREFIX}{model}"
+
+
+def _request_model_internal(raw: dict[str, Any]) -> str:
+    value = str(raw.get("model_internal") or "").strip()
+    if value:
+        return value
+    model = str(raw.get("model") or "").strip()
+    if model in _MLOPS_PUBLIC_TO_INTERNAL_MODEL:
+        return _MLOPS_PUBLIC_TO_INTERNAL_MODEL[model]
+    return model
+
+
+def _request_model_public(raw: dict[str, Any]) -> str:
+    value = str(raw.get("model") or "").strip()
+    if value:
+        return value
+    internal = str(raw.get("model_internal") or "").strip()
+    if internal in _MLOPS_INTERNAL_TO_PUBLIC_MODEL:
+        return _MLOPS_INTERNAL_TO_PUBLIC_MODEL[internal]
+    return internal
+
+
+def _normalize_retraining_request(raw: dict[str, Any]) -> MlopsRetrainingRequest:
+    normalized = dict(raw)
+    normalized["id"] = str(raw.get("id") or "")
+    normalized["model"] = _request_model_public(raw)
+    normalized["model_internal"] = _request_model_internal(raw)
+    normalized["pipeline_action"] = raw.get("pipeline_action") or _MLOPS_REQUEST_ACTION_BY_MODEL.get(normalized["model"])
+    normalized["reason"] = str(raw.get("reason") or "drift_detected")
+    normalized["anomaly_count"] = int(raw.get("anomaly_count") or 0)
+    normalized["threshold"] = int(raw.get("threshold") or 0)
+    normalized["status"] = str(raw.get("status") or "pending_approval")
+    normalized["created_at"] = str(raw.get("created_at") or _now_iso())
+    normalized["updated_at"] = str(raw.get("updated_at") or normalized["created_at"])
+    normalized["approved_by"] = raw.get("approved_by")
+    normalized["approved_at"] = raw.get("approved_at")
+    normalized["executed_by"] = raw.get("executed_by")
+    normalized["executed_at"] = raw.get("executed_at")
+    normalized["completed_at"] = raw.get("completed_at")
+    normalized["execution_run_id"] = raw.get("execution_run_id")
+    normalized["execution_detail"] = raw.get("execution_detail")
+    return MlopsRetrainingRequest.model_validate(normalized)
+
+
+def _load_retraining_request(client: redis.Redis, request_id: str) -> dict[str, Any]:
+    raw = client.get(_request_key(request_id))
+    if raw is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Retraining request introuvable.")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Corrupted retraining request payload.") from exc
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid retraining request payload type.")
+    return value
+
+
+def _save_retraining_request(client: redis.Redis, request: dict[str, Any]) -> None:
+    request["updated_at"] = _now_iso()
+    request_id = str(request.get("id") or "")
+    if not request_id:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Missing retraining request id.")
+    client.set(_request_key(request_id), json.dumps(request))
+
+
+def _release_running_controls(client: redis.Redis, request: dict[str, Any]) -> None:
+    request_id = str(request.get("id") or "")
+    model = _request_model_public(request)
+    if request_id:
+        client.srem(_MLOPS_RUNNING_SET_KEY, request_id)
+    if model:
+        lock_key = _model_lock_key(model)
+        owner = client.get(lock_key)
+        if owner == request_id:
+            client.delete(lock_key)
+
+
+def _runner_headers() -> dict[str, str]:
+    token = (os.getenv("MLOPS_RUNNER_TOKEN") or "").strip()
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _runner_url() -> str:
+    return (os.getenv("MLOPS_RUNNER_URL", "http://mlops-runner:8020").rstrip("/"))
+
+
+def _execute_retraining_request_background(request_id: str) -> None:
+    client = _runtime_redis_client()
+    request = _load_retraining_request(client, request_id)
+    action = str(
+        request.get("pipeline_action")
+        or _MLOPS_REQUEST_ACTION_BY_MODEL.get(_request_model_public(request))
+        or ""
+    ).strip()
+
+    if not action:
+        logger.warning("Retraining request %s failed before execution: missing pipeline action mapping.", request_id)
+        request["status"] = "failed"
+        request["completed_at"] = _now_iso()
+        request["execution_detail"] = "Missing pipeline action mapping."
+        _save_retraining_request(client, request)
+        _release_running_controls(client, request)
+        return
+
+    payload = {
+        "action": action,
+        "trigger_source": "manual",
+        "parameters": {
+            "DRIFT_ANOMALY_COUNT": str(int(request.get("anomaly_count") or 0)),
+            "MLOPS_REQUEST_ID": str(request_id),
+        },
+    }
+
+    status_value = "failed"
+    detail = "mlops-runner request failed"
+    try:
+        logger.info(
+            "Executing retraining request %s model=%s action=%s anomaly_count=%s",
+            request_id,
+            _request_model_public(request),
+            action,
+            request.get("anomaly_count"),
+        )
+        with httpx.Client(timeout=_MLOPS_RUNNER_TIMEOUT_SECONDS + 30) as http_client:
+            response = http_client.post(
+                f"{_runner_url()}/run-action",
+                json=payload,
+                headers=_runner_headers(),
+            )
+        if response.status_code >= 400:
+            detail = f"mlops-runner returned HTTP {response.status_code}"
+        else:
+            data = response.json()
+            timed_out = bool(data.get("timed_out"))
+            accepted = bool(data.get("accepted"))
+            exit_code = data.get("exit_code")
+            if timed_out:
+                status_value = "failed"
+                detail = "Runner execution timed out."
+            elif accepted and isinstance(exit_code, int) and exit_code == 0:
+                status_value = "completed"
+                detail = "Training completed successfully."
+            elif accepted and isinstance(exit_code, int):
+                status_value = "failed"
+                detail = f"Training failed with exit code {exit_code}."
+            else:
+                status_value = "failed"
+                detail = str(data.get("detail") or "Runner reported failure.")
+    except Exception as exc:  # noqa: BLE001
+        status_value = "failed"
+        detail = f"Runner call exception: {type(exc).__name__}: {exc}"
+    finally:
+        request = _load_retraining_request(client, request_id)
+        request["status"] = status_value
+        request["completed_at"] = _now_iso()
+        request["execution_detail"] = detail
+        if status_value == "completed":
+            model = _request_model_public(request)
+            client.set(_request_cooldown_key(model), str(time.time()))
+            model_internal = _request_model_internal(request)
+            if model_internal:
+                client.srem(_request_pending_key(model_internal), request_id)
+        _save_retraining_request(client, request)
+        _release_running_controls(client, request)
+        logger.info(
+            "Retraining request %s finished status=%s detail=%s",
+            request_id,
+            status_value,
+            detail,
+        )
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -469,6 +708,190 @@ def rollback_mlops_model(
     _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
 ) -> MlopsActionResponse:
     return mlops.rollback_model(payload)
+
+
+@app.get("/mlops/requests", response_model=MlopsRetrainingRequestListResponse, tags=["mlops"])
+def list_mlops_retraining_requests(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> MlopsRetrainingRequestListResponse:
+    client = _runtime_redis_client()
+    request_ids = client.zrevrange(_MLOPS_REQUEST_INDEX_KEY, 0, max(0, limit - 1))
+    allowed_statuses = {part.strip() for part in (status_filter or "").split(",") if part.strip()}
+
+    items: list[MlopsRetrainingRequest] = []
+    for request_id in request_ids:
+        raw = client.get(_request_key(request_id))
+        if not raw:
+            continue
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        normalized = _normalize_retraining_request(parsed)
+        if allowed_statuses and normalized.status not in allowed_statuses:
+            continue
+        items.append(normalized)
+
+    return MlopsRetrainingRequestListResponse(count=len(items), items=items)
+
+
+@app.get("/mlops/requests/{request_id}", response_model=MlopsRetrainingRequest, tags=["mlops"])
+def get_mlops_retraining_request(
+    request_id: str,
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsRetrainingRequest:
+    client = _runtime_redis_client()
+    request = _load_retraining_request(client, request_id)
+    return _normalize_retraining_request(request)
+
+
+@app.post("/mlops/requests/{request_id}/approve", response_model=MlopsRetrainingRequest, tags=["mlops"])
+def approve_mlops_retraining_request(
+    request_id: str,
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+) -> MlopsRetrainingRequest:
+    client = _runtime_redis_client()
+    request = _load_retraining_request(client, request_id)
+    current_status = str(request.get("status") or "")
+    if current_status != "pending_approval":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Only pending requests can be approved (current status: {current_status}).")
+
+    now_iso = _now_iso()
+    request["status"] = "approved"
+    request["approved_by"] = current_user.email
+    request["approved_at"] = now_iso
+    request["execution_detail"] = "Approved by admin; waiting for execution."
+    _save_retraining_request(client, request)
+    logger.info("Retraining request %s approved by %s", request_id, current_user.email)
+    return _normalize_retraining_request(request)
+
+
+@app.post("/mlops/requests/{request_id}/reject", response_model=MlopsRetrainingRequest, tags=["mlops"])
+def reject_mlops_retraining_request(
+    request_id: str,
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+) -> MlopsRetrainingRequest:
+    client = _runtime_redis_client()
+    request = _load_retraining_request(client, request_id)
+    current_status = str(request.get("status") or "")
+    if current_status not in {"pending_approval", "approved"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Cannot reject request in status: {current_status}.")
+
+    request["status"] = "rejected"
+    request["execution_detail"] = f"Rejected by {current_user.email}."
+    model_internal = _request_model_internal(request)
+    if model_internal:
+        client.srem(_request_pending_key(model_internal), request_id)
+    _save_retraining_request(client, request)
+    logger.info("Retraining request %s rejected by %s", request_id, current_user.email)
+    return _normalize_retraining_request(request)
+
+
+@app.post(
+    "/mlops/requests/{request_id}/execute",
+    response_model=MlopsRetrainingRequest,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["mlops"],
+)
+def execute_mlops_retraining_request(
+    request_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+) -> MlopsRetrainingRequest:
+    client = _runtime_redis_client()
+    decision_lock = client.lock(_MLOPS_DECISION_LOCK_KEY, timeout=10, blocking_timeout=2)
+    if not decision_lock.acquire(blocking=True):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Another execution decision is in progress. Retry.")
+    try:
+        request = _load_retraining_request(client, request_id)
+        current_status = str(request.get("status") or "")
+        if current_status != "approved":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Request must be approved before execution (current status: {current_status}).")
+
+        model = _request_model_public(request)
+        model_internal = _request_model_internal(request)
+        lock_key = _model_lock_key(model)
+        cooldown_key = _request_cooldown_key(model)
+
+        cooldown_sec = _MLOPS_RETRAIN_COOLDOWN_MINUTES * 60
+        now_ts = time.time()
+        cooldown_last = client.get(cooldown_key)
+        if cooldown_last is not None:
+            try:
+                elapsed = now_ts - float(cooldown_last)
+            except ValueError:
+                elapsed = cooldown_sec + 1
+            if elapsed < cooldown_sec:
+                request["status"] = "skipped"
+                request["execution_detail"] = (
+                    f"Skipped due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes)."
+                )
+                _save_retraining_request(client, request)
+                logger.warning(
+                    "Retraining request %s skipped due to cooldown model=%s cooldown_minutes=%d",
+                    request_id,
+                    model,
+                    _MLOPS_RETRAIN_COOLDOWN_MINUTES,
+                )
+                if model_internal:
+                    client.srem(_request_pending_key(model_internal), request_id)
+                return _normalize_retraining_request(request)
+
+        running_count = int(client.scard(_MLOPS_RUNNING_SET_KEY) or 0)
+        if running_count >= _MAX_PARALLEL_TRAINING:
+            request["status"] = "skipped"
+            request["execution_detail"] = (
+                f"Skipped due to global concurrency limit ({_MAX_PARALLEL_TRAINING})."
+            )
+            _save_retraining_request(client, request)
+            logger.warning(
+                "Retraining request %s skipped by global concurrency limit running=%d limit=%d",
+                request_id,
+                running_count,
+                _MAX_PARALLEL_TRAINING,
+            )
+            return _normalize_retraining_request(request)
+
+        lock_ttl = _MLOPS_RUNNER_TIMEOUT_SECONDS + 300
+        lock_acquired = bool(client.set(lock_key, request_id, nx=True, ex=lock_ttl))
+        if not lock_acquired:
+            request["status"] = "skipped"
+            request["execution_detail"] = "Skipped because another training for this model is already running."
+            _save_retraining_request(client, request)
+            logger.warning(
+                "Retraining request %s skipped because model lock is active for model=%s",
+                request_id,
+                model,
+            )
+            return _normalize_retraining_request(request)
+
+        run_ref = str(uuid.uuid4())
+        now_iso = _now_iso()
+        client.sadd(_MLOPS_RUNNING_SET_KEY, request_id)
+        request["status"] = "running"
+        request["executed_by"] = current_user.email
+        request["executed_at"] = now_iso
+        request["execution_run_id"] = run_ref
+        request["execution_detail"] = "Execution accepted by dashboard control plane."
+        _save_retraining_request(client, request)
+        logger.info(
+            "Retraining request %s execution accepted by %s model=%s run_ref=%s",
+            request_id,
+            current_user.email,
+            model,
+            run_ref,
+        )
+        background_tasks.add_task(_execute_retraining_request_background, request_id)
+        return _normalize_retraining_request(request)
+    finally:
+        try:
+            decision_lock.release()
+        except Exception:
+            pass
 
 
 @app.get("/mlops/tools", response_model=MlopsToolsResponse, tags=["mlops-ops"])

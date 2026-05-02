@@ -1,10 +1,9 @@
-"""Drift Monitor — watches AIOps output streams for anomaly-burst drift proxy signals,
-then triggers the model-specific MLOps pipeline automatically via mlops-runner.
+"""Drift monitor that observes anomaly streams and creates retraining requests.
 
-Security:
-- mlops-runner calls use a shared bearer token (MLOPS_RUNNER_TOKEN)
-- cooldown window prevents trigger storms, tracked independently per model
-- drift decisions are stored in Redis for dashboard visibility
+Human-in-the-loop behavior:
+- drift detection never executes training directly
+- drift detection writes pending approval requests into Redis
+- execution is delegated to dashboard approval APIs
 """
 from __future__ import annotations
 
@@ -13,10 +12,10 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
@@ -30,17 +29,14 @@ logger = logging.getLogger("drift-monitor")
 
 app = FastAPI(title="NeuroSlice Drift Monitor", version="2.0.0")
 
-# ── configuration ─────────────────────────────────────────────────────────────
+# configuration ----------------------------------------------------------------
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
-MLOPS_RUNNER_URL = os.getenv("MLOPS_RUNNER_URL", "http://mlops-runner:8020")
-MLOPS_RUNNER_TOKEN = os.getenv("MLOPS_RUNNER_TOKEN", "secret_runner_token_123")
-MLOPS_PIPELINE_ENABLED = os.getenv("MLOPS_PIPELINE_ENABLED", "false").lower() in {"1", "true", "yes"}
+AUTO_RETRAIN_ENABLED = os.getenv("AUTO_RETRAIN_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
 
-# Per-model stream → pipeline mapping.
-# Each model has its own source stream and its own Makefile pipeline target.
+# Per-model stream -> pipeline mapping.
 _MODEL_CONFIG: dict[str, dict[str, str]] = {
     "congestion_5g": {
         "stream": os.getenv("DRIFT_CONGESTION_STREAM", "events.anomaly"),
@@ -56,33 +52,40 @@ _MODEL_CONFIG: dict[str, dict[str, str]] = {
     },
 }
 
-# Prediction strings that count as a real anomaly per model.
-# slice_type_5g is handled separately via the mismatch/severity fields.
 _ANOMALY_PREDICTIONS: dict[str, set[str]] = {
     "congestion_5g": {"congestion_anomaly"},
     "sla_5g": {"sla_at_risk"},
 }
 
-# How many real anomaly events in the look-back window trigger a pipeline run.
+_MODEL_PUBLIC_NAME: dict[str, str] = {
+    "congestion_5g": "congestion-5g",
+    "sla_5g": "sla-5g",
+    "slice_type_5g": "slice-type-5g",
+}
+
 DRIFT_ANOMALY_THRESHOLD = int(os.getenv("DRIFT_ANOMALY_THRESHOLD", "15"))
 DRIFT_WINDOW_SECONDS = int(os.getenv("DRIFT_WINDOW_SECONDS", "120"))
-
-# Minimum seconds between two automatic pipeline triggers — per model independently.
 DRIFT_COOLDOWN_SECONDS = int(os.getenv("DRIFT_COOLDOWN_SECONDS", "600"))
 
 POLL_INTERVAL_SECONDS = float(os.getenv("DRIFT_POLL_INTERVAL_SECONDS", "30"))
 RUNTIME_SERVICE_NAME = os.getenv("RUNTIME_SERVICE_NAME", "mlops-drift-monitor")
 
 # Redis key helpers
+
 def _trigger_key(model_name: str) -> str:
     return f"drift:last_trigger_ts:{model_name}"
+
 
 def _status_key(model_name: str) -> str:
     return f"drift:status:{model_name}"
 
-_DRIFT_EVENTS_LOG_KEY = "drift:events:log"
 
-# ── metrics ───────────────────────────────────────────────────────────────────
+_DRIFT_EVENTS_LOG_KEY = "drift:events:log"
+_MLOPS_REQUEST_INDEX_KEY = "mlops:requests:index"
+_MLOPS_REQUEST_PREFIX = "mlops:request:"
+_MLOPS_MODEL_PENDING_PREFIX = "mlops:requests:pending:model:"
+
+# metrics ----------------------------------------------------------------------
 
 mlops_drift_anomaly_events_total = Counter(
     "neuroslice_mlops_drift_anomaly_events_total",
@@ -101,14 +104,13 @@ mlops_drift_last_trigger_timestamp = Gauge(
 )
 mlops_drift_enabled = Gauge(
     "neuroslice_mlops_drift_enabled",
-    "Whether mlops-drift-monitor pipeline triggering is enabled (1) or disabled (0)",
+    "Whether mlops-drift-monitor request emission is enabled (1) or disabled (0)",
 )
 
-# ── state ─────────────────────────────────────────────────────────────────────
+# state ------------------------------------------------------------------------
 
 _redis: aioredis.Redis | None = None
 _monitor_task: asyncio.Task | None = None
-# Per-model stream cursor so _count_new_anomalies never re-reads old entries.
 _last_stream_ids: dict[str, str] = {m: "0-0" for m in _MODEL_CONFIG}
 
 
@@ -125,7 +127,7 @@ class ModelDriftStatus(BaseModel):
     pipeline_enabled: bool
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# helpers ----------------------------------------------------------------------
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
@@ -162,12 +164,6 @@ async def _runtime_service_enabled(r: aioredis.Redis) -> bool:
 
 
 def _is_real_anomaly(fields: dict, model_name: str) -> bool:
-    """Return True only for actual anomaly events, not normal/stable predictions.
-
-    - congestion_5g: prediction == "congestion_anomaly"
-    - sla_5g:        prediction == "sla_at_risk"
-    - slice_type_5g: details.mismatch == true  OR  severity > 0
-    """
     raw = fields.get("event") or fields.get("payload")
     if not raw:
         return False
@@ -189,7 +185,6 @@ def _is_real_anomaly(fields: dict, model_name: str) -> bool:
 
 
 async def _count_recent_anomalies(r: aioredis.Redis, model_name: str) -> int:
-    """Count real anomaly predictions for a model in the last DRIFT_WINDOW_SECONDS."""
     stream = _MODEL_CONFIG[model_name]["stream"]
     cutoff_ms = int((_now_ts() - DRIFT_WINDOW_SECONDS) * 1000)
     cutoff_id = f"{cutoff_ms}-0"
@@ -202,7 +197,6 @@ async def _count_recent_anomalies(r: aioredis.Redis, model_name: str) -> int:
 
 
 async def _count_new_anomalies(r: aioredis.Redis, model_name: str) -> int:
-    """Count newly observed real anomaly events for a model since the last poll."""
     stream = _MODEL_CONFIG[model_name]["stream"]
     last_id = _last_stream_ids.get(model_name, "0-0")
     try:
@@ -263,43 +257,63 @@ async def _save_model_status(r: aioredis.Redis, model_name: str, status: dict[st
         logger.warning("Could not save drift status for %s: %s", model_name, exc)
 
 
+async def _has_pending_request(r: aioredis.Redis, model_name: str) -> bool:
+    pending_key = f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}"
+    return await r.scard(pending_key) > 0
+
+
+async def _create_retraining_request(r: aioredis.Redis, model_name: str, anomaly_count: int) -> str:
+    request_id = str(uuid.uuid4())
+    request = {
+        "id": request_id,
+        "model": _MODEL_PUBLIC_NAME[model_name],
+        "model_internal": model_name,
+        "pipeline_action": _MODEL_CONFIG[model_name]["pipeline_action"],
+        "reason": "drift_detected",
+        "anomaly_count": anomaly_count,
+        "threshold": DRIFT_ANOMALY_THRESHOLD,
+        "status": "pending_approval",
+        "created_at": _now_iso(),
+        "approved_by": None,
+        "approved_at": None,
+        "executed_by": None,
+        "executed_at": None,
+        "completed_at": None,
+        "updated_at": _now_iso(),
+        "request_source": "mlops-drift-monitor",
+    }
+
+    request_key = f"{_MLOPS_REQUEST_PREFIX}{request_id}"
+    pending_key = f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}"
+    await r.set(request_key, json.dumps(request))
+    await r.zadd(_MLOPS_REQUEST_INDEX_KEY, {request_id: _now_ts()})
+    await r.sadd(pending_key, request_id)
+
+    logger.warning(
+        "[%s] DRIFT DETECTED -> approval required (request_id=%s anomaly_count=%d threshold=%d)",
+        model_name,
+        request_id,
+        anomaly_count,
+        DRIFT_ANOMALY_THRESHOLD,
+    )
+    return request_id
+
+
 async def _trigger_mlops_pipeline(model_name: str, anomaly_count: int) -> bool:
-    """Call mlops-runner with the model-specific pipeline action. Returns True on success."""
-    action = _MODEL_CONFIG[model_name]["pipeline_action"]
-    if not MLOPS_PIPELINE_ENABLED:
-        logger.info("[%s] MLOPS_PIPELINE_ENABLED=false — skipping auto trigger", model_name)
-        mlops_drift_triggers_total.labels(model=model_name, status="disabled").inc()
-        return False
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{MLOPS_RUNNER_URL}/run-action",
-                json={
-                    "action": action,
-                    "trigger_source": "drift",
-                    "parameters": {"DRIFT_ANOMALY_COUNT": str(anomaly_count)},
-                },
-                headers={"Authorization": f"Bearer {MLOPS_RUNNER_TOKEN}"},
-            )
-            if resp.status_code == 200:
-                logger.info(
-                    "[%s] Pipeline triggered — action=%s accepted=%s",
-                    model_name, action, resp.json().get("accepted"),
-                )
-                mlops_drift_triggers_total.labels(model=model_name, status="success").inc()
-                return True
-            logger.warning(
-                "[%s] mlops-runner returned %s: %s", model_name, resp.status_code, resp.text[:200]
-            )
-            mlops_drift_triggers_total.labels(model=model_name, status="failed").inc()
-            return False
-    except Exception as exc:
-        logger.error("[%s] Failed to call mlops-runner: %s", model_name, exc)
-        mlops_drift_triggers_total.labels(model=model_name, status="failed").inc()
+    """Create a retraining request instead of executing training directly."""
+    r = await _get_redis()
+
+    if await _has_pending_request(r, model_name):
+        logger.info("[%s] Pending approval request already exists - skipping duplicate", model_name)
+        mlops_drift_triggers_total.labels(model=model_name, status="pending_exists").inc()
         return False
 
+    await _create_retraining_request(r, model_name, anomaly_count)
+    mlops_drift_triggers_total.labels(model=model_name, status="request_created").inc()
+    return True
 
-# ── per-model check ───────────────────────────────────────────────────────────
+
+# per-model check --------------------------------------------------------------
 
 async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool) -> None:
     new_anomalies = await _count_new_anomalies(r, model_name)
@@ -318,7 +332,7 @@ async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool
 
     if drift_detected and not cooldown:
         logger.warning(
-            "[%s] DRIFT DETECTED — %d anomalies in %ds window. Triggering pipeline.",
+            "[%s] DRIFT DETECTED - %d anomalies in %ds window. Creating approval request.",
             model_name, anomaly_count, DRIFT_WINDOW_SECONDS,
         )
         await _publish_drift_event(r, model_name, anomaly_count)
@@ -330,7 +344,7 @@ async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool
                 await _record_trigger(r, model_name)
                 last_trigger_time = _now_iso()
     elif drift_detected and cooldown:
-        logger.info("[%s] Drift detected but cooldown active — skipping trigger", model_name)
+        logger.info("[%s] Drift detected but cooldown active - skipping request", model_name)
         mlops_drift_triggers_total.labels(model=model_name, status="cooldown").inc()
 
     await _save_model_status(r, model_name, {
@@ -344,23 +358,24 @@ async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool
         "pipeline_triggered": pipeline_triggered,
         "cooldown_active": cooldown,
         "pipeline_enabled": monitor_enabled,
+        "auto_retrain_enabled": AUTO_RETRAIN_ENABLED,
     })
 
 
-# ── monitoring loop ───────────────────────────────────────────────────────────
+# monitoring loop --------------------------------------------------------------
 
 async def _monitor_loop() -> None:
     logger.info(
-        "Drift monitor started — poll=%ss threshold=%d window=%ds cooldown=%ds models=%s",
+        "Drift monitor started - poll=%ss threshold=%d window=%ds cooldown=%ds models=%s auto_retrain_enabled=%s",
         POLL_INTERVAL_SECONDS, DRIFT_ANOMALY_THRESHOLD, DRIFT_WINDOW_SECONDS,
-        DRIFT_COOLDOWN_SECONDS, list(_MODEL_CONFIG),
+        DRIFT_COOLDOWN_SECONDS, list(_MODEL_CONFIG), AUTO_RETRAIN_ENABLED,
     )
 
     r = await _get_redis()
     while True:
         try:
             runtime_enabled = await _runtime_service_enabled(r)
-            monitor_enabled = runtime_enabled and MLOPS_PIPELINE_ENABLED
+            monitor_enabled = runtime_enabled
             mlops_drift_enabled.set(1 if monitor_enabled else 0)
 
             for model_name in _MODEL_CONFIG:
@@ -377,7 +392,7 @@ async def _monitor_loop() -> None:
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
-# ── API endpoints ─────────────────────────────────────────────────────────────
+# API endpoints ----------------------------------------------------------------
 
 @app.get("/health")
 async def health() -> dict:
@@ -394,7 +409,8 @@ async def health() -> dict:
         "status": "ok" if redis_ok else "degraded",
         "service": "drift-monitor",
         "redis": "up" if redis_ok else "down",
-        "pipeline_enabled": MLOPS_PIPELINE_ENABLED and runtime_enabled,
+        "pipeline_enabled": runtime_enabled,
+        "auto_retrain_enabled": AUTO_RETRAIN_ENABLED,
         "models": list(_MODEL_CONFIG),
         "timestamp": _now_iso(),
     }
@@ -402,7 +418,6 @@ async def health() -> dict:
 
 @app.get("/drift/status")
 async def drift_status() -> dict:
-    """Returns per-model drift status."""
     r = await _get_redis()
     runtime_enabled = await _runtime_service_enabled(r)
     result = {}
@@ -423,7 +438,7 @@ async def drift_status() -> dict:
                 last_trigger_time=None,
                 pipeline_triggered=False,
                 cooldown_active=cooldown,
-                pipeline_enabled=MLOPS_PIPELINE_ENABLED and runtime_enabled,
+                pipeline_enabled=runtime_enabled,
             ).model_dump()
     return result
 
@@ -448,7 +463,7 @@ async def drift_events(limit: int = 20) -> dict:
 
 @app.post("/drift/trigger")
 async def manual_trigger(model_name: str = "congestion_5g") -> dict:
-    """Manually trigger a drift check and pipeline for a specific model."""
+    """Manually create a retraining request for a specific model."""
     if model_name not in _MODEL_CONFIG:
         return {"triggered": False, "reason": f"unknown model '{model_name}'", "valid_models": list(_MODEL_CONFIG)}
     r = await _get_redis()
@@ -473,13 +488,13 @@ async def manual_trigger(model_name: str = "congestion_5g") -> dict:
 async def startup() -> None:
     global _monitor_task
     r = await _get_redis()
-    mlops_drift_enabled.set(1 if MLOPS_PIPELINE_ENABLED else 0)
+    mlops_drift_enabled.set(0)
     for attempt in range(30):
         try:
             await r.ping()
             logger.info("Connected to Redis")
             runtime_enabled = await _runtime_service_enabled(r)
-            mlops_drift_enabled.set(1 if (runtime_enabled and MLOPS_PIPELINE_ENABLED) else 0)
+            mlops_drift_enabled.set(1 if runtime_enabled else 0)
             for model_name in _MODEL_CONFIG:
                 last_ts = await r.get(_trigger_key(model_name))
                 if last_ts:

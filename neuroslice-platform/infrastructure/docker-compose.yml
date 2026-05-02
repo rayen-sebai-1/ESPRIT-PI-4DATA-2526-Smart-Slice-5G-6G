@@ -421,6 +421,7 @@ services:
       MLOPS_RUNNER_URL: http://mlops-runner:8020
       MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
       MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-true}
+      AUTO_RETRAIN_ENABLED: ${AUTO_RETRAIN_ENABLED:-false}
       DRIFT_ANOMALY_THRESHOLD: ${DRIFT_ANOMALY_THRESHOLD:-15}
       DRIFT_WINDOW_SECONDS: ${DRIFT_WINDOW_SECONDS:-120}
       DRIFT_COOLDOWN_SECONDS: ${DRIFT_COOLDOWN_SECONDS:-600}
@@ -1027,6 +1028,9 @@ services:
       MLOPS_RUNNER_URL: http://mlops-runner:8020
       MLOPS_RUNNER_TOKEN: ${MLOPS_RUNNER_TOKEN:-secret_runner_token_123}
       MLOPS_ORCHESTRATION_TIMEOUT_SECONDS: ${MLOPS_ORCHESTRATION_TIMEOUT_SECONDS:-7200}
+      MAX_PARALLEL_TRAINING: ${MAX_PARALLEL_TRAINING:-1}
+      MLOPS_RETRAIN_COOLDOWN_MINUTES: ${MLOPS_RETRAIN_COOLDOWN_MINUTES:-30}
+      AUTO_RETRAIN_ENABLED: ${AUTO_RETRAIN_ENABLED:-false}
       # Control tier proxy
       POLICY_CONTROL_URL: http://policy-control:7011
       DRIFT_MONITOR_URL: http://mlops-drift-monitor:8030
@@ -1076,6 +1080,8 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "off"
+      KONG_NGINX_WORKER_PROCESSES: "1"
+      KONG_MEM_CACHE_SIZE: "64m"
     ports:
       - "${DASHBOARD_KONG_PORT:-8008}:8000"
     depends_on:
@@ -1092,7 +1098,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256m
+          memory: 1024m
+    mem_limit: 1024m
 
   react-dashboard:
     build:

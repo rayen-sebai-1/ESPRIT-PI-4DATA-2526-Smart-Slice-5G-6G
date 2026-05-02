@@ -23,7 +23,7 @@ Implemented:
 - `agentic-ai-tier`: `root-cause` and `copilot-agent`
 - `mlops-tier/batch-orchestrator`: offline data, training, MLflow, ONNX/FP16 export, promotion, API, tests, and reports
 - `mlops-tier/mlops-runner`: internal-only worker that executes the offline pipeline on behalf of the dashboard
-- `mlops-tier/drift-monitor`: lightweight anomaly-count drift detector that auto-triggers the MLOps pipeline
+- `mlops-tier/drift-monitor`: lightweight anomaly-count drift detector that creates retraining approval requests
 - `infrastructure`: integrated Compose stack
 
 Deferred:
@@ -80,8 +80,10 @@ events.anomaly + events.sla + events.slice.classification
   -> policy-control   -> stream:control.actions
   -> policy-control simulated actuator -> stream:control.actuations + control:sim:* keys
 
-events.anomaly (sliding window count)
-  -> mlops-drift-monitor (mlops-tier) -> mlops-runner /run-action -> offline pipeline trigger
+events.anomaly / events.sla / events.slice.classification (sliding window anomaly count)
+  -> mlops-drift-monitor (mlops-tier) -> Redis pending retraining request
+  -> dashboard approval API (/mlops/requests/{id}/approve + /execute)
+  -> mlops-runner /run-action -> offline model-specific pipeline
 
 telemetry-norm -> telemetry-exporter -> InfluxDB
 
@@ -115,6 +117,19 @@ Configured model names in Compose:
 - `congestion-detector`: `congestion_5g`
 - `slice-classifier`: `slice_type_5g`
 - `sla-assurance`: `sla_5g`
+
+## Human-in-the-Loop MLOps Control
+
+Retraining now follows a strict approval flow:
+
+1. Drift monitor detects anomaly bursts and creates a Redis request with `status=pending_approval`.
+2. Dashboard control plane lists requests at `/mlops/requests`.
+3. Admin user approves (`/mlops/requests/{id}/approve`) or rejects (`/mlops/requests/{id}/reject`).
+4. Admin explicitly executes approved requests (`/mlops/requests/{id}/execute`).
+5. Execution calls `mlops-runner` only after control checks (per-model lock, global concurrency limit, cooldown).
+
+Automatic direct retraining from drift detection is disabled by default with `AUTO_RETRAIN_ENABLED=false`.
+The dashboard is the execution control plane for retraining.
 
 ## Quick Start
 

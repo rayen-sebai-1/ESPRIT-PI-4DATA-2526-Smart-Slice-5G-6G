@@ -165,3 +165,37 @@ export interface MlopsPipelineRunLogsResponse {
   stdout: string;
   stderr: string;
 }
+
+export type MlopsRetrainingRequestStatus =
+  | "pending_approval"
+  | "approved"
+  | "rejected"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
+
+export interface MlopsRetrainingRequest {
+  id: string;
+  model: string;
+  model_internal: string | null;
+  pipeline_action: string | null;
+  reason: string;
+  anomaly_count: number;
+  threshold: number;
+  status: MlopsRetrainingRequestStatus;
+  created_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  executed_by: string | null;
+  executed_at: string | null;
+  completed_at: string | null;
+  updated_at: string | null;
+  execution_run_id: string | null;
+  execution_detail: string | null;
+}
+
+export interface MlopsRetrainingRequestListResponse {
+  count: number;
+  items: MlopsRetrainingRequest[];
+}

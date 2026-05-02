@@ -9,6 +9,8 @@ import type {
   MlopsPredictionMonitoringResponse,
   MlopsPromotePayload,
   MlopsPromotionEvent,
+  MlopsRetrainingRequest,
+  MlopsRetrainingRequestListResponse,
   MlopsRollbackPayload,
   MlopsRunSummary,
   MlopsToolsHealthResponse,
@@ -114,6 +116,44 @@ export interface MlopsPipelineConfig {
 
 export async function getMlopsPipelineConfig(): Promise<MlopsPipelineConfig> {
   const { data } = await dashboardClient.get<MlopsPipelineConfig>("/mlops/pipeline/config");
+  return data;
+}
+
+export async function getMlopsRequests(params: { status?: string; limit?: number } = {}) {
+  const { data } = await dashboardClient.get<MlopsRetrainingRequestListResponse>("/mlops/requests", {
+    params: {
+      status: params.status || undefined,
+      limit: params.limit ?? 200,
+    },
+  });
+  return data;
+}
+
+export async function getMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.get<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}`,
+  );
+  return data;
+}
+
+export async function approveMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.post<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}/approve`,
+  );
+  return data;
+}
+
+export async function rejectMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.post<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}/reject`,
+  );
+  return data;
+}
+
+export async function executeMlopsRequest(requestId: string) {
+  const { data } = await dashboardClient.post<MlopsRetrainingRequest>(
+    `/mlops/requests/${encodeURIComponent(requestId)}/execute`,
+  );
   return data;
 }
 
