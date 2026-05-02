@@ -44,12 +44,18 @@ class TestPreprocess6G:
 
         # Patch constants so we use the temp paths
         monkeypatch.setattr(module, "RAW_PATH", str(raw_file))
-        monkeypatch.setattr(module, "PROCESSED_PATH", str(proc_dir / "6g_processed.csv"))
+        monkeypatch.setattr(
+            module, "PROCESSED_PATH", str(proc_dir / "6g_processed.csv")
+        )
 
         df = module.preprocess()
 
         assert isinstance(df, pd.DataFrame)
-        assert set(df.columns) == {"cpu_utilization", "bandwidth_mbps", "congestion_flag"}
+        assert set(df.columns) == {
+            "cpu_utilization",
+            "bandwidth_mbps",
+            "congestion_flag",
+        }
 
     def test_normalised_columns_in_range(self, tmp_path, monkeypatch):
         """After preprocessing the normalised columns must lie within [0, 1]."""
@@ -63,7 +69,9 @@ class TestPreprocess6G:
         proc_dir.mkdir()
 
         monkeypatch.setattr(module, "RAW_PATH", str(raw_file))
-        monkeypatch.setattr(module, "PROCESSED_PATH", str(proc_dir / "6g_processed.csv"))
+        monkeypatch.setattr(
+            module, "PROCESSED_PATH", str(proc_dir / "6g_processed.csv")
+        )
 
         df = module.preprocess()
 

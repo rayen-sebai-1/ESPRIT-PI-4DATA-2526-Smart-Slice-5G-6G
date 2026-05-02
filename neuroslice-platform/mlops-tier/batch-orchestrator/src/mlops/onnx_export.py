@@ -1,4 +1,5 @@
 """Reusable ONNX export and FP16 conversion helpers for NeuroSlice MLOps."""
+
 from __future__ import annotations
 
 import os
@@ -11,7 +12,9 @@ import numpy as np
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ONNX_OUTPUT_DIR = ROOT_DIR / "models" / "onnx"
 DEFAULT_OPSET = int(os.getenv("ONNX_OPSET_VERSION", "18"))
-DEFAULT_FIXED_SEQUENCE_LENGTH = int(os.getenv("PYTORCH_ONNX_FIXED_SEQUENCE_LENGTH", "30"))
+DEFAULT_FIXED_SEQUENCE_LENGTH = int(
+    os.getenv("PYTORCH_ONNX_FIXED_SEQUENCE_LENGTH", "30")
+)
 
 
 @dataclass
@@ -232,7 +235,9 @@ def convert_onnx_to_fp16(
     from onnxconverter_common import float16
 
     model_proto = onnx.load(source_path.as_posix())
-    fp16_model = float16.convert_float_to_float16(model_proto, keep_io_types=keep_fp32_io)
+    fp16_model = float16.convert_float_to_float16(
+        model_proto, keep_io_types=keep_fp32_io
+    )
     onnx.save_model(fp16_model, target_path.as_posix())
 
 
@@ -252,7 +257,9 @@ def run_onnx_smoke_test(model_path: Path, example_input: Any) -> bool:
     return True
 
 
-def _prepare_pytorch_input(example_array: np.ndarray, fixed_sequence_length: int | None) -> np.ndarray:
+def _prepare_pytorch_input(
+    example_array: np.ndarray, fixed_sequence_length: int | None
+) -> np.ndarray:
     array = np.asarray(example_array, dtype=np.float32)
 
     if array.ndim == 1:
@@ -297,7 +304,11 @@ def _sanitize_dynamic_axes(
     for tensor_name, axes in dynamic_axes.items():
         tensor_axes: dict[int, str] = {}
         for axis, axis_name in axes.items():
-            if fixed_sequence_length is not None and tensor_name == input_name and int(axis) == 1:
+            if (
+                fixed_sequence_length is not None
+                and tensor_name == input_name
+                and int(axis) == 1
+            ):
                 continue
             tensor_axes[int(axis)] = str(axis_name)
         if tensor_axes:
@@ -342,11 +353,15 @@ def _ensure_default_domain_opset(onnx_model: Any, target_opset: int) -> None:
     new_entry.version = int(target_opset)
 
 
-def _validate_onnxruntime_roundtrip(model_path: Path, example_input: np.ndarray) -> None:
+def _validate_onnxruntime_roundtrip(
+    model_path: Path, example_input: np.ndarray
+) -> None:
     """Validate exported ONNX graph by loading it in ONNX Runtime and running one inference."""
     import onnxruntime as ort
 
-    session = ort.InferenceSession(model_path.as_posix(), providers=["CPUExecutionProvider"])
+    session = ort.InferenceSession(
+        model_path.as_posix(), providers=["CPUExecutionProvider"]
+    )
     input_meta = session.get_inputs()[0]
     input_dtype = np.float16 if "float16" in input_meta.type else np.float32
     feed = {input_meta.name: np.asarray(example_input, dtype=input_dtype)}

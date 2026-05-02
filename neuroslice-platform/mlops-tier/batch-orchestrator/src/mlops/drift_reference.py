@@ -11,6 +11,7 @@ status="missing_training_data" instead of crashing the caller.
 
 Integration: called by promote_onnx_artifacts() after successful promotion.
 """
+
 from __future__ import annotations
 
 import json
@@ -138,7 +139,8 @@ def generate_drift_reference(
         "model_name": model_name,
         "feature_names": schema["feature_names"],
         "feature_count": schema["feature_count"],
-        "source_dataset": source_dataset or result.get("source_dataset", "training_data"),
+        "source_dataset": source_dataset
+        or result.get("source_dataset", "training_data"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "preprocessing_artifacts": schema["preprocessing_artifacts"],
         "reference_sample_count": len(x_ref),
@@ -224,9 +226,15 @@ def _extract_congestion_reference(
             preprocessor = joblib.load(pkl_path)
             scaler = getattr(preprocessor, "scaler", None)
             if scaler is not None:
-                x_flat = scaler.inverse_transform(x_flat.astype(np.float64)).astype(np.float32)
+                x_flat = scaler.inverse_transform(x_flat.astype(np.float64)).astype(
+                    np.float32
+                )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("[%s] Could not inverse-transform; using scaled features: %s", model_name, exc)
+            logger.warning(
+                "[%s] Could not inverse-transform; using scaled features: %s",
+                model_name,
+                exc,
+            )
 
     x_ref = _sample(x_flat, max_samples)
     return {

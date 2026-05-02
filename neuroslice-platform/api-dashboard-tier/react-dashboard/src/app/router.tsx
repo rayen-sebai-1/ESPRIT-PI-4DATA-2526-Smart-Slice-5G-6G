@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { ProtectedRoute } from "@/layouts/ProtectedRoute";
@@ -21,9 +22,30 @@ import { MlopsPromotionsPage } from "@/pages/mlops/MlopsPromotionsPage";
 import { MlopsMonitoringPage } from "@/pages/mlops/MlopsMonitoringPage";
 import { MlopsOperationsPage } from "@/pages/mlops/MlopsOperationsPage";
 import { MlopsOrchestrationPage } from "@/pages/mlops/MlopsOrchestrationPage";
-import { ControlActionsPage } from "@/pages/ControlActionsPage";
 import { MlopsDriftPage } from "@/pages/mlops/MlopsDriftPage";
 import { MlopsRequestsPage } from "@/pages/mlops/MlopsRequestsPage";
+
+const ControlActionsLayout = lazy(() =>
+  import("@/pages/control/actions/ControlActionsLayout").then((module) => ({
+    default: module.ControlActionsLayout,
+  })),
+);
+const SimulatedActuationsPage = lazy(() => import("@/pages/control/actions/SimulatedActuations"));
+const ActionHistoryPage = lazy(() => import("@/pages/control/actions/ActionHistory"));
+const PendingApprovalPage = lazy(() => import("@/pages/control/actions/PendingApproval"));
+const DriftMonitorPage = lazy(() => import("@/pages/control/actions/DriftMonitor"));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="rounded-xl border border-white/5 bg-card px-4 py-5 text-sm text-slate-400">
+      Loading...
+    </div>
+  );
+}
+
+function withSuspense(element: JSX.Element) {
+  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   {
@@ -62,7 +84,29 @@ export const router = createBrowserRouter([
               <ProtectedRoute allowedRoles={["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"]} />
             ),
             children: [
-              { path: "/control/actions", element: <ControlActionsPage /> },
+              {
+                path: "/control/actions",
+                element: withSuspense(<ControlActionsLayout />),
+                children: [
+                  { index: true, element: <Navigate to="/control/actions/SimulatedActuations" replace /> },
+                  {
+                    path: "SimulatedActuations",
+                    element: withSuspense(<SimulatedActuationsPage />),
+                  },
+                  {
+                    path: "ActionHistory",
+                    element: withSuspense(<ActionHistoryPage />),
+                  },
+                  {
+                    path: "PendingApproval",
+                    element: withSuspense(<PendingApprovalPage />),
+                  },
+                  {
+                    path: "DriftMonitor",
+                    element: withSuspense(<DriftMonitorPage />),
+                  },
+                ],
+              },
             ],
           },
           {

@@ -12,6 +12,7 @@ Fault-related records handled here come from the simulation tier and are used fo
 - `adapter-netconf/`: FastAPI ingress for NETCONF-like telemetry
 - `normalizer/`: background worker that produces canonical telemetry
 - `telemetry-exporter/`: background worker that writes telemetry and fault data to InfluxDB
+- `logstash-aiops-ingest/`: FastAPI bridge that validates Logstash events and publishes canonical real-time telemetry to Redis
 - `shared/`: shared config, Redis helpers, and Pydantic models used across tiers
 
 ## Runtime Responsibilities
@@ -51,6 +52,16 @@ Fault-related records handled here come from the simulation tier and are used fo
 - writes telemetry points to InfluxDB measurement `telemetry`
 - polls Redis hash `faults:active`
 - writes fault summaries and active-fault details to InfluxDB measurement `faults`
+
+### `logstash-aiops-ingest`
+
+- internal service (no host published port)
+- route:
+  - `POST /ingest/logstash`
+- validates Logstash contract fields (`event_id`, `timestamp`, `source_service`, signal fields)
+- enforces freshness guard via `LOGSTASH_EVENT_MAX_AGE_SECONDS`
+- transforms into canonical telemetry events
+- publishes to Redis stream `stream:norm.telemetry` for immediate AIOps model consumption
 
 ## Data Contracts
 

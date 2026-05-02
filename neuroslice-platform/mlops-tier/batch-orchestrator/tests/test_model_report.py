@@ -43,7 +43,9 @@ def test_generate_model_report_includes_registry_content(tmp_path, monkeypatch):
     }
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
 
-    report_file = generate_model_report(registry_path=registry_path, output_path=output_path)
+    report_file = generate_model_report(
+        registry_path=registry_path, output_path=output_path
+    )
     content = report_file.read_text(encoding="utf-8")
 
     assert "Model Training Summary" in content

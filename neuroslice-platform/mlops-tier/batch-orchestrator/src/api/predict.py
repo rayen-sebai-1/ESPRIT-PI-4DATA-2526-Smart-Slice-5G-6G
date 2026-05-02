@@ -26,7 +26,9 @@ congestion_6g_alert_THRESHOLD = 0.75  # normalised CPU
 # =============================================================================
 # Congestion (6G LSTM)
 # =============================================================================
-def predict_congestion_6g(model: torch.nn.Module, data: Congestion6GInput) -> Congestion6GOutput:
+def predict_congestion_6g(
+    model: torch.nn.Module, data: Congestion6GInput
+) -> Congestion6GOutput:
     """Run inference with the LSTM congestion model.
 
     Args:
@@ -54,7 +56,9 @@ def predict_congestion_6g(model: torch.nn.Module, data: Congestion6GInput) -> Co
 # =============================================================================
 # Congestion (5G LSTM)
 # =============================================================================
-def predict_congestion_5g(model: torch.nn.Module, preprocessor, data: Congestion5GInput) -> Congestion5GOutput:
+def predict_congestion_5g(
+    model: torch.nn.Module, preprocessor, data: Congestion5GInput
+) -> Congestion5GOutput:
     """Run inference with the 5G LSTM congestion model."""
     import numpy as np
 
@@ -112,7 +116,15 @@ def predict_sla_5g(model, scaler, data: SLA5GInput) -> SLA5GOutput:
         SLA5GOutput with prediction, probability, risk level, and action.
     """
     features = np.array(
-        [[data.packet_loss_rate, data.packet_delay, data.smart_city_home, data.iot_devices, data.public_safety]]
+        [
+            [
+                data.packet_loss_rate,
+                data.packet_delay,
+                data.smart_city_home,
+                data.iot_devices,
+                data.public_safety,
+            ]
+        ]
     )
 
     features_scaled = scaler.transform(features)
@@ -141,7 +153,9 @@ def predict_sla_5g(model, scaler, data: SLA5GInput) -> SLA5GOutput:
 # =============================================================================
 # Slice-Type prediction (5G LightGBM – multiclass)
 # =============================================================================
-def predict_slice_type_5g(model, label_encoder, data: SliceType5GInput) -> SliceType5GOutput:
+def predict_slice_type_5g(
+    model, label_encoder, data: SliceType5GInput
+) -> SliceType5GOutput:
     """Run inference with the Slice-Type-5G LightGBM multiclass model.
 
     Args:
@@ -155,14 +169,16 @@ def predict_slice_type_5g(model, label_encoder, data: SliceType5GInput) -> Slice
     # Build (1, 6) array — must match preprocessing column order:
     # LTE/5g Category, Packet Loss Rate, Packet delay, Smartphone, IoT Devices, GBR
     features = np.array(
-        [[
-            data.lte_5g_category,
-            data.packet_loss_rate,
-            data.packet_delay,
-            data.smartphone,
-            data.iot_devices,
-            data.gbr,
-        ]]
+        [
+            [
+                data.lte_5g_category,
+                data.packet_loss_rate,
+                data.packet_delay,
+                data.smartphone,
+                data.iot_devices,
+                data.gbr,
+            ]
+        ]
     )
 
     proba = model.predict_proba(features)[0]  # shape (3,)
@@ -184,7 +200,9 @@ def predict_slice_type_5g(model, label_encoder, data: SliceType5GInput) -> Slice
 # =============================================================================
 # Slice-Type prediction (6G XGBoost – multiclass)
 # =============================================================================
-def predict_slice_type_6g(model, label_encoder, data: SliceType6GInput) -> SliceType6GOutput:
+def predict_slice_type_6g(
+    model, label_encoder, data: SliceType6GInput
+) -> SliceType6GOutput:
     """Run inference with the Slice-Type-6G XGBoost multiclass model.
 
     Args:
@@ -200,18 +218,20 @@ def predict_slice_type_6g(model, label_encoder, data: SliceType6GInput) -> Slice
 
     # Build (1, 10) array
     features = np.array(
-        [[
-            data.packet_loss_budget,
-            data.latency_budget_ns,
-            data.jitter_budget_ns,
-            data.data_rate_budget_gbps,
-            mob_val,
-            conn_val,
-            data.slice_available_transfer_rate_gbps,
-            data.slice_latency_ns,
-            data.slice_packet_loss,
-            data.slice_jitter_ns,
-        ]]
+        [
+            [
+                data.packet_loss_budget,
+                data.latency_budget_ns,
+                data.jitter_budget_ns,
+                data.data_rate_budget_gbps,
+                mob_val,
+                conn_val,
+                data.slice_available_transfer_rate_gbps,
+                data.slice_latency_ns,
+                data.slice_packet_loss,
+                data.slice_jitter_ns,
+            ]
+        ]
     )
 
     proba = model.predict_proba(features)[0]  # shape (5,)
@@ -252,22 +272,24 @@ def predict_sla_6g(model, scaler, data: SLA6GInput) -> SLA6GOutput:
         Handover Encoded, Slice Available Transfer Rate (Gbps)
     """
     features = np.array(
-        [[
-            data.slice_latency_lag1,
-            data.slice_latency_rolling_mean,
-            data.slice_latency_rolling_std,
-            data.slice_packet_loss_lag1,
-            data.slice_packet_loss_rolling_mean,
-            data.slice_packet_loss_rolling_std,
-            data.slice_jitter_lag1,
-            data.slice_jitter_rolling_mean,
-            data.slice_jitter_rolling_std,
-            data.slice_type_encoded,
-            data.mobility_encoded,
-            data.connectivity_encoded,
-            data.handover_encoded,
-            data.slice_available_transfer_rate_gbps,
-        ]]
+        [
+            [
+                data.slice_latency_lag1,
+                data.slice_latency_rolling_mean,
+                data.slice_latency_rolling_std,
+                data.slice_packet_loss_lag1,
+                data.slice_packet_loss_rolling_mean,
+                data.slice_packet_loss_rolling_std,
+                data.slice_jitter_lag1,
+                data.slice_jitter_rolling_mean,
+                data.slice_jitter_rolling_std,
+                data.slice_type_encoded,
+                data.mobility_encoded,
+                data.connectivity_encoded,
+                data.handover_encoded,
+                data.slice_available_transfer_rate_gbps,
+            ]
+        ]
     )
 
     features_scaled = scaler.transform(features)
@@ -280,7 +302,9 @@ def predict_sla_6g(model, scaler, data: SLA6GInput) -> SLA6GOutput:
         action = "Maintain session on assigned 6G slice."
     elif prob >= 0.40:
         risk = "MEDIUM"
-        action = "Monitor — prepare fallback policy or preventive scaling on near-RT RIC."
+        action = (
+            "Monitor — prepare fallback policy or preventive scaling on near-RT RIC."
+        )
     else:
         risk = "HIGH"
         action = "ALERT — Reassign session or trigger immediate scaling via A1 policy (6G xApp)."

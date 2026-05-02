@@ -15,9 +15,20 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    roc_auc_score,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+)
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
+from src.models.lifecycle import (
+    configure_mlflow_tracking,
+    finalize_model_lifecycle,
+    get_experiment_name,
+    use_mlflow_experiment,
+)
 from src.mlops.lifecycle import run_model_lifecycle
 
 warnings.filterwarnings("ignore")
@@ -55,6 +66,7 @@ class CongestionDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
+
 # ---------------------------------------------------------------------------
 # Model Architecture & Loss
 # ---------------------------------------------------------------------------
@@ -68,15 +80,17 @@ class FocalLoss(nn.Module):
 
     def forward(self, inputs, targets):
         BCE_loss = nn.functional.binary_cross_entropy_with_logits(
-            inputs, targets, reduction='none'
+            inputs, targets, reduction="none"
         )
         pt = torch.exp(-BCE_loss)
-        F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
+        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
         return F_loss.mean()
 
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim=64, num_layers=2, dropout=0.3, bidirectional=True):
+    def __init__(
+        self, input_dim, hidden_dim=64, num_layers=2, dropout=0.3, bidirectional=True
+    ):
         super(LSTMClassifier, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -88,7 +102,7 @@ class LSTMClassifier(nn.Module):
             num_layers=num_layers,
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0,
-            bidirectional=bidirectional
+            bidirectional=bidirectional,
         )
 
         direction_mult = 2 if bidirectional else 1
@@ -100,20 +114,20 @@ class LSTMClassifier(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(32, 1)
+            nn.Linear(32, 1),
         )
         self._init_weights()
 
     def _init_weights(self):
         for name, param in self.lstm.named_parameters():
-            if 'weight_ih' in name:
+            if "weight_ih" in name:
                 nn.init.xavier_uniform_(param.data)
-            elif 'weight_hh' in name:
+            elif "weight_hh" in name:
                 nn.init.orthogonal_(param.data)
-            elif 'bias' in name:
+            elif "bias" in name:
                 param.data.fill_(0)
                 n = param.size(0)
-                param.data[n//4:n//2].fill_(1)
+                param.data[n // 4 : n // 2].fill_(1)
 
     def forward(self, x):
         lstm_out, (hidden, cell) = self.lstm(x)
@@ -123,6 +137,7 @@ class LSTMClassifier(nn.Module):
             hidden_last = hidden[-1]
         out = self.fc(hidden_last)
         return out.squeeze(-1)
+
 
 # ---------------------------------------------------------------------------
 # Training Pipeline
@@ -170,6 +185,7 @@ def evaluate(model, dataloader, criterion):
 
 def find_optimal_threshold(probs, labels):
     from sklearn.metrics import f1_score, precision_recall_curve
+
     if len(np.unique(labels)) <= 1:
         return 0.5
 
@@ -189,24 +205,36 @@ def find_optimal_threshold(probs, labels):
     threshold_scores = []
     for threshold in thresholds:
         preds = (np.asarray(probs) >= threshold).astype(int)
-        threshold_scores.append((f1_score(labels, preds, zero_division=0), float(threshold)))
+        threshold_scores.append(
+            (f1_score(labels, preds, zero_division=0), float(threshold))
+        )
     return max(threshold_scores, key=lambda item: item[0])[1]
 
 
 def train():
     if not PROCESSED_NPZ.exists():
-        raise FileNotFoundError(f"Missing {PROCESSED_NPZ.as_posix()}. Run preprocessing first.")
+        raise FileNotFoundError(
+            f"Missing {PROCESSED_NPZ.as_posix()}. Run preprocessing first."
+        )
 
     data = np.load(PROCESSED_NPZ, allow_pickle=True)
     X_train, y_train = data["X_train"], data["y_train"]
     X_val, y_val = data["X_val"], data["y_val"]
     X_test, y_test = data["X_test"], data["y_test"]
 
-    print(f"[INFO] Loaded splits. Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+    print(
+        f"[INFO] Loaded splits. Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}"
+    )
 
-    train_loader = DataLoader(CongestionDataset(X_train, y_train), batch_size=256, shuffle=True)
-    val_loader = DataLoader(CongestionDataset(X_val, y_val), batch_size=256, shuffle=False)
-    test_loader = DataLoader(CongestionDataset(X_test, y_test), batch_size=256, shuffle=False)
+    train_loader = DataLoader(
+        CongestionDataset(X_train, y_train), batch_size=256, shuffle=True
+    )
+    val_loader = DataLoader(
+        CongestionDataset(X_val, y_val), batch_size=256, shuffle=False
+    )
+    test_loader = DataLoader(
+        CongestionDataset(X_test, y_test), batch_size=256, shuffle=False
+    )
 
     input_dim = X_train.shape[2]
 
@@ -216,12 +244,12 @@ def train():
     # Fast setup instead of extensive search to make the script run quickly
     # Hardcoding best params based on notebook's fine tuning output
     best_params = {
-        'hidden_dim': 64,
-        'num_layers': 2,
-        'dropout': 0.3,
-        'lr': 0.001,
-        'bidirectional': True,
-        'batch_size': 256
+        "hidden_dim": 64,
+        "num_layers": 2,
+        "dropout": 0.3,
+        "lr": 0.001,
+        "bidirectional": True,
+        "batch_size": 256,
     }
 
     with mlflow.start_run(run_name="LSTM_Final_Train"):
@@ -229,15 +257,19 @@ def train():
 
         model = LSTMClassifier(
             input_dim=input_dim,
-            hidden_dim=best_params['hidden_dim'],
-            num_layers=best_params['num_layers'],
-            dropout=best_params['dropout'],
-            bidirectional=best_params['bidirectional']
+            hidden_dim=best_params["hidden_dim"],
+            num_layers=best_params["num_layers"],
+            dropout=best_params["dropout"],
+            bidirectional=best_params["bidirectional"],
         ).to(DEVICE)
 
         criterion = FocalLoss(alpha=0.75, gamma=2.0)
-        optimizer = optim.AdamW(model.parameters(), lr=best_params['lr'], weight_decay=0.01)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3)
+        optimizer = optim.AdamW(
+            model.parameters(), lr=best_params["lr"], weight_decay=0.01
+        )
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="max", factor=0.5, patience=3
+        )
 
         best_val_auc = 0
         patience_counter = 0
@@ -248,11 +280,10 @@ def train():
             val_loss, val_auc = evaluate(model, val_loader, criterion)
 
             scheduler.step(val_auc)
-            mlflow.log_metrics({
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "val_auc": val_auc
-            }, step=epoch)
+            mlflow.log_metrics(
+                {"train_loss": train_loss, "val_loss": val_loss, "val_auc": val_auc},
+                step=epoch,
+            )
 
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
@@ -264,11 +295,15 @@ def train():
                     print(f"Early stopping at epoch {epoch}")
                     break
 
-            print(f"Epoch {epoch+1:2d}: Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}, Val AUC={val_auc:.4f}")
+            print(
+                f"Epoch {epoch+1:2d}: Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}, Val AUC={val_auc:.4f}"
+            )
 
         # Load best model
         if TEMP_MODEL_PATH.exists():
-            model.load_state_dict(torch.load(TEMP_MODEL_PATH.as_posix(), weights_only=True))
+            model.load_state_dict(
+                torch.load(TEMP_MODEL_PATH.as_posix(), weights_only=True)
+            )
             TEMP_MODEL_PATH.unlink()
 
         # Evaluate on Test
@@ -290,7 +325,11 @@ def train():
             "val_precision": precision_score(all_labels, all_preds, zero_division=0),
             "val_recall": recall_score(all_labels, all_preds, zero_division=0),
             "val_f1": f1_score(all_labels, all_preds, zero_division=0),
-            "val_roc_auc": roc_auc_score(all_labels, all_probs) if len(np.unique(all_labels)) > 1 else 0.5,
+            "val_roc_auc": (
+                roc_auc_score(all_labels, all_probs)
+                if len(np.unique(all_labels)) > 1
+                else 0.5
+            ),
         }
         legacy_metrics = {
             "accuracy": metrics["val_accuracy"],
@@ -309,17 +348,23 @@ def train():
 
         # Save model
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        torch.save({
-            "model_state_dict": model.state_dict(),
-            "hyperparameters": best_params,
-            "threshold": optimal_threshold,
-            "metrics": metrics,
-        }, MODEL_PATH.as_posix())
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "hyperparameters": best_params,
+                "threshold": optimal_threshold,
+                "metrics": metrics,
+            },
+            MODEL_PATH.as_posix(),
+        )
 
         # Let's save a torchscript compatible model for easy inference later without class dependencies
         from torch.jit import trace
+
         try:
-            model_traced = trace(model.to("cpu").eval(), torch.as_tensor(X_test[:1], dtype=torch.float32))
+            model_traced = trace(
+                model.to("cpu").eval(), torch.as_tensor(X_test[:1], dtype=torch.float32)
+            )
             model_traced.save(TRACED_MODEL_PATH.as_posix())
         except Exception as e:
             print(f"Failed to trace model: {e}")
@@ -338,7 +383,9 @@ def train():
                 try:
                     mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+                    print(
+                        f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}"
+                    )
             else:
                 print("[WARN] No active MLflow run; skipping model registration.")
 
@@ -347,7 +394,9 @@ def train():
             model_family="pytorch_lstm",
             artifact_format="torchscript",
             metrics=metrics,
-            local_artifact_path=TRACED_MODEL_PATH if TRACED_MODEL_PATH.exists() else MODEL_PATH,
+            local_artifact_path=(
+                TRACED_MODEL_PATH if TRACED_MODEL_PATH.exists() else MODEL_PATH
+            ),
             task_type="binary_classification",
             experiment_name=MLFLOW_EXPERIMENT_NAME,
             registered_model_name=REGISTERED_MODEL_NAME,
@@ -376,7 +425,9 @@ def train():
 
         active_run = mlflow.active_run()
         if active_run is None:
-            raise RuntimeError("No active MLflow run; cannot execute deployment lifecycle.")
+            raise RuntimeError(
+                "No active MLflow run; cannot execute deployment lifecycle."
+            )
 
         run_model_lifecycle(
             model_name="congestion_5g",

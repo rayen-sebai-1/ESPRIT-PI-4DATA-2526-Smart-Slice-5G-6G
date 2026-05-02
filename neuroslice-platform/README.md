@@ -52,6 +52,7 @@ Optional `drift` profile adds:
 Optional `mlops` profile adds:
 
 - `mlops-postgres`, `minio`, `minio-init`, `mlflow-server`, `elasticsearch`, `logstash`, `kibana`, `mlops-api`
+- `logstash-aiops-ingest` (Logstash -> Redis `stream:norm.telemetry` real-time bridge for AIOps workers)
 
 Optional `mlops-worker` profile runs the offline pipeline manually.
 
@@ -158,6 +159,72 @@ Optional MLOps services:
 cd neuroslice-platform/infrastructure
 docker compose --profile mlops up --build
 ```
+
+## Real-time Logstash → Models validation
+
+This section validates the real-time path from Logstash to the runtime AIOps model services without removing the existing batch/offline MLOps behavior.
+
+### 1. Start the required runtime
+
+```bash
+cd neuroslice-platform/infrastructure
+docker compose --profile mlops up --build
+```
+
+### 2. Verify service/network contracts by inspection
+
+- `infrastructure/docker-compose.yml`:
+  - `logstash`, `logstash-aiops-ingest`, `redis`, and AIOps workers are on the same Compose default network.
+  - `logstash` outputs to service name `logstash-aiops-ingest:7014` (not localhost).
+  - `logstash-aiops-ingest` publishes to `stream:norm.telemetry` (same stream consumed by `congestion-detector`, `sla-assurance`, `slice-classifier`).
+  - `logstash-aiops-ingest` is internal-only (`expose: 7014`, no host-published port).
+  - `logstash` depends on `logstash-aiops-ingest` health.
+- `mlops-tier/batch-orchestrator/logstash/pipeline/logstash.conf`:
+  - keeps/normalizes: `timestamp`, `slice_id`, `cell_id`, `gnb_id`, `metric_name`, `metric_value`, `anomaly_score`, `prediction`, `source_service`, `event_id`
+  - writes to Elasticsearch and forwards JSON events to `http://logstash-aiops-ingest:7014/ingest/logstash`.
+- `ingestion-tier/logstash-aiops-ingest/main.py`:
+  - validates event schema, rejects malformed/stale events with explicit `422` details
+  - logs structured receive/forward records with `event_id`, `slice_id`, `timestamp`, `source_service`
+  - publishes canonical events to Redis `stream:norm.telemetry`.
+
+### 3. Send a sample event through Logstash
+
+```bash
+cd neuroslice-platform
+docker compose -f infrastructure/docker-compose.yml --profile mlops exec mlops-api \
+  python src/monitoring/send_aiops_prediction_example.py
+```
+
+### 4. Confirm immediate model consumption
+
+- Check `congestion-detector`, `sla-assurance`, `slice-classifier` logs for `prediction_step` lines containing:
+  - `event_id`
+  - `source_event_id`
+  - `slice_id`
+  - `timestamp`
+  - `source_service`
+  - `freshness_seconds`
+- Check `logstash` logs for `logstash_output` JSON lines.
+- Check `logstash-aiops-ingest` logs for `model_receive` and `model_receive_forwarded`.
+- If Logstash fails to start with an output plugin error, install plugin `logstash-output-http` in the Logstash image and restart.
+
+### 5. Confirm downstream persistence/publication
+
+- Redis streams:
+  - input to models: `stream:norm.telemetry`
+  - model outputs: `events.anomaly`, `events.sla`, `events.slice.classification`
+- Elasticsearch:
+  - predictions are still indexed in `logs-smart_slice.predictions-default` data stream.
+- Dashboard/BFF:
+  - recent AIOps outputs remain visible via existing API routes that read Redis state/streams.
+
+### 6. Contract notes
+
+- Required receive fields: `event_id`, `timestamp`, `source_service`, plus at least one signal field among `metric_name`, `metric_value`, `anomaly_score`, `prediction`, `kpis`.
+- Freshness guard: events older than `LOGSTASH_EVENT_MAX_AGE_SECONDS` are rejected with `422 stale_event`.
+- Both real-time and batch/offline paths remain active:
+  - batch/offline: `mlops-worker` / training pipeline
+  - real-time: Logstash -> `logstash-aiops-ingest` -> `stream:norm.telemetry` -> AIOps workers
 
 Optional drift detection:
 

@@ -39,7 +39,14 @@ def validate() -> bool:
     # ------------------------------------------------------------------
     # 2. Required array keys
     # ------------------------------------------------------------------
-    required_keys = ["X_train", "y_train", "X_test", "y_test", "feature_names", "classes"]
+    required_keys = [
+        "X_train",
+        "y_train",
+        "X_test",
+        "y_test",
+        "feature_names",
+        "classes",
+    ]
     for key in required_keys:
         if key not in data:
             errors.append(f"Missing key '{key}' in {PROCESSED_NPZ}.")
@@ -63,7 +70,9 @@ def validate() -> bool:
         errors.append(f"Expected {EXPECTED_FEATURES} features, got {X_train.shape[1]}.")
 
     if len(feature_names) != EXPECTED_FEATURES:
-        errors.append(f"Expected {EXPECTED_FEATURES} feature names, got {len(feature_names)}.")
+        errors.append(
+            f"Expected {EXPECTED_FEATURES} feature names, got {len(feature_names)}."
+        )
 
     # ------------------------------------------------------------------
     # 4. No NaN / Inf in feature arrays
@@ -79,7 +88,9 @@ def validate() -> bool:
     # ------------------------------------------------------------------
     unique_labels = set(np.unique(y_train)) | set(np.unique(y_test))
     if not unique_labels.issubset(EXPECTED_CLASSES):
-        errors.append(f"Unexpected label values: {unique_labels}. Expected subset of {EXPECTED_CLASSES}.")
+        errors.append(
+            f"Unexpected label values: {unique_labels}. Expected subset of {EXPECTED_CLASSES}."
+        )
 
     if len(classes) != 3:
         errors.append(f"Expected 3 class names, got {len(classes)}: {list(classes)}.")

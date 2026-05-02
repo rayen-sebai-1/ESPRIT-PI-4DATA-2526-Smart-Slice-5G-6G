@@ -89,6 +89,7 @@ class TestSLA5GEndpoint:
 
         with patch("src.api.main.load_models", return_value=None):
             import src.api.main as _main
+
             app = _main.app
 
             # Inject toy LSTM for congestion (required for app init)
@@ -110,7 +111,12 @@ class TestSLA5GEndpoint:
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X_dummy)
 
-            toy_xgb = XGBClassifier(n_estimators=10, max_depth=3, use_label_encoder=False, eval_metric="logloss")
+            toy_xgb = XGBClassifier(
+                n_estimators=10,
+                max_depth=3,
+                use_label_encoder=False,
+                eval_metric="logloss",
+            )
             toy_xgb.fit(X_scaled, y_dummy)
 
             _main._models["sla_5g"] = toy_xgb
@@ -175,6 +181,7 @@ class TestCongestion5GEndpoint:
 
         with patch("src.api.main.load_models", return_value=None):
             from src.api import main as _main
+
             app = _main.app
 
             from src.models.train_congestion_5g import LSTMClassifier
@@ -188,15 +195,17 @@ class TestCongestion5GEndpoint:
 
             # Dummy preprocessor
             prep = CongestionPreprocessor(seq_length=30)
-            df = pd.DataFrame({
-                "slice_type": ["eMBB"] * 100,
-                "timestamp": pd.date_range("2023-01-01", periods=100, freq="h"),
-                "cpu_util_pct": np.random.rand(100),
-                "mem_util_pct": np.random.rand(100),
-                "bw_util_pct": np.random.rand(100),
-                "active_users": np.random.randint(10, 100, 100),
-                "queue_len": np.random.randint(0, 10, 100)
-            })
+            df = pd.DataFrame(
+                {
+                    "slice_type": ["eMBB"] * 100,
+                    "timestamp": pd.date_range("2023-01-01", periods=100, freq="h"),
+                    "cpu_util_pct": np.random.rand(100),
+                    "mem_util_pct": np.random.rand(100),
+                    "bw_util_pct": np.random.rand(100),
+                    "active_users": np.random.randint(10, 100, 100),
+                    "queue_len": np.random.randint(0, 10, 100),
+                }
+            )
             prep.fit(df)
             _main._models["congestion_5g_preprocessor"] = prep
 
@@ -206,9 +215,7 @@ class TestCongestion5GEndpoint:
         seq = []
         for _ in range(30):
             seq.append([0.5, 0.5, 0.5, 50, 5, 12, 0])
-        return {
-            "sequence": seq
-        }
+        return {"sequence": seq}
 
     def test_predict_congestion_5g_returns_200(self):
         client = self._get_congestion_5g_client()
@@ -235,7 +242,9 @@ class TestCongestion5GEndpoint:
         bad_payload = {"sequence": seq}
         # Pydantic currently doesn't fail on length unless defined, but endpoint fails validation
         resp = client.post("/predict/congestion_5g", json=bad_payload)
-        assert resp.status_code == 500 or resp.status_code == 422  # Custom shape check causes 500 or ValueError
+        assert (
+            resp.status_code == 500 or resp.status_code == 422
+        )  # Custom shape check causes 500 or ValueError
 
 
 class TestSliceType6GEndpoint:
@@ -247,6 +256,7 @@ class TestSliceType6GEndpoint:
 
         with patch("src.api.main.load_models", return_value=None):
             from src.api import main as _main
+
             app = _main.app
 
             import numpy as np
@@ -260,7 +270,9 @@ class TestSliceType6GEndpoint:
             le = LabelEncoder()
             le.fit(["ERLLC", "umMTC", "MBRLLC", "mURLLC", "feMBB"])
 
-            toy_xgb = XGBClassifier(n_estimators=10, max_depth=3, num_class=5, objective="multi:softprob")
+            toy_xgb = XGBClassifier(
+                n_estimators=10, max_depth=3, num_class=5, objective="multi:softprob"
+            )
             toy_xgb.fit(X_dummy, y_dummy)
 
             _main._models["slice_type_6g"] = toy_xgb
@@ -279,7 +291,7 @@ class TestSliceType6GEndpoint:
             "slice_available_transfer_rate_gbps": 5.0,
             "slice_latency_ns": 400000.0,
             "slice_packet_loss": 0.0005,
-            "slice_jitter_ns": 80000.0
+            "slice_jitter_ns": 80000.0,
         }
 
     def test_predict_slice_type_6g_returns_200(self):
@@ -350,7 +362,7 @@ class TestSLA6GEndpoint:
             "slice_jitter_rolling_mean": 310_000.0,
             "slice_jitter_rolling_std": 8_000.0,
             # Context
-            "slice_type_encoded": 3,   # mURLLC
+            "slice_type_encoded": 3,  # mURLLC
             "mobility_encoded": 1,
             "connectivity_encoded": 1,
             "handover_encoded": 0,

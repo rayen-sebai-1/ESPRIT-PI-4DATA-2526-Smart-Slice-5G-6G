@@ -85,9 +85,12 @@ async def load_models() -> None:
     # Congestion 5G model
     try:
         import torch
+
         _models["congestion_5g"] = torch.jit.load(CONGESTION_5G_MODEL_PATH)
         _models["congestion_5g"].eval()
-        _models["congestion_5g_preprocessor"] = joblib.load(CONGESTION_5G_PREPROCESSOR_PATH)
+        _models["congestion_5g_preprocessor"] = joblib.load(
+            CONGESTION_5G_PREPROCESSOR_PATH
+        )
         print(f"[INFO] Loaded congestion 5G model from '{CONGESTION_5G_MODEL_PATH}'.")
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Could not load congestion 5G model or preprocessor: {exc}")
@@ -131,11 +134,17 @@ async def load_models() -> None:
     # Slice-Type-5G label encoder
     try:
         if os.path.exists(SLICE_TYPE_5G_LABEL_ENCODER_PATH):
-            _models["slice_type_5g_encoder"] = joblib.load(SLICE_TYPE_5G_LABEL_ENCODER_PATH)
-            print(f"[INFO] Loaded slice-type-5g label encoder from '{SLICE_TYPE_5G_LABEL_ENCODER_PATH}'.")
+            _models["slice_type_5g_encoder"] = joblib.load(
+                SLICE_TYPE_5G_LABEL_ENCODER_PATH
+            )
+            print(
+                f"[INFO] Loaded slice-type-5g label encoder from '{SLICE_TYPE_5G_LABEL_ENCODER_PATH}'."
+            )
         else:
             _models["slice_type_5g_encoder"] = None
-            print(f"[WARN] Slice-type-5g label encoder not found at '{SLICE_TYPE_5G_LABEL_ENCODER_PATH}'.")
+            print(
+                f"[WARN] Slice-type-5g label encoder not found at '{SLICE_TYPE_5G_LABEL_ENCODER_PATH}'."
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Could not load slice-type-5g label encoder: {exc}")
         _models["slice_type_5g_encoder"] = None
@@ -151,11 +160,17 @@ async def load_models() -> None:
     # Slice-Type-6G label encoder
     try:
         if os.path.exists(SLICE_TYPE_6G_LABEL_ENCODER_PATH):
-            _models["slice_type_6g_encoder"] = joblib.load(SLICE_TYPE_6G_LABEL_ENCODER_PATH)
-            print(f"[INFO] Loaded slice-type-6g label encoder from '{SLICE_TYPE_6G_LABEL_ENCODER_PATH}'.")
+            _models["slice_type_6g_encoder"] = joblib.load(
+                SLICE_TYPE_6G_LABEL_ENCODER_PATH
+            )
+            print(
+                f"[INFO] Loaded slice-type-6g label encoder from '{SLICE_TYPE_6G_LABEL_ENCODER_PATH}'."
+            )
         else:
             _models["slice_type_6g_encoder"] = None
-            print(f"[WARN] Slice-type-6g label encoder not found at '{SLICE_TYPE_6G_LABEL_ENCODER_PATH}'.")
+            print(
+                f"[WARN] Slice-type-6g label encoder not found at '{SLICE_TYPE_6G_LABEL_ENCODER_PATH}'."
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Could not load slice-type-6g label encoder: {exc}")
         _models["slice_type_6g_encoder"] = None
@@ -190,8 +205,12 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/predict/congestion_6g", response_model=Congestion6GOutput, tags=["Prediction"])
-async def predict_congestion_6g_endpoint(payload: Congestion6GInput) -> Congestion6GOutput:
+@app.post(
+    "/predict/congestion_6g", response_model=Congestion6GOutput, tags=["Prediction"]
+)
+async def predict_congestion_6g_endpoint(
+    payload: Congestion6GInput,
+) -> Congestion6GOutput:
     """Forecast CPU utilisation for the next 5-minute window."""
     model = _models.get("congestion_6g")
     if model is None:
@@ -199,13 +218,19 @@ async def predict_congestion_6g_endpoint(payload: Congestion6GInput) -> Congesti
     return predict_congestion_6g(model, payload)
 
 
-@app.post("/predict/congestion_5g", response_model=Congestion5GOutput, tags=["Prediction"])
-async def predict_congestion_5g_endpoint(payload: Congestion5GInput) -> Congestion5GOutput:
+@app.post(
+    "/predict/congestion_5g", response_model=Congestion5GOutput, tags=["Prediction"]
+)
+async def predict_congestion_5g_endpoint(
+    payload: Congestion5GInput,
+) -> Congestion5GOutput:
     """Forecast Congestion probability for the 5G slice."""
     model = _models.get("congestion_5g")
     preprocessor = _models.get("congestion_5g_preprocessor")
     if model is None or preprocessor is None:
-        raise HTTPException(status_code=503, detail="Congestion 5G model or preprocessor not loaded.")
+        raise HTTPException(
+            status_code=503, detail="Congestion 5G model or preprocessor not loaded."
+        )
     try:
         return predict_congestion_5g(model, preprocessor, payload)
     except ValueError as exc:
@@ -224,27 +249,41 @@ async def predict_sla_5g_endpoint(payload: SLA5GInput) -> SLA5GOutput:
     model = _models.get("sla_5g")
     scaler = _models.get("sla_5g_scaler")
     if model is None or scaler is None:
-        raise HTTPException(status_code=503, detail="SLA 5G model or scaler not loaded.")
+        raise HTTPException(
+            status_code=503, detail="SLA 5G model or scaler not loaded."
+        )
     return predict_sla_5g(model, scaler, payload)
 
 
-@app.post("/predict/slice_type_5g", response_model=SliceType5GOutput, tags=["Prediction"])
-async def predict_slice_type_5g_endpoint(payload: SliceType5GInput) -> SliceType5GOutput:
+@app.post(
+    "/predict/slice_type_5g", response_model=SliceType5GOutput, tags=["Prediction"]
+)
+async def predict_slice_type_5g_endpoint(
+    payload: SliceType5GInput,
+) -> SliceType5GOutput:
     """Predict the most appropriate 5G network slice type (eMBB / mMTC / URLLC)."""
     model = _models.get("slice_type_5g")
     label_encoder = _models.get("slice_type_5g_encoder")
     if model is None or label_encoder is None:
-        raise HTTPException(status_code=503, detail="Slice-Type-5G model or label encoder not loaded.")
+        raise HTTPException(
+            status_code=503, detail="Slice-Type-5G model or label encoder not loaded."
+        )
     return predict_slice_type_5g(model, label_encoder, payload)
 
 
-@app.post("/predict/slice_type_6g", response_model=SliceType6GOutput, tags=["Prediction"])
-async def predict_slice_type_6g_endpoint(payload: SliceType6GInput) -> SliceType6GOutput:
+@app.post(
+    "/predict/slice_type_6g", response_model=SliceType6GOutput, tags=["Prediction"]
+)
+async def predict_slice_type_6g_endpoint(
+    payload: SliceType6GInput,
+) -> SliceType6GOutput:
     """Predict the most appropriate 6G network slice type."""
     model = _models.get("slice_type_6g")
     label_encoder = _models.get("slice_type_6g_encoder")
     if model is None or label_encoder is None:
-        raise HTTPException(status_code=503, detail="Slice-Type-6G model or label encoder not loaded.")
+        raise HTTPException(
+            status_code=503, detail="Slice-Type-6G model or label encoder not loaded."
+        )
     return predict_slice_type_6g(model, label_encoder, payload)
 
 
@@ -258,5 +297,7 @@ async def predict_sla_6g_endpoint(payload: SLA6GInput) -> SLA6GOutput:
     model = _models.get("sla_6g")
     scaler = _models.get("sla_6g_scaler")
     if model is None or scaler is None:
-        raise HTTPException(status_code=503, detail="SLA-6G model or scaler not loaded.")
+        raise HTTPException(
+            status_code=503, detail="SLA-6G model or scaler not loaded."
+        )
     return predict_sla_6g(model, scaler, payload)

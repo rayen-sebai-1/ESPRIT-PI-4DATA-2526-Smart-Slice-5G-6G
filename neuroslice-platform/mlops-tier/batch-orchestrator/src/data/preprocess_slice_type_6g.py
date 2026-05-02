@@ -69,7 +69,9 @@ def preprocess() -> dict:
     # 2. Validate required columns
     for col in SELECTED_FEATURES + [TARGET]:
         if col not in df.columns:
-            raise ValueError(f"Expected column '{col}' not found. Available: {list(df.columns)}")
+            raise ValueError(
+                f"Expected column '{col}' not found. Available: {list(df.columns)}"
+            )
 
     X = df[SELECTED_FEATURES].copy()
     y = df[TARGET].copy()
@@ -118,7 +120,9 @@ def preprocess() -> dict:
         actually_flipped += 1
 
     print(f"[INFO] Injected {LABEL_NOISE_RATE*100:.0f}% label noise.")
-    print(f"[INFO] {actually_flipped} labels were artificially flipped in the training set.")
+    print(
+        f"[INFO] {actually_flipped} labels were artificially flipped in the training set."
+    )
 
     # 6. Save outputs
     os.makedirs(PROCESSED_DIR, exist_ok=True)

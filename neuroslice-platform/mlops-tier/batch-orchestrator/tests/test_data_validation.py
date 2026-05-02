@@ -12,7 +12,9 @@ MIN_ROW_COUNT = 100
 
 def _load_df():
     if not os.path.exists(PROCESSED_PATH):
-        pytest.skip(f"Processed file not found at '{PROCESSED_PATH}'. Run 'make data' first.")
+        pytest.skip(
+            f"Processed file not found at '{PROCESSED_PATH}'. Run 'make data' first."
+        )
     return pd.read_csv(PROCESSED_PATH)
 
 
@@ -23,7 +25,9 @@ class TestProcessed6GCSV:
         """The processed CSV must not contain any null values."""
         df = _load_df()
         null_counts = df[REQUIRED_COLS].isnull().sum()
-        assert null_counts.sum() == 0, f"Null values found:\n{null_counts[null_counts > 0]}"
+        assert (
+            null_counts.sum() == 0
+        ), f"Null values found:\n{null_counts[null_counts > 0]}"
 
     def test_correct_column_count(self):
         """The processed CSV must have exactly three columns."""
@@ -50,4 +54,6 @@ class TestProcessed6GCSV:
     def test_row_count_exceeds_minimum(self):
         """The processed dataset must contain more than 100 rows."""
         df = _load_df()
-        assert len(df) > MIN_ROW_COUNT, f"Row count {len(df)} does not exceed minimum {MIN_ROW_COUNT}."
+        assert (
+            len(df) > MIN_ROW_COUNT
+        ), f"Row count {len(df)} does not exceed minimum {MIN_ROW_COUNT}."

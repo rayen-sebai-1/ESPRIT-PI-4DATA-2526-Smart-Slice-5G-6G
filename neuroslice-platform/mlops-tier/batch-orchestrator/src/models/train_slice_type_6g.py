@@ -15,7 +15,12 @@ import xgboost as xgb
 import mlflow
 import shap
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
+from src.models.lifecycle import (
+    configure_mlflow_tracking,
+    finalize_model_lifecycle,
+    get_experiment_name,
+    use_mlflow_experiment,
+)
 
 # Configuration
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -43,7 +48,9 @@ def get_or_create_experiment(experiment_name: str) -> str:
         experiment_id = mlflow.create_experiment(experiment_name)
         print(f"Created new experiment '{experiment_name}' with ID: {experiment_id}")
         return experiment_id
-    print(f"Using existing experiment '{experiment_name}' with ID: {experiment.experiment_id}")
+    print(
+        f"Using existing experiment '{experiment_name}' with ID: {experiment.experiment_id}"
+    )
     return experiment.experiment_id
 
 
@@ -54,7 +61,9 @@ def main():
 
     # 1. Load Data
     if not NPZ_PATH.exists():
-        print(f"[ERROR] Processed data not found at '{NPZ_PATH.as_posix()}'. Please run preprocessing.")
+        print(
+            f"[ERROR] Processed data not found at '{NPZ_PATH.as_posix()}'. Please run preprocessing."
+        )
         sys.exit(1)
 
     print(f"Loading data from {NPZ_PATH.as_posix()}...")
@@ -76,7 +85,7 @@ def main():
         "num_class": 5,
         "random_state": 42,
         "eval_metric": "mlogloss",
-        "n_jobs": -1
+        "n_jobs": -1,
     }
 
     # 3. Initialize MLflow Experiment
@@ -105,7 +114,7 @@ def main():
             "val_accuracy": acc,
             "val_precision": precision,
             "val_recall": recall,
-            "val_f1_score": f1
+            "val_f1_score": f1,
         }
         mlflow.log_metrics(metrics)
         print("Validation Metrics:")
@@ -116,12 +125,16 @@ def main():
         print("Generating SHAP summary plot...")
         try:
             explainer = shap.TreeExplainer(model)
-            sample_idx = np.random.choice(X_train.shape[0], min(X_train.shape[0], 2000), replace=False)
+            sample_idx = np.random.choice(
+                X_train.shape[0], min(X_train.shape[0], 2000), replace=False
+            )
             X_train_sample = X_train[sample_idx]
             shap_values = explainer.shap_values(X_train_sample)
 
             plt.figure(figsize=(10, 8))
-            shap.summary_plot(shap_values, X_train_sample, feature_names=feature_names, show=False)
+            shap.summary_plot(
+                shap_values, X_train_sample, feature_names=feature_names, show=False
+            )
 
             ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
             shap_plot_path = ARTIFACTS_DIR / "shap_summary_6g.png"
@@ -135,7 +148,9 @@ def main():
             print(f"[WARN] SHAP computation skipped: {exc}")
 
         if LABEL_ENCODER_PATH.exists():
-            mlflow.log_artifact(LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing")
+            mlflow.log_artifact(
+                LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing"
+            )
 
         # 7. Log Model
         # Log xgboost explicitly or via scikit-learn
@@ -155,7 +170,9 @@ def main():
                 try:
                     mlflow.register_model(model_uri, registered_model_name)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[WARN] Model registration skipped for {registered_model_name}: {exc}")
+                    print(
+                        f"[WARN] Model registration skipped for {registered_model_name}: {exc}"
+                    )
             else:
                 print("[WARN] No active MLflow run; skipping model registration.")
         finalize_model_lifecycle(

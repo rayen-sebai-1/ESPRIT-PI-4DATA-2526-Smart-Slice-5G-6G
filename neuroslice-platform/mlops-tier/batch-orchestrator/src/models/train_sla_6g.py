@@ -34,7 +34,12 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
+from src.models.lifecycle import (
+    configure_mlflow_tracking,
+    finalize_model_lifecycle,
+    get_experiment_name,
+    use_mlflow_experiment,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -273,7 +278,9 @@ def train(
                 try:
                     mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+                    print(
+                        f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}"
+                    )
             else:
                 print("[WARN] No active MLflow run; skipping model registration.")
 
@@ -315,7 +322,9 @@ def parse_args():
     parser.add_argument("--learning_rate", type=float, default=DEFAULT_LEARNING_RATE)
     parser.add_argument("--max_depth", type=int, default=DEFAULT_MAX_DEPTH)
     parser.add_argument("--subsample", type=float, default=DEFAULT_SUBSAMPLE)
-    parser.add_argument("--colsample_bytree", type=float, default=DEFAULT_COLSAMPLE_BYTREE)
+    parser.add_argument(
+        "--colsample_bytree", type=float, default=DEFAULT_COLSAMPLE_BYTREE
+    )
     return parser.parse_args()
 
 

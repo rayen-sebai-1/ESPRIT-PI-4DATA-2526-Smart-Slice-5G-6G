@@ -85,11 +85,17 @@ def validate(path: str = PROCESSED_PATH) -> None:
             col_min = df[col].min()
             col_max = df[col].max()
             if col_min < 0 or col_max > 1:
-                msg = f"Column '{col}' out of [0,1] range " f"(min={col_min:.4f}, max={col_max:.4f})."
+                msg = (
+                    f"Column '{col}' out of [0,1] range "
+                    f"(min={col_min:.4f}, max={col_max:.4f})."
+                )
                 errors.append(msg)
                 print(f"[FAIL] {msg}")
             else:
-                print(f"[OK]  '{col}' within [0,1] " f"(min={col_min:.4f}, max={col_max:.4f}).")
+                print(
+                    f"[OK]  '{col}' within [0,1] "
+                    f"(min={col_min:.4f}, max={col_max:.4f})."
+                )
 
     # ------------------------------------------------------------------
     # 4. Minimum row count

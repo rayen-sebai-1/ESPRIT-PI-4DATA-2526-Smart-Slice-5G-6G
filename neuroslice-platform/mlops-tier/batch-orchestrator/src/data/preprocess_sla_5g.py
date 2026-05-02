@@ -56,7 +56,8 @@ def preprocess() -> dict:
     # ------------------------------------------------------------------
     if not os.path.exists(RAW_PATH):
         raise FileNotFoundError(
-            f"Raw data not found at '{RAW_PATH}'. " "Please ensure '5G_prepared.csv' is placed in data/raw/."
+            f"Raw data not found at '{RAW_PATH}'. "
+            "Please ensure '5G_prepared.csv' is placed in data/raw/."
         )
 
     df = pd.read_csv(RAW_PATH)
@@ -65,7 +66,9 @@ def preprocess() -> dict:
     # Validate required columns
     for col in FINAL_FEATURES + [TARGET]:
         if col not in df.columns:
-            raise ValueError(f"Expected column '{col}' not found. Available: {list(df.columns)}")
+            raise ValueError(
+                f"Expected column '{col}' not found. Available: {list(df.columns)}"
+            )
 
     # ------------------------------------------------------------------
     # 2. Select features and target
@@ -98,7 +101,9 @@ def preprocess() -> dict:
     X_train_res, y_train_res = smote.fit_resample(X_train_scaled, y_train)
 
     print(f"[INFO] After SMOTE — Train: {X_train_res.shape[0]} samples")
-    print(f"[INFO] Class distribution after SMOTE: {dict(pd.Series(y_train_res).value_counts())}")
+    print(
+        f"[INFO] Class distribution after SMOTE: {dict(pd.Series(y_train_res).value_counts())}"
+    )
 
     # ------------------------------------------------------------------
     # 6. Save outputs

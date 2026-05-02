@@ -24,7 +24,15 @@ def validate() -> bool:
 
     data = np.load(PROCESSED_NPZ, allow_pickle=True)
 
-    required_keys = ["X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "feature_names"]
+    required_keys = [
+        "X_train",
+        "y_train",
+        "X_val",
+        "y_val",
+        "X_test",
+        "y_test",
+        "feature_names",
+    ]
     for key in required_keys:
         if key not in data:
             errors.append(f"Missing key '{key}' in {PROCESSED_NPZ}.")
@@ -39,8 +47,14 @@ def validate() -> bool:
     X_val = data["X_val"]
 
     # Check shapes
-    if len(X_train.shape) != 3 or X_train.shape[1] != SEQ_LENGTH or X_train.shape[2] != EXPECTED_FEATURES:
-        errors.append(f"Expected train sequence shape (*, {SEQ_LENGTH}, {EXPECTED_FEATURES}), got {X_train.shape}.")
+    if (
+        len(X_train.shape) != 3
+        or X_train.shape[1] != SEQ_LENGTH
+        or X_train.shape[2] != EXPECTED_FEATURES
+    ):
+        errors.append(
+            f"Expected train sequence shape (*, {SEQ_LENGTH}, {EXPECTED_FEATURES}), got {X_train.shape}."
+        )
 
     for name, arr in [("X_train", X_train), ("X_val", X_val)]:
         if np.isnan(arr).any() or np.isinf(arr).any():

@@ -40,6 +40,7 @@ elasticsearch>=8.13.0
 
 # Code quality
 flake8>=7.0.0
+ruff>=0.4.0
 black>=24.4.0
 bandit>=1.7.8
 

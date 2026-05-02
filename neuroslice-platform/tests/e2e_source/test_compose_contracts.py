@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = ROOT / "infrastructure" / "docker-compose.yml"
 KONG_PATH = ROOT / "api-dashboard-tier" / "kong-gateway" / "kong.yml"
+LOGSTASH_PIPELINE_PATH = ROOT / "mlops-tier" / "batch-orchestrator" / "logstash" / "pipeline" / "logstash.conf"
 
 
 def _services_from_compose(compose_text: str) -> set[str]:
@@ -34,6 +35,7 @@ def test_required_services_exist() -> None:
         "react-dashboard",
         "prometheus",
         "grafana",
+        "logstash-aiops-ingest",
     }
     missing = sorted(required - services)
     assert not missing, f"Missing required Compose services: {missing}"
@@ -63,3 +65,12 @@ def test_profiles_exist() -> None:
     assert 'profiles: ["mlops"]' in text
     assert 'profiles: ["drift"]' in text
     assert 'profiles: ["mlops-worker"]' in text
+
+
+def test_logstash_realtime_bridge_contract() -> None:
+    compose_text = COMPOSE_PATH.read_text(encoding="utf-8")
+    pipeline_text = LOGSTASH_PIPELINE_PATH.read_text(encoding="utf-8")
+
+    assert "logstash-aiops-ingest:" in compose_text
+    assert "http://logstash-aiops-ingest:7014/ingest/logstash" in pipeline_text
+    assert "OUTPUT_STREAM: stream:norm.telemetry" in compose_text

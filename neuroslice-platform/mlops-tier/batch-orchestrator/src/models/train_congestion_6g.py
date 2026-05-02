@@ -20,7 +20,12 @@ import torch.nn as nn
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from torch.utils.data import DataLoader, Dataset
 
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
+from src.models.lifecycle import (
+    configure_mlflow_tracking,
+    finalize_model_lifecycle,
+    get_experiment_name,
+    use_mlflow_experiment,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -69,9 +74,13 @@ class Congestion6GDataset(Dataset):
 class Congestion6GLSTM(nn.Module):
     """Single-layer LSTM that predicts the next CPU-utilisation value."""
 
-    def __init__(self, input_size: int = 2, hidden_size: int = LSTM_UNITS, num_layers: int = 1):
+    def __init__(
+        self, input_size: int = 2, hidden_size: int = LSTM_UNITS, num_layers: int = 1
+    ):
         super().__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.lstm = nn.LSTM(
+            input_size, hidden_size, num_layers=num_layers, batch_first=True
+        )
         self.fc = nn.Linear(hidden_size, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # x: (B, T, F)
@@ -249,7 +258,9 @@ def train(
                 try:
                     mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+                    print(
+                        f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}"
+                    )
             else:
                 print("[WARN] No active MLflow run; skipping model registration.")
 
@@ -300,7 +311,10 @@ def train(
             example_input=X_val[:1],
             input_names=["input"],
             output_names=["prediction"],
-            dynamic_axes={"input": {0: "batch", 1: "sequence"}, "prediction": {0: "batch"}},
+            dynamic_axes={
+                "input": {0: "batch", 1: "sequence"},
+                "prediction": {0: "batch"},
+            },
         )
 
         print(
