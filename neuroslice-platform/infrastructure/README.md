@@ -170,6 +170,7 @@ The `mlops` profile starts:
 - `mlflow-server`
 - `elasticsearch`
 - `logstash`
+- `logstash-aiops-ingest`
 - `kibana`
 - `mlops-api`
 - `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend` and `mlops-drift-monitor`)
@@ -214,6 +215,7 @@ Optional `mlops` profile:
 - Kibana: `http://localhost:5601`
 
 The integrated Logstash HTTP input is internal to Docker Compose at `http://logstash:8081/predictions`.
+Logstash forwards validated real-time events to `http://logstash-aiops-ingest:7014/ingest/logstash`, and this bridge publishes canonical events to Redis `stream:norm.telemetry` for runtime AIOps workers.
 
 ## MLOps Data Ownership
 

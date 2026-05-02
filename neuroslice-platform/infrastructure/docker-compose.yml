@@ -282,6 +282,42 @@ services:
         limits:
           memory: 1536m
 
+  logstash-aiops-ingest:
+    build:
+      context: ..
+      dockerfile: ingestion-tier/logstash-aiops-ingest/Dockerfile
+    profiles: ["mlops"]
+    environment:
+      SERVICE_NAME: logstash-aiops-ingest
+      SERVICE_PORT: "7014"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SITE_ID: ${SITE_ID:-TT-SFAX-02}
+      OUTPUT_STREAM: stream:norm.telemetry
+      STREAM_MAXLEN: ${STREAM_MAXLEN:-10000}
+      LOGSTASH_EVENT_MAX_AGE_SECONDS: ${LOGSTASH_EVENT_MAX_AGE_SECONDS:-900}
+    expose:
+      - "7014"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:7014/health', timeout=3); sys.exit(0)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
     container_name: infrastructure-logstash
@@ -289,6 +325,8 @@ services:
     depends_on:
       elasticsearch:
         condition: service_started
+      logstash-aiops-ingest:
+        condition: service_healthy
     environment:
       LS_JAVA_OPTS: "-Xms256m -Xmx256m"
       XPACK_MONITORING_ENABLED: "false"
@@ -311,12 +349,14 @@ services:
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
       XPACK_SECURITY_ENABLED: "false"
+      NODE_OPTIONS: "--max-old-space-size=1024"
     ports:
       - "${KIBANA_PORT:-5601}:5601"
     deploy:
       resources:
         limits:
-          memory: 512m
+          memory: 1536m
+    mem_limit: 1536m
 
   mlops-api:
     build:

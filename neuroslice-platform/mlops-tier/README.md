@@ -215,6 +215,47 @@ Then verify:
 - Do not run standalone MLOps Compose and the integrated `mlops` profile together unless you intentionally remap ports.
 - Generated artifacts under `models/`, `data/processed/`, and `reports/model_training_summary.md` are runtime outputs.
 
+## CI/CD
+
+The pipeline is defined in `.github/workflows/mlops-ci.yml` and runs on every push and pull request.
+
+### Stages
+
+| # | Stage | Tool | Notes |
+|---|-------|------|-------|
+| 1 | Checkout | `actions/checkout@v4` | |
+| 2 | Python setup | `actions/setup-python@v5` | Python 3.10, pip cache enabled |
+| 3 | Install dependencies | pip | CPU-only PyTorch in CI to avoid 2 GB+ CUDA download |
+| 4 | Format check | `black --check` | Fails on diff; never auto-formats |
+| 5 | Linting | `ruff check` | |
+| 6 | Tests | `pytest -v` | Integration-heavy tests ignored; mocked API tests run |
+| 7 | Docker build | `docker build` | Image tagged `mlops-fastapi:ci`; CPU torch via `--build-arg PYTORCH_INDEX=cpu` |
+| 8 | Docker push | `docker push` | Only on push to `main`; skipped when `DOCKER_USERNAME` secret is unset |
+
+### Docker push secrets
+
+To enable image push, add these repository secrets in **Settings → Secrets → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `DOCKER_USERNAME` | Registry username |
+| `DOCKER_PASSWORD` | Registry password or access token |
+| `DOCKER_REGISTRY` | Registry host (defaults to `docker.io`) |
+
+If `DOCKER_USERNAME` is absent the push step prints a notice and exits cleanly.
+
+### Running the checks locally
+
+```bash
+cd neuroslice-platform/mlops-tier/batch-orchestrator
+black --check src/ tests/
+ruff check src/ tests/
+pytest tests/ -v \
+  --ignore=tests/test_model_lifecycle_registry.py \
+  --ignore=tests/test_model_quality.py \
+  --ignore=tests/test_model_report.py
+```
+
 ## Common Commands
 
 ```bash

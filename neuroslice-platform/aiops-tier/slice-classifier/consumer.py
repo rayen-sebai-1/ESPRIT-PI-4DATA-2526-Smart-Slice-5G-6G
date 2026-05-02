@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any, Dict, Optional
 
 from config import SliceClassifierConfig
@@ -23,6 +24,19 @@ from shared.runtime_control import RuntimeControlGate
 from shared.redis_client import ack_message, ensure_consumer_group, read_group
 
 logger = logging.getLogger(__name__)
+
+
+def _event_age_seconds(timestamp: Any) -> Optional[float]:
+    if not timestamp:
+        return None
+    try:
+        ts = str(timestamp)
+        if ts.endswith("Z"):
+            ts = f"{ts[:-1]}+00:00"
+        parsed = datetime.fromisoformat(ts).astimezone(UTC)
+        return max(0.0, (datetime.now(UTC) - parsed).total_seconds())
+    except Exception:  # noqa: BLE001
+        return None
 
 
 class SliceConsumer:
@@ -102,6 +116,18 @@ class SliceConsumer:
                             model_name=self._model_name,
                         ).set(1 if bundle.fallback_mode else 0)
                         if output is not None:
+                            payload = output.model_dump(by_alias=True)
+                            age_seconds = _event_age_seconds(payload.get("timestamp"))
+                            logger.info(
+                                "prediction_step event_id=%s source_event_id=%s slice_id=%s timestamp=%s source_service=%s latency_ms=%.3f freshness_seconds=%s",
+                                payload.get("eventId"),
+                                payload.get("sourceEventId"),
+                                payload.get("sliceId"),
+                                payload.get("timestamp"),
+                                self.cfg.service_name,
+                                latency * 1000.0,
+                                f"{age_seconds:.3f}" if age_seconds is not None else "unknown",
+                            )
                             aiops_predictions.labels(
                                 service=self.cfg.service_name,
                                 model_name=self._model_name,
@@ -120,6 +146,7 @@ class SliceConsumer:
     def _extract_event(fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raw = fields.get("event") or fields.get("payload")
         if raw is None:
+            logger.warning("Dropping stream item without event/payload field")
             return None
 
         if isinstance(raw, dict):
@@ -129,7 +156,7 @@ class SliceConsumer:
             try:
                 return json.loads(raw)
             except json.JSONDecodeError:
-                logger.debug("Dropping malformed JSON payload")
+                logger.warning("Dropping malformed JSON payload")
                 return None
 
         return None
