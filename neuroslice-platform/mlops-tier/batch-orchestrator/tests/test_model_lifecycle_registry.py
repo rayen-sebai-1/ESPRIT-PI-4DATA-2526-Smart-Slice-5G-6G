@@ -10,7 +10,12 @@ from src.models.lifecycle import (
     normalize_artifact_uri,
     write_registry_entry,
 )
-from src.mlops.promotion import convert_to_fp16, materialize_promoted_model_for_registry, promote_model, promote_onnx_artifacts
+from src.mlops.promotion import (
+    convert_to_fp16,
+    materialize_promoted_model_for_registry,
+    promote_model,
+    promote_onnx_artifacts,
+)
 
 
 def _entry(model_name: str) -> dict:
@@ -59,7 +64,9 @@ def test_write_registry_entry_keeps_only_best_passing_model_in_production(tmp_pa
     write_registry_entry(newer, registry_path=registry_path)
 
     entries = load_registry(registry_path)["models"]
-    production_entries = [entry for entry in entries if entry.get("stage") == "production"]
+    production_entries = [
+        entry for entry in entries if entry.get("stage") == "production"
+    ]
 
     assert len(production_entries) == 1
     assert production_entries[0]["version"] == 1
@@ -69,12 +76,16 @@ def test_write_registry_entry_keeps_only_best_passing_model_in_production(tmp_pa
 def test_normalize_artifact_uri_maps_mlflow_proxy_to_minio_root(monkeypatch):
     monkeypatch.setenv("MLFLOW_ARTIFACT_ROOT", "s3://mlflow-artifacts")
 
-    uri = normalize_artifact_uri("mlflow-artifacts:/1/run-123/artifacts/onnx/model_fp16.onnx")
+    uri = normalize_artifact_uri(
+        "mlflow-artifacts:/1/run-123/artifacts/onnx/model_fp16.onnx"
+    )
 
     assert uri == "s3://mlflow-artifacts/1/run-123/artifacts/onnx/model_fp16.onnx"
 
 
-def test_finalize_model_lifecycle_logs_artifacts_and_records_onnx_failure(tmp_path, monkeypatch):
+def test_finalize_model_lifecycle_logs_artifacts_and_records_onnx_failure(
+    tmp_path, monkeypatch
+):
     artifact_path = tmp_path / "model.pkl"
     artifact_path.write_text("model", encoding="utf-8")
     preprocessor_path = tmp_path / "preprocessor.pkl"
@@ -108,7 +119,9 @@ def test_finalize_model_lifecycle_logs_artifacts_and_records_onnx_failure(tmp_pa
     )
     monkeypatch.setattr(
         "src.models.lifecycle.export_model_to_onnx",
-        lambda **kwargs: ONNXExportResult(status="failed", reason="converter unavailable"),
+        lambda **kwargs: ONNXExportResult(
+            status="failed", reason="converter unavailable"
+        ),
     )
 
     entry = finalize_model_lifecycle(
@@ -136,11 +149,13 @@ def test_finalize_model_lifecycle_logs_artifacts_and_records_onnx_failure(tmp_pa
     assert entry["preprocessor_uri"].startswith("s3://mlflow-artifacts/")
     assert entry["onnx_export_status"] == "failed"
     assert "converter unavailable" in entry["onnx_export_reason"]
-    assert ("reports/onnx_export_status.json" in [item[1] for item in logged_dicts])
+    assert "reports/onnx_export_status.json" in [item[1] for item in logged_dicts]
     assert len(logged_artifacts) == 2
 
 
-def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_path, monkeypatch):
+def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(
+    tmp_path, monkeypatch
+):
     models_dir = tmp_path / "models"
     models_dir.mkdir(parents=True)
     onnx_dir = models_dir / "onnx"
@@ -164,15 +179,21 @@ def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_pa
         info = _RunInfo()
 
     monkeypatch.setattr("src.models.lifecycle.mlflow.active_run", lambda: _Run())
-    monkeypatch.setattr("src.models.lifecycle.mlflow.log_artifact", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.models.lifecycle.mlflow.log_artifact", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(
         "src.models.lifecycle.mlflow.get_artifact_uri",
         lambda path="": f"s3://mlflow-artifacts/1/run-xyz/artifacts/{path}",
     )
     monkeypatch.setattr("src.models.lifecycle.mlflow.set_tags", lambda tags: None)
     monkeypatch.setattr("src.models.lifecycle.mlflow.set_tag", lambda key, value: None)
-    monkeypatch.setattr("src.models.lifecycle.mlflow.log_dict", lambda *args, **kwargs: None)
-    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.models.lifecycle.mlflow.log_dict", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(
         "src.models.lifecycle.export_model_to_onnx",
         lambda **kwargs: ONNXExportResult(
@@ -202,8 +223,12 @@ def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_pa
         registry_path=registry_path,
     )
 
-    promoted_current_fp16 = models_dir / "promoted" / "sla_5g" / "current" / "model_fp16.onnx"
-    promoted_current_meta = models_dir / "promoted" / "sla_5g" / "current" / "metadata.json"
+    promoted_current_fp16 = (
+        models_dir / "promoted" / "sla_5g" / "current" / "model_fp16.onnx"
+    )
+    promoted_current_meta = (
+        models_dir / "promoted" / "sla_5g" / "current" / "metadata.json"
+    )
     promoted_version_fp16 = models_dir / "promoted" / "sla_5g" / "1" / "model_fp16.onnx"
 
     assert entry["promoted"] is True
@@ -221,12 +246,16 @@ def test_finalize_model_lifecycle_materializes_promoted_current_artifacts(tmp_pa
     assert metadata["framework"] == "xgboost"
 
 
-def test_promote_onnx_artifacts_writes_versioned_and_current_metadata(tmp_path, monkeypatch):
+def test_promote_onnx_artifacts_writes_versioned_and_current_metadata(
+    tmp_path, monkeypatch
+):
     raw_onnx = tmp_path / "model.onnx"
     fp16_onnx = tmp_path / "model_fp16.onnx"
     raw_onnx.write_text("raw", encoding="utf-8")
     fp16_onnx.write_text("fp16", encoding="utf-8")
-    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None
+    )
 
     result = promote_onnx_artifacts(
         model_name="slice_type_5g",
@@ -266,8 +295,13 @@ def test_promote_model_uses_latest_mlflow_version_for_congestion(tmp_path, monke
     raw_onnx.write_text("raw", encoding="utf-8")
     fp16_onnx.write_text("fp16", encoding="utf-8")
 
-    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
-    monkeypatch.setattr("src.mlops.promotion.latest_registered_model_version", lambda *args, **kwargs: "12")
+    monkeypatch.setattr(
+        "src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.mlops.promotion.latest_registered_model_version",
+        lambda *args, **kwargs: "12",
+    )
 
     result = promote_model(
         model_name="congestion_5g",
@@ -289,7 +323,9 @@ def test_promote_model_uses_latest_mlflow_version_for_congestion(tmp_path, monke
     assert metadata["framework"] == "pytorch"
 
 
-def test_materialize_promoted_model_uses_mlflow_deployment_version(tmp_path, monkeypatch):
+def test_materialize_promoted_model_uses_mlflow_deployment_version(
+    tmp_path, monkeypatch
+):
     models_dir = tmp_path / "models"
     onnx_dir = models_dir / "onnx"
     onnx_dir.mkdir(parents=True)
@@ -319,13 +355,19 @@ def test_materialize_promoted_model_uses_mlflow_deployment_version(tmp_path, mon
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr("src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "src.mlops.promotion.validate_promoted_artifacts", lambda *args, **kwargs: None
+    )
 
-    entry = materialize_promoted_model_for_registry(model_name="sla_5g", registry_path=registry_path)
+    entry = materialize_promoted_model_for_registry(
+        model_name="sla_5g", registry_path=registry_path
+    )
 
     assert entry["promoted_artifact_status"] == "ready"
     assert (models_dir / "promoted" / "sla_5g" / "9" / "model.onnx").exists()
-    metadata = json.loads((models_dir / "promoted" / "sla_5g" / "current" / "metadata.json").read_text())
+    metadata = json.loads(
+        (models_dir / "promoted" / "sla_5g" / "current" / "metadata.json").read_text()
+    )
     assert metadata["model_name"] == "sla-xgboost-5g"
     assert metadata["deployment_name"] == "sla_5g"
     assert metadata["version"] == "9"
@@ -374,7 +416,9 @@ def test_sla_5g_promotion_rule_promotes_on_auc():
 
 
 def test_congestion_5g_rejects_low_precision():
-    decision = evaluate_promotion("congestion_5g", {"val_precision": 0.42, "val_recall": 0.82})
+    decision = evaluate_promotion(
+        "congestion_5g", {"val_precision": 0.42, "val_recall": 0.82}
+    )
 
     assert decision["quality_gate_status"] == "fail"
     assert decision["promotion_status"] == "rejected"

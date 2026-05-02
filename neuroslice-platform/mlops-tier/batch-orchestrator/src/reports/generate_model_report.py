@@ -1,4 +1,5 @@
 """Generate an offline markdown summary from the model registry."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,7 +62,9 @@ def _render_entry(entry: dict) -> Iterable[str]:
     metrics = entry.get("metrics") or {}
     warnings = list(entry.get("warnings") or [])
     if entry.get("onnx_export_status") != "success":
-        warnings.append(f"ONNX export failed: {entry.get('onnx_export_reason') or 'unknown reason'}")
+        warnings.append(
+            f"ONNX export failed: {entry.get('onnx_export_reason') or 'unknown reason'}"
+        )
 
     lines = [
         f"### {entry.get('model_name')} (v{entry.get('version')})",

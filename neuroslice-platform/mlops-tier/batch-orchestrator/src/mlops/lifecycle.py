@@ -1,4 +1,5 @@
 """Centralized post-training lifecycle orchestration for ONNX deployment."""
+
 from __future__ import annotations
 
 import logging
@@ -14,7 +15,9 @@ MODELS_DIR = ROOT_DIR / "models"
 ONNX_DIR = MODELS_DIR / "onnx"
 
 
-def run_model_lifecycle(model_name: str, run_id: str, onnx_path: str) -> PromotionResult:
+def run_model_lifecycle(
+    model_name: str, run_id: str, onnx_path: str
+) -> PromotionResult:
     """Run ONNX deployment lifecycle: export resolution, FP16 conversion, and promotion."""
     if not model_name:
         raise ValueError("model_name must not be empty.")
@@ -25,7 +28,9 @@ def run_model_lifecycle(model_name: str, run_id: str, onnx_path: str) -> Promoti
 
     try:
         _emit_info(f"Running lifecycle for {model_name}")
-        resolved_onnx_path = _export_onnx_if_needed(model_name=model_name, onnx_path=onnx_path)
+        resolved_onnx_path = _export_onnx_if_needed(
+            model_name=model_name, onnx_path=onnx_path
+        )
         _emit_info(f"Exported ONNX model: {resolved_onnx_path.as_posix()}")
 
         fp16_path = _convert_to_fp16(resolved_onnx_path)
@@ -40,7 +45,9 @@ def run_model_lifecycle(model_name: str, run_id: str, onnx_path: str) -> Promoti
         _emit_info(f"Promoted {model_name} to current version {result.version}")
         return result
     except Exception:
-        logger.exception("Model lifecycle failed for %s (run_id=%s)", model_name, run_id)
+        logger.exception(
+            "Model lifecycle failed for %s (run_id=%s)", model_name, run_id
+        )
         raise
 
 

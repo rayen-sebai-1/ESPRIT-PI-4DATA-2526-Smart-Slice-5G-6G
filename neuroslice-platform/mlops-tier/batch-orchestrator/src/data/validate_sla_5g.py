@@ -58,7 +58,9 @@ def validate() -> bool:
         errors.append(f"Expected {EXPECTED_FEATURES} features, got {X_train.shape[1]}.")
 
     if len(feature_names) != EXPECTED_FEATURES:
-        errors.append(f"Expected {EXPECTED_FEATURES} feature names, got {len(feature_names)}.")
+        errors.append(
+            f"Expected {EXPECTED_FEATURES} feature names, got {len(feature_names)}."
+        )
 
     # ------------------------------------------------------------------
     # 4. No NaN / Inf

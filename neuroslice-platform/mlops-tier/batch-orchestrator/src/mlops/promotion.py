@@ -1,4 +1,5 @@
 """Production model promotion and deployment artifact materialization."""
+
 from __future__ import annotations
 
 import json
@@ -56,7 +57,9 @@ def convert_onnx_to_fp16(
 
     target.parent.mkdir(parents=True, exist_ok=True)
     model_proto = onnx.load(source.as_posix())
-    fp16_model = float16.convert_float_to_float16(model_proto, keep_io_types=keep_fp32_io)
+    fp16_model = float16.convert_float_to_float16(
+        model_proto, keep_io_types=keep_fp32_io
+    )
     onnx.save_model(fp16_model, target.as_posix())
     return target
 
@@ -91,21 +94,26 @@ def promote_model(
     promoted_root: Path | str = PROMOTED_DIR,
 ) -> PromotionResult:
     """Promote one exported ONNX model to the local production folder."""
-    resolved_registered_name = registered_model_name or DEFAULT_REGISTERED_MODEL_NAMES.get(model_name)
+    resolved_registered_name = (
+        registered_model_name or DEFAULT_REGISTERED_MODEL_NAMES.get(model_name)
+    )
     resolved_version = (
         str(version)
         if version not in {None, ""}
         else latest_registered_model_version(resolved_registered_name, run_id=run_id)
     )
     if not resolved_version:
-        resolved_version = _next_promoted_version(model_name, promoted_root=promoted_root)
+        resolved_version = _next_promoted_version(
+            model_name, promoted_root=promoted_root
+        )
 
     return promote_onnx_artifacts(
         model_name=model_name,
         version=resolved_version,
         run_id=run_id,
         metrics=dict(metrics or {}),
-        framework=framework or DEFAULT_DEPLOYMENT_FRAMEWORKS.get(model_name, infer_framework(model_name)),
+        framework=framework
+        or DEFAULT_DEPLOYMENT_FRAMEWORKS.get(model_name, infer_framework(model_name)),
         raw_onnx_path=onnx_path,
         fp16_onnx_path=fp16_path,
         promoted_root=promoted_root,
@@ -201,6 +209,7 @@ def promote_onnx_artifacts(
         )
         if drift_result.get("status") == "ok":
             import logging as _logging
+
             _logging.getLogger(__name__).info(
                 "[%s] Drift reference generated: n_samples=%s",
                 model_name,
@@ -208,6 +217,7 @@ def promote_onnx_artifacts(
             )
         else:
             import logging as _logging
+
             _logging.getLogger(__name__).warning(
                 "[%s] Drift reference not generated: %s",
                 model_name,
@@ -215,6 +225,7 @@ def promote_onnx_artifacts(
             )
     except Exception as _exc:  # noqa: BLE001
         import logging as _logging
+
         _logging.getLogger(__name__).warning(
             "[%s] Drift reference generation failed (non-fatal): %s", model_name, _exc
         )
@@ -222,7 +233,9 @@ def promote_onnx_artifacts(
     return result
 
 
-def validate_promoted_artifacts(raw_onnx_path: Path | str, fp16_onnx_path: Path | str) -> None:
+def validate_promoted_artifacts(
+    raw_onnx_path: Path | str, fp16_onnx_path: Path | str
+) -> None:
     """Verify promoted ONNX artifacts exist, are structurally valid, and load in ORT."""
     import onnx
     import onnxruntime as ort
@@ -252,12 +265,16 @@ def latest_registered_model_version(
         from mlflow.tracking import MlflowClient
 
         client = MlflowClient()
-        versions = list(client.search_model_versions(f"name = '{registered_model_name}'"))
+        versions = list(
+            client.search_model_versions(f"name = '{registered_model_name}'")
+        )
     except Exception:  # noqa: BLE001
         return None
 
     if run_id:
-        run_versions = [item for item in versions if str(getattr(item, "run_id", "")) == str(run_id)]
+        run_versions = [
+            item for item in versions if str(getattr(item, "run_id", "")) == str(run_id)
+        ]
         if run_versions:
             versions = run_versions
 
@@ -279,19 +296,29 @@ def materialize_promoted_model_for_registry(
     models_dir = registry_file.parent.resolve()
     promoted_root = models_dir / "promoted"
 
-    model_entries = [entry for entry in registry["models"] if str(entry.get("model_name")) == model_name]
+    model_entries = [
+        entry
+        for entry in registry["models"]
+        if str(entry.get("model_name")) == model_name
+    ]
     production_entries = [
         entry
         for entry in model_entries
-        if bool(entry.get("promoted")) or str(entry.get("stage", "")).lower() == "production"
+        if bool(entry.get("promoted"))
+        or str(entry.get("stage", "")).lower() == "production"
     ]
     if not production_entries:
         return None
 
     successful_entries = [
-        entry for entry in production_entries if str(entry.get("onnx_export_status", "")).lower() == "success"
+        entry
+        for entry in production_entries
+        if str(entry.get("onnx_export_status", "")).lower() == "success"
     ]
-    selected_entry = max(successful_entries or production_entries, key=lambda item: int(item.get("version", 0)))
+    selected_entry = max(
+        successful_entries or production_entries,
+        key=lambda item: int(item.get("version", 0)),
+    )
 
     raw_onnx = _resolve_onnx_artifact(selected_entry, models_dir=models_dir, fp16=False)
     fp16_onnx = _resolve_onnx_artifact(selected_entry, models_dir=models_dir, fp16=True)
@@ -300,7 +327,9 @@ def materialize_promoted_model_for_registry(
         _write_registry(registry_file, registry)
         return selected_entry
 
-    deployment_version = str(selected_entry.get("deployment_version") or selected_entry.get("version") or "")
+    deployment_version = str(
+        selected_entry.get("deployment_version") or selected_entry.get("version") or ""
+    )
     if not deployment_version:
         selected_entry["promoted_artifact_status"] = "missing_version"
         _write_registry(registry_file, registry)
@@ -310,15 +339,21 @@ def materialize_promoted_model_for_registry(
         result = promote_onnx_artifacts(
             model_name=model_name,
             version=deployment_version,
-            run_id=str(selected_entry.get("mlflow_run_id") or selected_entry.get("run_id") or ""),
+            run_id=str(
+                selected_entry.get("mlflow_run_id")
+                or selected_entry.get("run_id")
+                or ""
+            ),
             metrics=dict(selected_entry.get("metrics") or {}),
-            framework=selected_entry.get("framework") or infer_framework(selected_entry),
+            framework=selected_entry.get("framework")
+            or infer_framework(selected_entry),
             raw_onnx_path=raw_onnx,
             fp16_onnx_path=fp16_onnx,
             promoted_root=promoted_root,
             created_at=str(selected_entry.get("created_at") or utcnow_iso()),
             updated_at=utcnow_iso(),
-            registered_model_name=str(selected_entry.get("registered_model_name") or "") or None,
+            registered_model_name=str(selected_entry.get("registered_model_name") or "")
+            or None,
         )
     except Exception as exc:  # noqa: BLE001
         selected_entry["promoted_artifact_status"] = "validation_failed"
@@ -328,8 +363,12 @@ def materialize_promoted_model_for_registry(
 
     selected_entry["deployment_version"] = deployment_version
     selected_entry["promoted_artifact_status"] = "ready"
-    selected_entry["promoted_onnx_path"] = _to_registry_relative_path(result.raw_path, models_dir=models_dir)
-    selected_entry["promoted_fp16_path"] = _to_registry_relative_path(result.fp16_path, models_dir=models_dir)
+    selected_entry["promoted_onnx_path"] = _to_registry_relative_path(
+        result.raw_path, models_dir=models_dir
+    )
+    selected_entry["promoted_fp16_path"] = _to_registry_relative_path(
+        result.fp16_path, models_dir=models_dir
+    )
     selected_entry["promoted_current_onnx_path"] = _to_registry_relative_path(
         result.current_raw_path,
         models_dir=models_dir,
@@ -338,7 +377,9 @@ def materialize_promoted_model_for_registry(
         result.current_fp16_path,
         models_dir=models_dir,
     )
-    selected_entry["promoted_metadata_path"] = _to_registry_relative_path(result.metadata_path, models_dir=models_dir)
+    selected_entry["promoted_metadata_path"] = _to_registry_relative_path(
+        result.metadata_path, models_dir=models_dir
+    )
     selected_entry["promoted_current_metadata_path"] = _to_registry_relative_path(
         result.current_metadata_path,
         models_dir=models_dir,
@@ -352,7 +393,12 @@ def materialize_promoted_model_for_registry(
 def infer_framework(entry_or_name: Mapping[str, Any] | str | None) -> str:
     """Normalize a model family/export kind to the deployment framework label."""
     if isinstance(entry_or_name, Mapping):
-        for key in ("framework", "export_kind", "registered_model_family", "model_family"):
+        for key in (
+            "framework",
+            "export_kind",
+            "registered_model_family",
+            "model_family",
+        ):
             value = entry_or_name.get(key)
             if value:
                 return normalize_framework(str(value))
@@ -377,11 +423,23 @@ def utcnow_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _resolve_onnx_artifact(entry: Mapping[str, Any], *, models_dir: Path, fp16: bool) -> Path | None:
+def _resolve_onnx_artifact(
+    entry: Mapping[str, Any], *, models_dir: Path, fp16: bool
+) -> Path | None:
     keys = (
-        ("promoted_current_fp16_path", "promoted_fp16_path", "onnx_fp16_path", "onnx_fp16_uri")
+        (
+            "promoted_current_fp16_path",
+            "promoted_fp16_path",
+            "onnx_fp16_path",
+            "onnx_fp16_uri",
+        )
         if fp16
-        else ("promoted_current_onnx_path", "promoted_onnx_path", "onnx_path", "onnx_uri")
+        else (
+            "promoted_current_onnx_path",
+            "promoted_onnx_path",
+            "onnx_path",
+            "onnx_uri",
+        )
     )
     for key in keys:
         resolved = _resolve_local_reference(entry.get(key), models_dir=models_dir)
@@ -433,7 +491,10 @@ def _load_registry(registry_path: Path) -> dict[str, Any]:
     raw = json.loads(registry_path.read_text(encoding="utf-8"))
     if isinstance(raw, list):
         return {"generated_at": None, "models": raw}
-    return {"generated_at": raw.get("generated_at"), "models": list(raw.get("models", []))}
+    return {
+        "generated_at": raw.get("generated_at"),
+        "models": list(raw.get("models", [])),
+    }
 
 
 def _write_registry(registry_path: Path, registry: Mapping[str, Any]) -> None:
@@ -459,7 +520,9 @@ def _to_registry_relative_path(path: Path | None, *, models_dir: Path) -> str | 
 
 def _copy_if_different(source: Path, destination: Path) -> None:
     source_resolved = source.resolve()
-    destination_resolved = destination.resolve() if destination.exists() else destination
+    destination_resolved = (
+        destination.resolve() if destination.exists() else destination
+    )
     if source_resolved == destination_resolved:
         return
     destination.parent.mkdir(parents=True, exist_ok=True)

@@ -53,7 +53,9 @@ def test_run_model_lifecycle_creates_fp16_and_promoted_metadata(tmp_path, monkey
     )
 
     assert (models_dir / "congestion_5g_fp16.onnx").exists()
-    assert (promoted_dir / "congestion_5g" / result.version / "model_fp16.onnx").exists()
+    assert (
+        promoted_dir / "congestion_5g" / result.version / "model_fp16.onnx"
+    ).exists()
     assert (promoted_dir / "congestion_5g" / "current" / "model_fp16.onnx").exists()
 
     metadata_path = promoted_dir / "congestion_5g" / "current" / "metadata.json"

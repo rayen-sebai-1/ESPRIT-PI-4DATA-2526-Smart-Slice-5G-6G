@@ -36,7 +36,9 @@ def dummy_processed_npz(tmp_path):
 
 def test_validate_success(dummy_processed_npz):
     """Validation should pass on a well-formed file."""
-    with mock.patch("src.data.validate_congestion_5g.PROCESSED_NPZ", dummy_processed_npz):
+    with mock.patch(
+        "src.data.validate_congestion_5g.PROCESSED_NPZ", dummy_processed_npz
+    ):
         assert validate() is True
 
 
@@ -49,7 +51,9 @@ def test_validate_missing_file():
 def test_validate_invalid_shapes(tmp_path):
     """Validation should fail if feature dimension is incorrect."""
     invalid_path = tmp_path / "invalid.npz"
-    X_train = np.random.rand(100, SEQ_LENGTH, EXPECTED_FEATURES - 1)  # Invalid feature count
+    X_train = np.random.rand(
+        100, SEQ_LENGTH, EXPECTED_FEATURES - 1
+    )  # Invalid feature count
     y_train = np.random.randint(0, 2, size=(100,))
     X_val = np.random.rand(20, SEQ_LENGTH, EXPECTED_FEATURES - 1)
     y_val = np.random.randint(0, 2, size=(20,))

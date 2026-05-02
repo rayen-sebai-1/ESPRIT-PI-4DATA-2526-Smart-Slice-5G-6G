@@ -41,11 +41,31 @@ ENCODERS_PATH = os.path.join(PROCESSED_DIR, "encoders_sla_6g.pkl")
 
 # SLA QoS thresholds per 6G slice type (all times in nanoseconds)
 SLA_THRESHOLDS_6G = {
-    "ERLLC":  {"latency_max_ns": 1_000_000,    "loss_max": 0.00001, "jitter_max_ns": 500_000},
-    "mURLLC": {"latency_max_ns": 1_000_000,    "loss_max": 0.0001,  "jitter_max_ns": 1_000_000},
-    "MBRLLC": {"latency_max_ns": 5_000_000,    "loss_max": 0.001,   "jitter_max_ns": 2_000_000},
-    "feMBB":  {"latency_max_ns": 10_000_000,   "loss_max": 0.01,    "jitter_max_ns": 5_000_000},
-    "umMTC":  {"latency_max_ns": 100_000_000,  "loss_max": 0.01,    "jitter_max_ns": 10_000_000},
+    "ERLLC": {
+        "latency_max_ns": 1_000_000,
+        "loss_max": 0.00001,
+        "jitter_max_ns": 500_000,
+    },
+    "mURLLC": {
+        "latency_max_ns": 1_000_000,
+        "loss_max": 0.0001,
+        "jitter_max_ns": 1_000_000,
+    },
+    "MBRLLC": {
+        "latency_max_ns": 5_000_000,
+        "loss_max": 0.001,
+        "jitter_max_ns": 2_000_000,
+    },
+    "feMBB": {
+        "latency_max_ns": 10_000_000,
+        "loss_max": 0.01,
+        "jitter_max_ns": 5_000_000,
+    },
+    "umMTC": {
+        "latency_max_ns": 100_000_000,
+        "loss_max": 0.01,
+        "jitter_max_ns": 10_000_000,
+    },
 }
 
 # QoS columns used for temporal feature engineering
@@ -54,10 +74,10 @@ ROLLING_WINDOW = 5
 
 # Categorical columns to label-encode
 CATEGORICAL_COLS = {
-    "Slice Type":             "Slice Type Encoded",
-    "Required Mobility":      "Mobility Encoded",
-    "Required Connectivity":  "Connectivity Encoded",
-    "Slice Handover":         "Handover Encoded",
+    "Slice Type": "Slice Type Encoded",
+    "Required Mobility": "Mobility Encoded",
+    "Required Connectivity": "Connectivity Encoded",
+    "Slice Handover": "Handover Encoded",
 }
 
 # Final 14 feature columns fed to the model
@@ -137,7 +157,9 @@ def preprocess() -> dict:
     encoders: dict[str, LabelEncoder] = {}
     for src_col, enc_col in CATEGORICAL_COLS.items():
         if src_col not in df.columns:
-            raise ValueError(f"Expected column '{src_col}' not found. Available: {list(df.columns)}")
+            raise ValueError(
+                f"Expected column '{src_col}' not found. Available: {list(df.columns)}"
+            )
         le = LabelEncoder()
         df[enc_col] = le.fit_transform(df[src_col].astype(str))
         encoders[enc_col] = le
@@ -147,7 +169,9 @@ def preprocess() -> dict:
     # 4. Sort by Slice Type to create meaningful temporal sequences
     #    (necessary so lag/rolling features are meaningful within each slice)
     # ------------------------------------------------------------------
-    df = df.sort_values(["Slice Type", "Slice Available Transfer Rate (Gbps)"]).reset_index(drop=True)
+    df = df.sort_values(
+        ["Slice Type", "Slice Available Transfer Rate (Gbps)"]
+    ).reset_index(drop=True)
 
     # ------------------------------------------------------------------
     # 5. Temporal feature engineering (lag-1, rolling mean/std)
@@ -205,7 +229,9 @@ def preprocess() -> dict:
     X_train_res, y_train_res = smote.fit_resample(X_train_scaled, y_train)
 
     print(f"[INFO] After SMOTE — Train: {X_train_res.shape[0]} samples")
-    print(f"[INFO] Class distribution after SMOTE: {dict(pd.Series(y_train_res).value_counts())}")
+    print(
+        f"[INFO] Class distribution after SMOTE: {dict(pd.Series(y_train_res).value_counts())}"
+    )
 
     # ------------------------------------------------------------------
     # 10. Save outputs

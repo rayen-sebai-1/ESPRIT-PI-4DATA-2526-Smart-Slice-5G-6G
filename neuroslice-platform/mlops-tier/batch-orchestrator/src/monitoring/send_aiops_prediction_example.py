@@ -57,18 +57,33 @@ def send_prediction_event(endpoint: str, event: dict[str, Any]) -> None:
         details = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Logstash rejected event ({exc.code}): {details}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Could not reach Logstash endpoint {endpoint}: {exc.reason}") from exc
+        raise RuntimeError(
+            f"Could not reach Logstash endpoint {endpoint}: {exc.reason}"
+        ) from exc
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Send a sample AIOps prediction event to Logstash.")
-    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Logstash HTTP input endpoint.")
-    parser.add_argument("--service", default="congestion-detector", help="AIOps service name.")
+    parser = argparse.ArgumentParser(
+        description="Send a sample AIOps prediction event to Logstash."
+    )
+    parser.add_argument(
+        "--endpoint", default=DEFAULT_ENDPOINT, help="Logstash HTTP input endpoint."
+    )
+    parser.add_argument(
+        "--service", default="congestion-detector", help="AIOps service name."
+    )
     parser.add_argument("--model", default="congestion_5g", help="Model identifier.")
     parser.add_argument("--prediction", default="anomaly", help="Prediction label.")
-    parser.add_argument("--confidence", type=float, default=0.92, help="Prediction confidence in [0, 1].")
+    parser.add_argument(
+        "--confidence",
+        type=float,
+        default=0.92,
+        help="Prediction confidence in [0, 1].",
+    )
     parser.add_argument("--site-id", default="TT-SFAX-02", help="Site identifier.")
-    parser.add_argument("--slice-id", default="slice-embb-001", help="Slice identifier.")
+    parser.add_argument(
+        "--slice-id", default="slice-embb-001", help="Slice identifier."
+    )
     args = parser.parse_args()
 
     event = build_prediction_event(

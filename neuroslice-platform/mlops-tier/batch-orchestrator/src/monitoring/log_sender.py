@@ -1,4 +1,5 @@
 """Prediction log sender with Logstash-first delivery and Elasticsearch fallback."""
+
 from __future__ import annotations
 
 import datetime
@@ -51,13 +52,24 @@ def _send_to_logstash(document: Dict[str, Any]) -> None:
     if parsed.query:
         request_path = f"{request_path}?{parsed.query}"
 
-    connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection_class = (
+        http.client.HTTPSConnection
+        if parsed.scheme == "https"
+        else http.client.HTTPConnection
+    )
     connection = connection_class(parsed.netloc, timeout=5)
     try:
-        connection.request("POST", request_path, body=payload, headers={"Content-Type": "application/json"})
+        connection.request(
+            "POST",
+            request_path,
+            body=payload,
+            headers={"Content-Type": "application/json"},
+        )
         response = connection.getresponse()
         if response.status >= 400:
-            raise RuntimeError(f"Logstash HTTP send failed with status {response.status}")
+            raise RuntimeError(
+                f"Logstash HTTP send failed with status {response.status}"
+            )
         response.read()
     finally:
         connection.close()

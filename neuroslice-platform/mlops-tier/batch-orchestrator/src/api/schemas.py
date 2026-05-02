@@ -88,20 +88,32 @@ class SliceOutput(BaseModel):
 class SLA5GInput(BaseModel):
     """Input features for the SLA adherence model."""
 
-    packet_loss_rate: float = Field(..., ge=0.0, description="Packet loss rate measured via E2 interface.")
-    packet_delay: float = Field(..., ge=0.0, description="Packet delay in ms measured via E2 interface.")
-    smart_city_home: int = Field(..., ge=0, le=1, description="1 if Smart City & Home service, else 0.")
+    packet_loss_rate: float = Field(
+        ..., ge=0.0, description="Packet loss rate measured via E2 interface."
+    )
+    packet_delay: float = Field(
+        ..., ge=0.0, description="Packet delay in ms measured via E2 interface."
+    )
+    smart_city_home: int = Field(
+        ..., ge=0, le=1, description="1 if Smart City & Home service, else 0."
+    )
     iot_devices: int = Field(..., ge=0, le=1, description="1 if IoT device, else 0.")
-    public_safety: int = Field(..., ge=0, le=1, description="1 if Public Safety service, else 0.")
+    public_safety: int = Field(
+        ..., ge=0, le=1, description="1 if Public Safety service, else 0."
+    )
 
 
 class SLA5GOutput(BaseModel):
     """Output of the SLA adherence model."""
 
     sla_prediction: int = Field(..., description="0 = SLA not met, 1 = SLA met.")
-    sla_probability: float = Field(..., ge=0.0, le=1.0, description="P(sla_met=1) — confidence score.")
+    sla_probability: float = Field(
+        ..., ge=0.0, le=1.0, description="P(sla_met=1) — confidence score."
+    )
     risk_level: str = Field(..., description="Risk level: LOW, MEDIUM, or HIGH.")
-    recommended_action: str = Field(..., description="Recommended action based on risk level.")
+    recommended_action: str = Field(
+        ..., description="Recommended action based on risk level."
+    )
 
 
 # =============================================================================
@@ -114,18 +126,26 @@ class SliceType5GInput(BaseModel):
     LTE/5g Category, Packet Loss Rate, Packet delay, Smartphone, IoT Devices, GBR.
     """
 
-    lte_5g_category: float = Field(..., description="LTE/5G category indicator (numeric).")
+    lte_5g_category: float = Field(
+        ..., description="LTE/5G category indicator (numeric)."
+    )
     packet_loss_rate: float = Field(..., ge=0.0, description="Packet loss rate.")
     packet_delay: float = Field(..., ge=0.0, description="Packet delay in ms.")
-    smartphone: int = Field(..., ge=0, le=1, description="1 if Smartphone service, else 0.")
-    iot_devices: int = Field(..., ge=0, le=1, description="1 if IoT Devices service, else 0.")
+    smartphone: int = Field(
+        ..., ge=0, le=1, description="1 if Smartphone service, else 0."
+    )
+    iot_devices: int = Field(
+        ..., ge=0, le=1, description="1 if IoT Devices service, else 0."
+    )
     gbr: float = Field(..., ge=0.0, description="Guaranteed Bit Rate value.")
 
 
 class SliceType5GOutput(BaseModel):
     """Output of the Slice-Type-5G LightGBM classifier."""
 
-    predicted_slice: str = Field(..., description="Predicted slice type: eMBB, mMTC, or URLLC.")
+    predicted_slice: str = Field(
+        ..., description="Predicted slice type: eMBB, mMTC, or URLLC."
+    )
     slice_label: int = Field(..., description="Encoded label: 0=eMBB, 1=mMTC, 2=URLLC.")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Max class probability.")
     all_probabilities: dict = Field(
@@ -148,7 +168,9 @@ class SliceType6GInput(BaseModel):
     data_rate_budget_gbps: float = Field(..., description="Data Rate Budget (Gbps).")
     required_mobility: str = Field(..., description="'yes' or 'no'.")
     required_connectivity: str = Field(..., description="'yes' or 'no'.")
-    slice_available_transfer_rate_gbps: float = Field(..., description="Slice Available Transfer Rate (Gbps).")
+    slice_available_transfer_rate_gbps: float = Field(
+        ..., description="Slice Available Transfer Rate (Gbps)."
+    )
     slice_latency_ns: float = Field(..., description="Slice Latency (ns).")
     slice_packet_loss: float = Field(..., description="Slice Packet Loss.")
     slice_jitter_ns: float = Field(..., description="Slice Jitter (ns).")
@@ -157,12 +179,12 @@ class SliceType6GInput(BaseModel):
 class SliceType6GOutput(BaseModel):
     """Output of the Slice-Type-6G XGBoost classifier."""
 
-    predicted_slice: str = Field(..., description="Predicted slice type (e.g. mURLLC, feMBB, etc.).")
+    predicted_slice: str = Field(
+        ..., description="Predicted slice type (e.g. mURLLC, feMBB, etc.)."
+    )
     slice_label: int = Field(..., description="Encoded numeric label.")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Max class probability.")
-    all_probabilities: dict = Field(
-        ..., description="Probabilities for all 5 classes."
-    )
+    all_probabilities: dict = Field(..., description="Probabilities for all 5 classes.")
 
 
 # =============================================================================
@@ -178,8 +200,12 @@ class SLA6GInput(BaseModel):
     """
 
     # Temporal QoS — Slice Latency (ns)
-    slice_latency_lag1: float = Field(..., description="Latency of previous session (ns).")
-    slice_latency_rolling_mean: float = Field(..., description="Rolling mean latency over last 5 sessions (ns).")
+    slice_latency_lag1: float = Field(
+        ..., description="Latency of previous session (ns)."
+    )
+    slice_latency_rolling_mean: float = Field(
+        ..., description="Rolling mean latency over last 5 sessions (ns)."
+    )
     slice_latency_rolling_std: float = Field(
         ...,
         ge=0.0,
@@ -187,7 +213,9 @@ class SLA6GInput(BaseModel):
     )
 
     # Temporal QoS — Slice Packet Loss
-    slice_packet_loss_lag1: float = Field(..., ge=0.0, description="Packet loss of previous session.")
+    slice_packet_loss_lag1: float = Field(
+        ..., ge=0.0, description="Packet loss of previous session."
+    )
     slice_packet_loss_rolling_mean: float = Field(
         ...,
         ge=0.0,
@@ -200,9 +228,15 @@ class SLA6GInput(BaseModel):
     )
 
     # Temporal QoS — Slice Jitter (ns)
-    slice_jitter_lag1: float = Field(..., description="Jitter of previous session (ns).")
-    slice_jitter_rolling_mean: float = Field(..., description="Rolling mean jitter over last 5 sessions (ns).")
-    slice_jitter_rolling_std: float = Field(..., ge=0.0, description="Rolling std of jitter over last 5 sessions (ns).")
+    slice_jitter_lag1: float = Field(
+        ..., description="Jitter of previous session (ns)."
+    )
+    slice_jitter_rolling_mean: float = Field(
+        ..., description="Rolling mean jitter over last 5 sessions (ns)."
+    )
+    slice_jitter_rolling_std: float = Field(
+        ..., ge=0.0, description="Rolling std of jitter over last 5 sessions (ns)."
+    )
 
     # Context features
     slice_type_encoded: int = Field(
@@ -210,16 +244,28 @@ class SLA6GInput(BaseModel):
         ge=0,
         description="Encoded Slice Type (0=ERLLC, 1=feMBB, 2=MBRLLC, 3=mURLLC, 4=umMTC).",
     )
-    mobility_encoded: int = Field(..., ge=0, le=1, description="Encoded Required Mobility (0=no, 1=yes).")
-    connectivity_encoded: int = Field(..., ge=0, le=1, description="Encoded Required Connectivity (0=no, 1=yes).")
-    handover_encoded: int = Field(..., ge=0, le=1, description="Encoded Slice Handover (0=no, 1=yes).")
-    slice_available_transfer_rate_gbps: float = Field(..., ge=0.0, description="Slice Available Transfer Rate (Gbps).")
+    mobility_encoded: int = Field(
+        ..., ge=0, le=1, description="Encoded Required Mobility (0=no, 1=yes)."
+    )
+    connectivity_encoded: int = Field(
+        ..., ge=0, le=1, description="Encoded Required Connectivity (0=no, 1=yes)."
+    )
+    handover_encoded: int = Field(
+        ..., ge=0, le=1, description="Encoded Slice Handover (0=no, 1=yes)."
+    )
+    slice_available_transfer_rate_gbps: float = Field(
+        ..., ge=0.0, description="Slice Available Transfer Rate (Gbps)."
+    )
 
 
 class SLA6GOutput(BaseModel):
     """Output of the SLA-6G adherence model."""
 
     sla_prediction: int = Field(..., description="0 = SLA not met, 1 = SLA met.")
-    sla_probability: float = Field(..., ge=0.0, le=1.0, description="P(sla_met=1) — confidence score.")
+    sla_probability: float = Field(
+        ..., ge=0.0, le=1.0, description="P(sla_met=1) — confidence score."
+    )
     risk_level: str = Field(..., description="Risk level: LOW, MEDIUM, or HIGH.")
-    recommended_action: str = Field(..., description="Recommended action based on risk level.")
+    recommended_action: str = Field(
+        ..., description="Recommended action based on risk level."
+    )

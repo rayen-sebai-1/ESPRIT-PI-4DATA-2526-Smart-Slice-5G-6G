@@ -64,7 +64,9 @@ class TestPreprocessSLA:
         proc_dir.mkdir()
 
         monkeypatch.setattr(module, "RAW_PATH", str(raw_file))
-        monkeypatch.setattr(module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz"))
+        monkeypatch.setattr(
+            module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz")
+        )
         monkeypatch.setattr(module, "SCALER_PATH", str(proc_dir / "scaler_sla_5g.pkl"))
         monkeypatch.setattr(module, "PROCESSED_DIR", str(proc_dir))
 
@@ -88,7 +90,9 @@ class TestPreprocessSLA:
         proc_dir.mkdir()
 
         monkeypatch.setattr(module, "RAW_PATH", str(raw_file))
-        monkeypatch.setattr(module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz"))
+        monkeypatch.setattr(
+            module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz")
+        )
         monkeypatch.setattr(module, "SCALER_PATH", str(proc_dir / "scaler_sla_5g.pkl"))
         monkeypatch.setattr(module, "PROCESSED_DIR", str(proc_dir))
 
@@ -110,7 +114,9 @@ class TestPreprocessSLA:
         proc_dir.mkdir()
 
         monkeypatch.setattr(module, "RAW_PATH", str(raw_file))
-        monkeypatch.setattr(module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz"))
+        monkeypatch.setattr(
+            module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz")
+        )
         monkeypatch.setattr(module, "SCALER_PATH", str(proc_dir / "scaler_sla_5g.pkl"))
         monkeypatch.setattr(module, "PROCESSED_DIR", str(proc_dir))
 
@@ -121,7 +127,9 @@ class TestPreprocessSLA:
 
         # SMOTE should make both classes equal
         assert len(class_counts) == 2, f"Expected 2 classes, got {len(class_counts)}"
-        assert class_counts[0] == class_counts[1], f"Classes not balanced: {class_counts}"
+        assert (
+            class_counts[0] == class_counts[1]
+        ), f"Classes not balanced: {class_counts}"
 
     def test_no_nan_in_output(self, tmp_path, monkeypatch):
         """Preprocessed arrays should contain no NaN values."""
@@ -135,7 +143,9 @@ class TestPreprocessSLA:
         proc_dir.mkdir()
 
         monkeypatch.setattr(module, "RAW_PATH", str(raw_file))
-        monkeypatch.setattr(module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz"))
+        monkeypatch.setattr(
+            module, "PROCESSED_NPZ", str(proc_dir / "sla_5g_processed.npz")
+        )
         monkeypatch.setattr(module, "SCALER_PATH", str(proc_dir / "scaler_sla_5g.pkl"))
         monkeypatch.setattr(module, "PROCESSED_DIR", str(proc_dir))
 

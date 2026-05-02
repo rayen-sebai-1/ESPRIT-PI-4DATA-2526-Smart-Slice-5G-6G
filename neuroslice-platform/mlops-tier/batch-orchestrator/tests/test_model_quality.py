@@ -19,7 +19,9 @@ def _get_latest_run(model_name: str):
         from mlflow.tracking import MlflowClient
 
         client = MlflowClient()
-        experiments = client.search_experiments(filter_string=f"name = '{EXPERIMENT_NAME}'")
+        experiments = client.search_experiments(
+            filter_string=f"name = '{EXPERIMENT_NAME}'"
+        )
         if not experiments:
             return None
         exp_id = experiments[0].experiment_id
@@ -38,7 +40,9 @@ def _get_latest_run(model_name: str):
 def test_latest_model_run_passes_quality_gate(model_name):
     run = _get_latest_run(model_name)
     if run is None:
-        pytest.skip(f"No MLflow run found for model '{model_name}' in experiment '{EXPERIMENT_NAME}'.")
+        pytest.skip(
+            f"No MLflow run found for model '{model_name}' in experiment '{EXPERIMENT_NAME}'."
+        )
 
     rule = THRESHOLDS[model_name]
     metric_name = rule["metric"]

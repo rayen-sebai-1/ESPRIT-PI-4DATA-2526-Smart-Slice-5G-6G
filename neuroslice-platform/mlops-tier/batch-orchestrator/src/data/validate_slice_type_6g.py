@@ -39,14 +39,20 @@ def validate_data():
                 f"Train ({X_train.shape[0]}), Test ({X_test.shape[0]}). Expected >= 100."
             )
         if X_train.shape[0] != y_train.shape[0]:
-            errors.append(f"Train shapes mismatch: X({X_train.shape[0]}), y({y_train.shape[0]}).")
+            errors.append(
+                f"Train shapes mismatch: X({X_train.shape[0]}), y({y_train.shape[0]})."
+            )
         if X_test.shape[0] != y_test.shape[0]:
-            errors.append(f"Test shapes mismatch: X({X_test.shape[0]}), y({y_test.shape[0]}).")
+            errors.append(
+                f"Test shapes mismatch: X({X_test.shape[0]}), y({y_test.shape[0]})."
+            )
 
         # 2. Number of Features Validation
         expected_feature_count = 10
         if X_train.shape[1] != expected_feature_count:
-            errors.append(f"Expected {expected_feature_count} features, but got {X_train.shape[1]}.")
+            errors.append(
+                f"Expected {expected_feature_count} features, but got {X_train.shape[1]}."
+            )
 
         # 3. NaNs / Infs Validation
         if np.isnan(X_train).any() or np.isnan(X_test).any():
@@ -59,7 +65,9 @@ def validate_data():
     if classes is None:
         errors.append("Classes array missing from the npz metadata.")
     elif len(classes) != expected_class_count:
-        errors.append(f"Expected {expected_class_count} classes, but found {len(classes)}.")
+        errors.append(
+            f"Expected {expected_class_count} classes, but found {len(classes)}."
+        )
 
     if errors:
         print("[ERROR] Validation Failed:")

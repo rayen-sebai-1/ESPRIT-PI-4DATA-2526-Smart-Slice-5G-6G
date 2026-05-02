@@ -67,7 +67,9 @@ def preprocess() -> dict:
     # Validate required columns
     for col in SELECTED_FEATURES + [TARGET]:
         if col not in df.columns:
-            raise ValueError(f"Expected column '{col}' not found. Available: {list(df.columns)}")
+            raise ValueError(
+                f"Expected column '{col}' not found. Available: {list(df.columns)}"
+            )
 
     # ------------------------------------------------------------------
     # 2. Select features and target
@@ -96,7 +98,9 @@ def preprocess() -> dict:
     print(f"[INFO] Encoded classes: {list(label_encoder.classes_)}")
     unique, counts = np.unique(y_train_enc, return_counts=True)
     for cls_idx, cnt in zip(unique, counts):
-        print(f"       Class {cls_idx} ({label_encoder.classes_[cls_idx]}): {cnt} samples")
+        print(
+            f"       Class {cls_idx} ({label_encoder.classes_[cls_idx]}): {cnt} samples"
+        )
 
     # ------------------------------------------------------------------
     # 5. Save outputs

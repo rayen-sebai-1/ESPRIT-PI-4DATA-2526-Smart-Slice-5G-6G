@@ -18,7 +18,10 @@ class TestCongestion6GLSTM:
         with torch.no_grad():
             out = model(x)
 
-        assert out.shape == (batch_size, 1), f"Expected ({batch_size}, 1), got {out.shape}"
+        assert out.shape == (
+            batch_size,
+            1,
+        ), f"Expected ({batch_size}, 1), got {out.shape}"
 
     def test_forward_output_dtype_is_float(self):
         """Output tensor dtype must be float32."""

@@ -1,4 +1,5 @@
 """Shared helpers for MLflow tracking, artifact logging, and model promotion."""
+
 from __future__ import annotations
 
 import json
@@ -12,10 +13,13 @@ from urllib.parse import unquote, urlparse
 try:
     import mlflow
 except ModuleNotFoundError:
+
     class _MissingMlflow:
         @staticmethod
         def _raise(*args: Any, **kwargs: Any) -> None:
-            raise ModuleNotFoundError("mlflow is required for tracking. Install requirements.txt first.")
+            raise ModuleNotFoundError(
+                "mlflow is required for tracking. Install requirements.txt first."
+            )
 
         set_tracking_uri = _raise
         set_experiment = _raise
@@ -134,18 +138,27 @@ def finalize_model_lifecycle(
     active_run = mlflow.active_run()
     run_id = active_run.info.run_id if active_run else ""
     resolved_experiment = experiment_name or get_experiment_name()
-    mlflow_model_version = latest_registered_model_version(registered_model_name, run_id=run_id)
+    mlflow_model_version = latest_registered_model_version(
+        registered_model_name, run_id=run_id
+    )
     framework = infer_framework(export_kind or model_family)
 
     local_path = Path(local_artifact_path) if local_artifact_path else None
     preprocessor_local_path = Path(preprocessor_path) if preprocessor_path else None
 
     artifact_uri = _log_artifact_and_get_uri(local_path, "models")
-    preprocessor_uri = _log_artifact_and_get_uri(preprocessor_local_path, "preprocessing")
+    preprocessor_uri = _log_artifact_and_get_uri(
+        preprocessor_local_path, "preprocessing"
+    )
 
     resolved_registry_path = registry_path or REGISTRY_PATH
 
-    if export_kind and model is not None and example_input is not None and export_basename:
+    if (
+        export_kind
+        and model is not None
+        and example_input is not None
+        and export_basename
+    ):
         onnx_result = export_model_to_onnx(
             model=model,
             export_kind=export_kind,
@@ -156,7 +169,8 @@ def finalize_model_lifecycle(
             output_names=output_names,
             dynamic_axes=dynamic_axes,
             run_smoke_test=_resolve_smoke_test_flag(run_smoke_test),
-            opset_version=onnx_opset_version or int(os.getenv("ONNX_OPSET_VERSION", "18")),
+            opset_version=onnx_opset_version
+            or int(os.getenv("ONNX_OPSET_VERSION", "18")),
             pytorch_fixed_sequence_length=onnx_fixed_sequence_length,
         )
     else:
@@ -176,7 +190,9 @@ def finalize_model_lifecycle(
     )
     decision = evaluate_promotion(model_name, normalized_metrics)
     combined_reason = _combine_reasons(decision["reason"], onnx_result)
-    selection_metric, selection_mode = MODEL_SELECTION_RULES.get(model_name, ("val_accuracy", "max"))
+    selection_metric, selection_mode = MODEL_SELECTION_RULES.get(
+        model_name, ("val_accuracy", "max")
+    )
 
     entry = {
         "model_name": model_name,
@@ -230,7 +246,9 @@ def finalize_model_lifecycle(
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Could not sync promoted artifacts for {model_name}: {exc}")
 
-    if promoted_entry and int(promoted_entry.get("version", 0)) == int(entry.get("version", 0)):
+    if promoted_entry and int(promoted_entry.get("version", 0)) == int(
+        entry.get("version", 0)
+    ):
         entry = promoted_entry
 
     mlflow.set_tags(
@@ -243,16 +261,24 @@ def finalize_model_lifecycle(
             "neuroslice.onnx_export_status": entry["onnx_export_status"],
             "neuroslice.artifact_format": entry["format"],
             "neuroslice.registry_path": str(resolved_registry_path.as_posix()),
-            "neuroslice.promoted_current_fp16_path": str(entry.get("promoted_current_fp16_path") or ""),
+            "neuroslice.promoted_current_fp16_path": str(
+                entry.get("promoted_current_fp16_path") or ""
+            ),
             "neuroslice.registered_model_name": registered_model_name or "",
-            "neuroslice.mlflow_model_version": str(entry.get("mlflow_model_version") or ""),
-            "neuroslice.deployment_version": str(entry.get("deployment_version") or entry.get("version") or ""),
+            "neuroslice.mlflow_model_version": str(
+                entry.get("mlflow_model_version") or ""
+            ),
+            "neuroslice.deployment_version": str(
+                entry.get("deployment_version") or entry.get("version") or ""
+            ),
         }
     )
     return entry
 
 
-def write_registry_entry(entry: Mapping[str, Any], *, registry_path: Path = REGISTRY_PATH) -> dict[str, Any]:
+def write_registry_entry(
+    entry: Mapping[str, Any], *, registry_path: Path = REGISTRY_PATH
+) -> dict[str, Any]:
     """Append a registry entry and refresh production promotion for that model."""
     registry = load_registry(registry_path)
     model_name = str(entry["model_name"])
@@ -266,7 +292,10 @@ def write_registry_entry(entry: Mapping[str, Any], *, registry_path: Path = REGI
     registry_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
 
     for item in registry["models"]:
-        if str(item.get("model_name")) == model_name and int(item.get("version", 0)) == version:
+        if (
+            str(item.get("model_name")) == model_name
+            and int(item.get("version", 0)) == version
+        ):
             return item
     return new_entry
 
@@ -279,22 +308,31 @@ def load_registry(registry_path: Path = REGISTRY_PATH) -> dict[str, Any]:
     raw = json.loads(registry_path.read_text(encoding="utf-8"))
     if isinstance(raw, list):
         return {"generated_at": None, "models": raw}
-    return {"generated_at": raw.get("generated_at"), "models": list(raw.get("models", []))}
+    return {
+        "generated_at": raw.get("generated_at"),
+        "models": list(raw.get("models", [])),
+    }
 
 
-def latest_registry_entries(registry_path: Path = REGISTRY_PATH) -> list[dict[str, Any]]:
+def latest_registry_entries(
+    registry_path: Path = REGISTRY_PATH,
+) -> list[dict[str, Any]]:
     """Return the latest entry for each model name."""
     latest: dict[str, dict[str, Any]] = {}
     for entry in load_registry(registry_path)["models"]:
         current = latest.get(str(entry.get("model_name")))
-        if current is None or int(entry.get("version", 0)) >= int(current.get("version", 0)):
+        if current is None or int(entry.get("version", 0)) >= int(
+            current.get("version", 0)
+        ):
             latest[str(entry.get("model_name"))] = entry
     return sorted(latest.values(), key=lambda item: str(item.get("model_name", "")))
 
 
 def normalize_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
     """Normalize metric names so registry rules can stay stable across scripts."""
-    normalized = {str(key): float(value) for key, value in metrics.items() if _is_number(value)}
+    normalized = {
+        str(key): float(value) for key, value in metrics.items() if _is_number(value)
+    }
 
     for canonical_name, aliases in METRIC_ALIASES.items():
         if canonical_name in normalized:
@@ -334,7 +372,9 @@ def evaluate_promotion(model_name: str, metrics: Mapping[str, Any]) -> dict[str,
         accuracy = float(metrics.get("val_accuracy", 0.0))
         passed = accuracy >= 0.80
         if accuracy == 1.0:
-            warnings.append("Suspicious 100% validation accuracy detected; possible leakage.")
+            warnings.append(
+                "Suspicious 100% validation accuracy detected; possible leakage."
+            )
         return _decision(
             passed=passed,
             reason=f"val_accuracy={accuracy:.4f} {'meets' if passed else 'does not meet'} the >= 0.80 rule.",
@@ -423,7 +463,9 @@ def utcnow_iso() -> str:
 
 
 def _refresh_promotions(entries: list[dict[str, Any]], model_name: str) -> None:
-    model_entries = [entry for entry in entries if str(entry.get("model_name")) == model_name]
+    model_entries = [
+        entry for entry in entries if str(entry.get("model_name")) == model_name
+    ]
     for entry in model_entries:
         entry["promoted"] = False
         if entry.get("quality_gate_status") == "pass":
@@ -434,7 +476,9 @@ def _refresh_promotions(entries: list[dict[str, Any]], model_name: str) -> None:
         else:
             entry["stage"] = "candidate"
 
-    candidates = [entry for entry in model_entries if entry.get("quality_gate_status") == "pass"]
+    candidates = [
+        entry for entry in model_entries if entry.get("quality_gate_status") == "pass"
+    ]
     if not candidates:
         return
 
@@ -444,7 +488,9 @@ def _refresh_promotions(entries: list[dict[str, Any]], model_name: str) -> None:
     best_entry["promotion_status"] = "promoted"
 
 
-def _best_entry_by_task_metric(model_name: str, candidates: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _best_entry_by_task_metric(
+    model_name: str, candidates: Sequence[dict[str, Any]]
+) -> dict[str, Any]:
     metric_name, mode = MODEL_SELECTION_RULES.get(model_name, ("val_accuracy", "max"))
     reverse = mode == "max"
     missing_score = float("-inf") if reverse else float("inf")
@@ -463,7 +509,9 @@ def _log_artifact_and_get_uri(path: Path | None, artifact_path: str) -> str:
     if path is None or not path.exists():
         return ""
     mlflow.log_artifact(path.as_posix(), artifact_path=artifact_path)
-    return normalize_artifact_uri(mlflow.get_artifact_uri(f"{artifact_path}/{path.name}"))
+    return normalize_artifact_uri(
+        mlflow.get_artifact_uri(f"{artifact_path}/{path.name}")
+    )
 
 
 def _record_onnx_export_status(model_name: str, result: ONNXExportResult) -> None:
@@ -476,13 +524,17 @@ def _record_onnx_export_status(model_name: str, result: ONNXExportResult) -> Non
         "validated": result.validated,
         "smoke_test_passed": result.smoke_test_passed,
     }
-    print(f"[INFO] ONNX export status for {model_name}: {result.status} - {result.reason}")
+    print(
+        f"[INFO] ONNX export status for {model_name}: {result.status} - {result.reason}"
+    )
     mlflow.set_tag("neuroslice.onnx_export_status", result.status)
     mlflow.set_tag("neuroslice.onnx_export_reason", result.reason)
     mlflow.log_dict(status_payload, "reports/onnx_export_status.json")
 
 
-def _select_artifact_format(*, requested_format: str, onnx_uri: str, onnx_fp16_uri: str) -> str:
+def _select_artifact_format(
+    *, requested_format: str, onnx_uri: str, onnx_fp16_uri: str
+) -> str:
     if onnx_fp16_uri:
         return "onnx_fp16"
     if onnx_uri:
@@ -501,7 +553,12 @@ def _initial_stage(decision: Mapping[str, Any]) -> str:
 def _resolve_smoke_test_flag(value: bool | None) -> bool:
     if value is not None:
         return value
-    return os.getenv("ONNX_SMOKE_TEST", "").strip().lower() in {"1", "true", "yes", "on"}
+    return os.getenv("ONNX_SMOKE_TEST", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _combine_reasons(decision_reason: str, onnx_result: ONNXExportResult) -> str:
@@ -511,7 +568,9 @@ def _combine_reasons(decision_reason: str, onnx_result: ONNXExportResult) -> str
     return " ".join(part for part in parts if part).strip()
 
 
-def _decision(*, passed: bool, reason: str, failure_status: str, warnings: list[str]) -> dict[str, Any]:
+def _decision(
+    *, passed: bool, reason: str, failure_status: str, warnings: list[str]
+) -> dict[str, Any]:
     return {
         "quality_gate_status": "pass" if passed else "fail",
         "promotion_status": "promoted" if passed else failure_status,
@@ -545,30 +604,43 @@ def _to_registry_relative_path(path: Path | None) -> str | None:
             return resolved.as_posix()
 
 
-def _sync_promoted_artifacts_for_model(*, model_name: str, registry_path: Path) -> dict[str, Any] | None:
+def _sync_promoted_artifacts_for_model(
+    *, model_name: str, registry_path: Path
+) -> dict[str, Any] | None:
     registry = load_registry(registry_path)
     models_dir = registry_path.parent.resolve()
     promoted_root = models_dir / "promoted"
 
-    model_entries = [entry for entry in registry["models"] if str(entry.get("model_name")) == model_name]
+    model_entries = [
+        entry
+        for entry in registry["models"]
+        if str(entry.get("model_name")) == model_name
+    ]
     production_entries = [
         entry
         for entry in model_entries
-        if bool(entry.get("promoted")) or str(entry.get("stage", "")).lower() == "production"
+        if bool(entry.get("promoted"))
+        or str(entry.get("stage", "")).lower() == "production"
     ]
     if not production_entries:
         return None
 
     successful_entries = [
-        entry for entry in production_entries if str(entry.get("onnx_export_status", "")).lower() == "success"
+        entry
+        for entry in production_entries
+        if str(entry.get("onnx_export_status", "")).lower() == "success"
     ]
     selected_entry = max(
         successful_entries or production_entries,
         key=lambda item: int(item.get("version", 0)),
     )
 
-    source_raw = _resolve_local_onnx_artifact(selected_entry, models_dir=models_dir, prefer_fp16=False)
-    source_fp16 = _resolve_local_onnx_artifact(selected_entry, models_dir=models_dir, prefer_fp16=True)
+    source_raw = _resolve_local_onnx_artifact(
+        selected_entry, models_dir=models_dir, prefer_fp16=False
+    )
+    source_fp16 = _resolve_local_onnx_artifact(
+        selected_entry, models_dir=models_dir, prefer_fp16=True
+    )
 
     version = str(selected_entry.get("version", ""))
     if not version:
@@ -604,7 +676,9 @@ def _sync_promoted_artifacts_for_model(*, model_name: str, registry_path: Path) 
     metadata = {
         "model_name": model_name,
         "version": int(selected_entry.get("version", 0)),
-        "run_id": str(selected_entry.get("mlflow_run_id") or selected_entry.get("run_id") or ""),
+        "run_id": str(
+            selected_entry.get("mlflow_run_id") or selected_entry.get("run_id") or ""
+        ),
         "metrics": dict(selected_entry.get("metrics") or {}),
         "created_at": str(selected_entry.get("created_at") or utcnow_iso()),
         "artifact_path": _to_registry_relative_path(current_fp16_path),
@@ -620,9 +694,15 @@ def _sync_promoted_artifacts_for_model(*, model_name: str, registry_path: Path) 
 
     selected_entry["promoted_artifact_status"] = "ready"
     selected_entry["promoted_fp16_path"] = _to_registry_relative_path(version_fp16_path)
-    selected_entry["promoted_current_fp16_path"] = _to_registry_relative_path(current_fp16_path)
-    selected_entry["promoted_metadata_path"] = _to_registry_relative_path(version_metadata_path)
-    selected_entry["promoted_current_metadata_path"] = _to_registry_relative_path(current_metadata_path)
+    selected_entry["promoted_current_fp16_path"] = _to_registry_relative_path(
+        current_fp16_path
+    )
+    selected_entry["promoted_metadata_path"] = _to_registry_relative_path(
+        version_metadata_path
+    )
+    selected_entry["promoted_current_metadata_path"] = _to_registry_relative_path(
+        current_metadata_path
+    )
 
     registry["generated_at"] = utcnow_iso()
     registry_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
@@ -687,7 +767,9 @@ def _resolve_local_reference(raw_value: Any, *, models_dir: Path) -> Path | None
 
 def _copy_if_different(source: Path, destination: Path) -> None:
     source_resolved = source.resolve()
-    destination_resolved = destination.resolve() if destination.exists() else destination
+    destination_resolved = (
+        destination.resolve() if destination.exists() else destination
+    )
     if source_resolved == destination_resolved:
         return
     destination.parent.mkdir(parents=True, exist_ok=True)

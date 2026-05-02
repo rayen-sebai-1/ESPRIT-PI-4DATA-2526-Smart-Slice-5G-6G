@@ -27,7 +27,12 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from src.models.lifecycle import configure_mlflow_tracking, finalize_model_lifecycle, get_experiment_name, use_mlflow_experiment
+from src.models.lifecycle import (
+    configure_mlflow_tracking,
+    finalize_model_lifecycle,
+    get_experiment_name,
+    use_mlflow_experiment,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -66,8 +71,12 @@ def evaluate_model(model, X_test, y_test, class_names):
 
     metrics = {
         "val_accuracy": float(accuracy_score(y_test, y_pred)),
-        "val_precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
-        "val_recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
+        "val_precision": float(
+            precision_score(y_test, y_pred, average="weighted", zero_division=0)
+        ),
+        "val_recall": float(
+            recall_score(y_test, y_pred, average="weighted", zero_division=0)
+        ),
         "val_f1": float(f1_score(y_test, y_pred, average="weighted", zero_division=0)),
     }
     # Per-class F1 keyed by original label value (e.g. "1", "2", "3")
@@ -165,7 +174,9 @@ def train(
         # ---------------------------------------------------------------
         # 5. Evaluate
         # ---------------------------------------------------------------
-        metrics, y_pred, y_pred_prob = evaluate_model(model, X_test, y_test, class_names)
+        metrics, y_pred, y_pred_prob = evaluate_model(
+            model, X_test, y_test, class_names
+        )
         mlflow.log_metrics(metrics)
 
         print(f"\n{'=' * 55}")
@@ -174,7 +185,9 @@ def train(
         for k, v in metrics.items():
             print(f"  {k:<28} : {v:.4f}")
 
-        report = classification_report(y_test, y_pred, target_names=class_names, zero_division=0)
+        report = classification_report(
+            y_test, y_pred, target_names=class_names, zero_division=0
+        )
         print(f"\n{report}")
 
         # ---------------------------------------------------------------
@@ -246,7 +259,9 @@ def train(
         # 7. Log label encoder as artifact
         # ---------------------------------------------------------------
         if LABEL_ENCODER_PATH.exists():
-            mlflow.log_artifact(LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing")
+            mlflow.log_artifact(
+                LABEL_ENCODER_PATH.as_posix(), artifact_path="preprocessing"
+            )
 
         # ---------------------------------------------------------------
         # 8. Register model
@@ -266,7 +281,9 @@ def train(
                 try:
                     mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}")
+                    print(
+                        f"[WARN] Model registration skipped for {REGISTERED_MODEL_NAME}: {exc}"
+                    )
             else:
                 print("[WARN] No active MLflow run; skipping model registration.")
 
@@ -302,11 +319,15 @@ def train(
 # CLI
 # ---------------------------------------------------------------------------
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train Slice-Type-5G LightGBM classifier")
+    parser = argparse.ArgumentParser(
+        description="Train Slice-Type-5G LightGBM classifier"
+    )
     parser.add_argument("--n_estimators", type=int, default=DEFAULT_N_ESTIMATORS)
     parser.add_argument("--learning_rate", type=float, default=DEFAULT_LEARNING_RATE)
     parser.add_argument("--max_depth", type=int, default=DEFAULT_MAX_DEPTH)
-    parser.add_argument("--colsample_bytree", type=float, default=DEFAULT_COLSAMPLE_BYTREE)
+    parser.add_argument(
+        "--colsample_bytree", type=float, default=DEFAULT_COLSAMPLE_BYTREE
+    )
     parser.add_argument("--reg_lambda", type=float, default=DEFAULT_REG_LAMBDA)
     return parser.parse_args()
 

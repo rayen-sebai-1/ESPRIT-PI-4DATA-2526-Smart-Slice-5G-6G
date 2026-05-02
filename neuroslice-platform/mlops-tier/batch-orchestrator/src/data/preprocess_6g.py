@@ -86,7 +86,8 @@ def preprocess() -> pd.DataFrame:
     for col in [RAW_CPU_COL, RAW_BW_COL, RAW_TARGET_COL]:
         if col not in df.columns:
             raise ValueError(
-                f"Expected column '{col}' not found in the dataset. " f"Available columns: {list(df.columns)}"
+                f"Expected column '{col}' not found in the dataset. "
+                f"Available columns: {list(df.columns)}"
             )
 
     df = df[[RAW_CPU_COL, RAW_BW_COL, RAW_TARGET_COL]].copy()
@@ -110,7 +111,9 @@ def preprocess() -> pd.DataFrame:
     # 4. Normalize CPU and bandwidth with MinMaxScaler
     # ------------------------------------------------------------------
     scaler = MinMaxScaler(feature_range=(0, 1))
-    df[["cpu_utilization", "bandwidth_mbps"]] = scaler.fit_transform(df[["cpu_utilization", "bandwidth_mbps"]])
+    df[["cpu_utilization", "bandwidth_mbps"]] = scaler.fit_transform(
+        df[["cpu_utilization", "bandwidth_mbps"]]
+    )
 
     # ------------------------------------------------------------------
     # 5. Save processed output

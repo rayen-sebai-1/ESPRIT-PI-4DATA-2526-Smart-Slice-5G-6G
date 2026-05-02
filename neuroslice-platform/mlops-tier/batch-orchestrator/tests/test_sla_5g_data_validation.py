@@ -14,7 +14,8 @@ MIN_TEST_ROWS = 50
 def _load_data():
     if not os.path.exists(PROCESSED_NPZ):
         pytest.skip(
-            f"Processed file not found at '{PROCESSED_NPZ}'. " "Run 'python src/data/preprocess_sla_5g.py' first."
+            f"Processed file not found at '{PROCESSED_NPZ}'. "
+            "Run 'python src/data/preprocess_sla_5g.py' first."
         )
     return np.load(PROCESSED_NPZ, allow_pickle=True)
 
@@ -46,21 +47,27 @@ class TestProcessedSLAData:
         """Feature arrays must have exactly 5 columns."""
         data = _load_data()
         assert data["X_train"].shape[1] == EXPECTED_FEATURES, (
-            f"Expected {EXPECTED_FEATURES} features in X_train, " f"got {data['X_train'].shape[1]}"
+            f"Expected {EXPECTED_FEATURES} features in X_train, "
+            f"got {data['X_train'].shape[1]}"
         )
         assert data["X_test"].shape[1] == EXPECTED_FEATURES, (
-            f"Expected {EXPECTED_FEATURES} features in X_test, " f"got {data['X_test'].shape[1]}"
+            f"Expected {EXPECTED_FEATURES} features in X_test, "
+            f"got {data['X_test'].shape[1]}"
         )
 
     def test_train_row_count(self):
         """Train set must have more than MIN_TRAIN_ROWS rows."""
         data = _load_data()
-        assert len(data["X_train"]) > MIN_TRAIN_ROWS, f"Train rows {len(data['X_train'])} < minimum {MIN_TRAIN_ROWS}"
+        assert (
+            len(data["X_train"]) > MIN_TRAIN_ROWS
+        ), f"Train rows {len(data['X_train'])} < minimum {MIN_TRAIN_ROWS}"
 
     def test_test_row_count(self):
         """Test set must have more than MIN_TEST_ROWS rows."""
         data = _load_data()
-        assert len(data["X_test"]) > MIN_TEST_ROWS, f"Test rows {len(data['X_test'])} < minimum {MIN_TEST_ROWS}"
+        assert (
+            len(data["X_test"]) > MIN_TEST_ROWS
+        ), f"Test rows {len(data['X_test'])} < minimum {MIN_TEST_ROWS}"
 
     def test_labels_are_binary(self):
         """Labels must be 0 or 1."""
