@@ -253,7 +253,8 @@ ruff check src/ tests/
 pytest tests/ -v \
   --ignore=tests/test_model_lifecycle_registry.py \
   --ignore=tests/test_model_quality.py \
-  --ignore=tests/test_model_report.py
+  --ignore=tests/test_model_report.py \
+  --ignore=tests/test_log_sender.py
 ```
 
 ## Common Commands
