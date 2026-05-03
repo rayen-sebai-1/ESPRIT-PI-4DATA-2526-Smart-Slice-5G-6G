@@ -81,7 +81,7 @@ const INITIAL_FORM: FormState = {
   enabled: true,
   frequency: "DAILY",
   timezone: "UTC",
-  require_approval: true,
+  require_approval: false,
   allow_duplicate_enabled: false,
   hour: "02",
   minute: "00",
@@ -153,7 +153,11 @@ export function MlopsRetrainingSchedulePage() {
       void invalidate();
     },
     onError: (err) => {
+      const statusCode = (err as { response?: { status?: number } }).response?.status;
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Could not save schedule.";
+      if (statusCode === 404) {
+        void invalidate();
+      }
       toast.error(detail);
     },
   });
@@ -165,7 +169,11 @@ export function MlopsRetrainingSchedulePage() {
       void invalidate();
     },
     onError: (err) => {
+      const statusCode = (err as { response?: { status?: number } }).response?.status;
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Could not delete schedule.";
+      if (statusCode === 404) {
+        void invalidate();
+      }
       toast.error(detail);
     },
   });
@@ -371,6 +379,9 @@ export function MlopsRetrainingSchedulePage() {
             Allow duplicate enabled schedule for model
           </label>
         </div>
+        <p className="mt-2 text-xs text-mutedText">
+          If "Require human approval" is enabled, schedule firing creates a request in Pending Approval and does not start training automatically.
+        </p>
 
         <div className="mt-4 flex gap-2">
           <Button onClick={submitForm} disabled={!canWrite || busy}>

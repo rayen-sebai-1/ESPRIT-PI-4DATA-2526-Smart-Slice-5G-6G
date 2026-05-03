@@ -212,6 +212,9 @@ _MLOPS_REQUEST_ACTION_BY_MODEL: dict[str, str] = {
     "congestion-5g": "pipeline_congestion_5g",
     "sla-5g": "pipeline_sla_5g",
     "slice-type-5g": "pipeline_slice_type_5g",
+    "congestion_5g": "pipeline_congestion_5g",
+    "sla_5g": "pipeline_sla_5g",
+    "slice_type_5g": "pipeline_slice_type_5g",
 }
 
 _MLOPS_INTERNAL_TO_PUBLIC_MODEL: dict[str, str] = {
@@ -329,6 +332,8 @@ def _request_model_internal(raw: dict[str, Any]) -> str:
 def _request_model_public(raw: dict[str, Any]) -> str:
     value = str(raw.get("model") or "").strip()
     if value:
+        if value in _MLOPS_INTERNAL_TO_PUBLIC_MODEL:
+            return _MLOPS_INTERNAL_TO_PUBLIC_MODEL[value]
         return value
     internal = str(raw.get("model_internal") or "").strip()
     if internal in _MLOPS_INTERNAL_TO_PUBLIC_MODEL:
@@ -502,6 +507,10 @@ def _create_scheduled_retraining_request(
     source_schedule_id: str,
 ) -> str:
     model_internal = _MLOPS_PUBLIC_TO_INTERNAL_MODEL.get(model_name_public, model_name_public)
+    pipeline_action = (
+        _MLOPS_REQUEST_ACTION_BY_MODEL.get(model_name_public)
+        or _MLOPS_REQUEST_ACTION_BY_MODEL.get(model_internal)
+    )
     request_id = str(uuid.uuid4())
     now_iso = _now_iso()
     request_status = "pending_approval" if require_approval else "approved"
@@ -509,7 +518,7 @@ def _create_scheduled_retraining_request(
         "id": request_id,
         "model": model_name_public,
         "model_internal": model_internal,
-        "pipeline_action": _MLOPS_REQUEST_ACTION_BY_MODEL.get(model_name_public),
+        "pipeline_action": pipeline_action,
         "trigger_type": "SCHEDULED",
         "reason": "scheduled",
         "anomaly_count": 0,
@@ -527,12 +536,91 @@ def _create_scheduled_retraining_request(
         "updated_at": now_iso,
         "request_source": "dashboard-scheduler",
         "source_schedule_id": source_schedule_id,
+        "auto_execute": (not require_approval),
     }
     client.set(_request_key(request_id), json.dumps(request))
     client.zadd(_MLOPS_REQUEST_INDEX_KEY, {request_id: time.time()})
     if request_status == "pending_approval":
         client.sadd(_request_pending_key(model_internal), request_id)
     return request_id
+
+
+def _launch_retraining_background(request_id: str) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(asyncio.to_thread(_execute_retraining_request_background, request_id))
+    except RuntimeError:
+        threading.Thread(
+            target=_execute_retraining_request_background,
+            args=(request_id,),
+            daemon=True,
+        ).start()
+
+
+def _retry_auto_execute_requests(client: redis.Redis, *, limit: int = 500) -> None:
+    request_ids = client.zrevrange(_MLOPS_REQUEST_INDEX_KEY, 0, max(0, limit - 1))
+    for request_id in request_ids:
+        raw = client.get(_request_key(request_id))
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("trigger_type") or "").upper() != "SCHEDULED":
+            continue
+        if not bool(payload.get("auto_execute")):
+            continue
+        if str(payload.get("status") or "") != "approved":
+            continue
+        try:
+            _attempt_execute_retraining_request(
+                client,
+                str(request_id),
+                executed_by="scheduler@system",
+                launch_background=_launch_retraining_background,
+            )
+            logger.info(
+                "Auto-execution retry succeeded for scheduled request_id=%s",
+                request_id,
+            )
+        except HTTPException as exc:
+            logger.info(
+                "Auto-execution retry deferred for request_id=%s detail=%s",
+                request_id,
+                exc.detail,
+            )
+
+
+def _has_live_pending_request(client: redis.Redis, model_internal: str) -> bool:
+    pending_key = _request_pending_key(model_internal)
+    request_ids = list(client.smembers(pending_key) or [])
+    if not request_ids:
+        return False
+
+    live_statuses = {"pending_approval", "approved", "running"}
+    has_live = False
+    for request_id in request_ids:
+        raw = client.get(_request_key(request_id))
+        if not raw:
+            client.srem(pending_key, request_id)
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            client.srem(pending_key, request_id)
+            continue
+        if not isinstance(payload, dict):
+            client.srem(pending_key, request_id)
+            continue
+        status_value = str(payload.get("status") or "")
+        if status_value in live_statuses:
+            has_live = True
+        else:
+            client.srem(pending_key, request_id)
+    return has_live
 
 
 def _run_mlops_schedule_cycle() -> None:
@@ -559,12 +647,16 @@ def _run_mlops_schedule_cycle() -> None:
                     continue
 
                 model_internal = _MLOPS_PUBLIC_TO_INTERNAL_MODEL.get(item.model_name, item.model_name)
-                if redis_client.scard(_request_pending_key(model_internal)) > 0:
+                has_pending = _has_live_pending_request(redis_client, model_internal)
+                block_creation = bool(item.require_approval) and has_pending
+                if block_creation:
                     logger.info(
                         "Schedule trigger skipped: schedule_id=%s model=%s reason=pending_request_exists",
                         schedule_id,
                         item.model_name,
                     )
+                    item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
+                    item.status = "ACTIVE"
                 else:
                     request_id = _create_scheduled_retraining_request(
                         redis_client,
@@ -580,23 +672,12 @@ def _run_mlops_schedule_cycle() -> None:
                         "pending_approval" if item.require_approval else "approved",
                     )
                     if not item.require_approval:
-                        def _launch_background(rid: str) -> None:
-                            try:
-                                loop = asyncio.get_running_loop()
-                                loop.create_task(asyncio.to_thread(_execute_retraining_request_background, rid))
-                            except RuntimeError:
-                                threading.Thread(
-                                    target=_execute_retraining_request_background,
-                                    args=(rid,),
-                                    daemon=True,
-                                ).start()
-
                         try:
                             execution = _attempt_execute_retraining_request(
                                 redis_client,
                                 request_id,
                                 executed_by="scheduler@system",
-                                launch_background=_launch_background,
+                                launch_background=_launch_retraining_background,
                             )
                             logger.info(
                                 "Schedule trigger auto-execution result: schedule_id=%s request_id=%s status=%s",
@@ -612,9 +693,9 @@ def _run_mlops_schedule_cycle() -> None:
                                 exc.detail,
                             )
 
-                item.last_run_at = now_utc
-                item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
-                item.status = "ACTIVE"
+                    item.last_run_at = now_utc
+                    item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
+                    item.status = "ACTIVE"
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Schedule trigger failed: schedule_id=%s", schedule_id)
                 item.status = "ERROR"
@@ -624,6 +705,8 @@ def _run_mlops_schedule_cycle() -> None:
                 except Exception:
                     pass
                 logger.error("Schedule error detail: %s", exc)
+        # Best-effort retries for any previously approved auto-execute scheduled requests.
+        _retry_auto_execute_requests(redis_client, limit=500)
         db.commit()
 
 
@@ -1268,6 +1351,7 @@ def _attempt_execute_retraining_request(
     try:
         request = _load_retraining_request(client, request_id)
         current_status = str(request.get("status") or "")
+        auto_execute = bool(request.get("auto_execute"))
         if current_status != "approved":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Request must be approved before execution (current status: {current_status}).")
 
@@ -1285,31 +1369,45 @@ def _attempt_execute_retraining_request(
             except ValueError:
                 elapsed = cooldown_sec + 1
             if elapsed < cooldown_sec:
-                request["status"] = "skipped"
-                request["execution_detail"] = (
-                    f"Skipped due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes)."
-                )
+                if auto_execute:
+                    request["status"] = "approved"
+                    request["execution_detail"] = (
+                        f"Deferred due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes). Auto-retry will continue."
+                    )
+                else:
+                    request["status"] = "skipped"
+                    request["execution_detail"] = (
+                        f"Skipped due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes)."
+                    )
                 _save_retraining_request(client, request)
                 logger.warning(
-                    "Retraining request %s skipped due to cooldown model=%s cooldown_minutes=%d",
+                    "Retraining request %s %s due to cooldown model=%s cooldown_minutes=%d",
                     request_id,
+                    "deferred" if auto_execute else "skipped",
                     model,
                     _MLOPS_RETRAIN_COOLDOWN_MINUTES,
                 )
-                if model_internal:
+                if model_internal and not auto_execute:
                     client.srem(_request_pending_key(model_internal), request_id)
                 return _normalize_retraining_request(request)
 
         running_count = int(client.scard(_MLOPS_RUNNING_SET_KEY) or 0)
         if running_count >= _MAX_PARALLEL_TRAINING:
-            request["status"] = "skipped"
-            request["execution_detail"] = (
-                f"Skipped due to global concurrency limit ({_MAX_PARALLEL_TRAINING})."
-            )
+            if auto_execute:
+                request["status"] = "approved"
+                request["execution_detail"] = (
+                    f"Deferred by global concurrency limit ({_MAX_PARALLEL_TRAINING}). Auto-retry will continue."
+                )
+            else:
+                request["status"] = "skipped"
+                request["execution_detail"] = (
+                    f"Skipped due to global concurrency limit ({_MAX_PARALLEL_TRAINING})."
+                )
             _save_retraining_request(client, request)
             logger.warning(
-                "Retraining request %s skipped by global concurrency limit running=%d limit=%d",
+                "Retraining request %s %s by global concurrency limit running=%d limit=%d",
                 request_id,
+                "deferred" if auto_execute else "skipped",
                 running_count,
                 _MAX_PARALLEL_TRAINING,
             )
@@ -1318,12 +1416,17 @@ def _attempt_execute_retraining_request(
         lock_ttl = _MLOPS_RUNNER_TIMEOUT_SECONDS + 300
         lock_acquired = bool(client.set(lock_key, request_id, nx=True, ex=lock_ttl))
         if not lock_acquired:
-            request["status"] = "skipped"
-            request["execution_detail"] = "Skipped because another training for this model is already running."
+            if auto_execute:
+                request["status"] = "approved"
+                request["execution_detail"] = "Deferred because another training for this model is currently running. Auto-retry will continue."
+            else:
+                request["status"] = "skipped"
+                request["execution_detail"] = "Skipped because another training for this model is already running."
             _save_retraining_request(client, request)
             logger.warning(
-                "Retraining request %s skipped because model lock is active for model=%s",
+                "Retraining request %s %s because model lock is active for model=%s",
                 request_id,
+                "deferred" if auto_execute else "skipped",
                 model,
             )
             return _normalize_retraining_request(request)
