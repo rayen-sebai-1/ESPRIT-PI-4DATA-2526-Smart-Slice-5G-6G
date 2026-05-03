@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 import {
   getMlopsDrift,
@@ -10,40 +11,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { driftSeverityBg, driftSeverityClass } from "./mlopsHelpers";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Status badge
 // ---------------------------------------------------------------------------
-
-function severityClass(severity?: string): string {
-  switch (severity?.toUpperCase()) {
-    case "CRITICAL":
-      return "text-red-400 font-bold";
-    case "HIGH":
-      return "text-orange-400 font-bold";
-    case "MEDIUM":
-      return "text-amber-400";
-    case "LOW":
-      return "text-yellow-300";
-    default:
-      return "text-green-400";
-  }
-}
-
-function severityBg(severity?: string): string {
-  switch (severity?.toUpperCase()) {
-    case "CRITICAL":
-      return "bg-red-900/60 text-red-300";
-    case "HIGH":
-      return "bg-orange-900/60 text-orange-300";
-    case "MEDIUM":
-      return "bg-amber-900/50 text-amber-300";
-    case "LOW":
-      return "bg-yellow-900/40 text-yellow-300";
-    default:
-      return "bg-green-900/40 text-green-400";
-  }
-}
 
 function statusBadge(status?: string, isDrift?: boolean): JSX.Element {
   if (isDrift) {
@@ -55,36 +27,16 @@ function statusBadge(status?: string, isDrift?: boolean): JSX.Element {
   }
   switch (status) {
     case "no_drift":
-      return (
-        <span className="rounded bg-green-900/50 px-2 py-0.5 text-xs text-green-400">
-          Stable
-        </span>
-      );
+      return <span className="rounded bg-green-900/50 px-2 py-0.5 text-xs text-green-400">Stable</span>;
     case "insufficient_data":
-      return (
-        <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
-          Collecting data
-        </span>
-      );
+      return <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">Collecting data</span>;
     case "reference_missing":
-      return (
-        <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
-          Reference missing
-        </span>
-      );
+      return <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">Reference missing</span>;
     case "alibi_unavailable":
-      return (
-        <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
-          Alibi unavailable
-        </span>
-      );
+      return <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">Alibi unavailable</span>;
     case "no_data":
     default:
-      return (
-        <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-400">
-          No data
-        </span>
-      );
+      return <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-400">No data</span>;
   }
 }
 
@@ -205,7 +157,7 @@ function FeatureList({ names }: { names?: string[] }) {
 // Full model card
 // ---------------------------------------------------------------------------
 
-function ModelDriftCard({ state }: { state: DriftModelState }) {
+function ModelDriftCard({ state, onRequestRetraining }: { state: DriftModelState; onRequestRetraining: () => void }) {
   const isDrift = Boolean(state.is_drift);
   return (
     <div
@@ -242,7 +194,7 @@ function ModelDriftCard({ state }: { state: DriftModelState }) {
         {state.severity && state.severity !== "NONE" ? (
           <>
             <span className="text-mutedText">Severity</span>
-            <span className={severityClass(state.severity)}>{state.severity}</span>
+            <span className={driftSeverityClass(state.severity)}>{state.severity}</span>
           </>
         ) : null}
 
@@ -271,6 +223,16 @@ function ModelDriftCard({ state }: { state: DriftModelState }) {
           {state.recommendation}
         </p>
       ) : null}
+
+      {isDrift && (
+        <Button
+          size="sm"
+          className="mt-3 w-full"
+          onClick={onRequestRetraining}
+        >
+          Request Retraining →
+        </Button>
+      )}
 
       {state.status === "reference_missing" ? (
         <p className="mt-3 rounded bg-amber-900/30 px-3 py-2 text-xs text-amber-300">
@@ -396,7 +358,7 @@ function EventsTable({ modelFilter }: { modelFilter: string }) {
                     {ev.p_value.toFixed(4)}
                   </td>
                   <td className="py-2.5 pr-4">
-                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${severityBg(ev.severity)}`}>
+                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${driftSeverityBg(ev.severity)}`}>
                       {ev.severity}
                     </span>
                   </td>
@@ -418,6 +380,7 @@ function EventsTable({ modelFilter }: { modelFilter: string }) {
 
 export function MlopsDriftPage() {
   usePageTitle("MLOps - Drift Detection");
+  const navigate = useNavigate();
   const [modelFilter, setModelFilter] = useState("");
 
   const driftQuery = useQuery({
@@ -455,9 +418,18 @@ export function MlopsDriftPage() {
 
       {/* Global drift alert banner */}
       {anyDrift && (
-        <div className="rounded border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          <span className="font-semibold">Distribution drift detected</span> on one or more
-          production models. Review the MLOps Operations page before promoting any candidate model.
+        <div className="flex items-center justify-between gap-4 rounded border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          <span>
+            <span className="font-semibold">Distribution drift detected</span> on one or more
+            production models. A retraining request must be approved before training starts.
+          </span>
+          <Button
+            size="sm"
+            onClick={() => navigate("/mlops/requests")}
+            className="shrink-0"
+          >
+            View Retraining Requests →
+          </Button>
         </div>
       )}
 
@@ -470,7 +442,11 @@ export function MlopsDriftPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {Object.values(models).length > 0 ? (
               Object.values(models).map((state) => (
-                <ModelDriftCard key={state.model_name} state={state} />
+                <ModelDriftCard
+                  key={state.model_name}
+                  state={state}
+                  onRequestRetraining={() => navigate("/mlops/requests")}
+                />
               ))
             ) : (
               <p className="col-span-3 py-6 text-center text-sm text-mutedText">

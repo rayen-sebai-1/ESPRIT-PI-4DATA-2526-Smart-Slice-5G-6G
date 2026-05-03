@@ -82,9 +82,13 @@ events.anomaly + events.sla + events.slice.classification
   -> policy-control simulated actuator -> stream:control.actuations + control:sim:* keys
 
 events.anomaly / events.sla / events.slice.classification (sliding window anomaly count)
-  -> mlops-drift-monitor (mlops-tier) -> Redis pending retraining request
-  -> dashboard approval API (/mlops/requests/{id}/approve + /execute)
-  -> mlops-runner /run-action -> offline model-specific pipeline
+  -> mlops-drift-monitor (mlops-tier) -> Redis pending retraining request (pending_approval)
+events.drift (aiops-drift-monitor Kafka drift.alert, severity HIGH/CRITICAL)
+  -> mlops-drift-monitor Kafka consumer -> Redis pending retraining request (pending_approval)
+cron scheduler (RETRAINING_CRON_ENABLED)
+  -> mlops-drift-monitor cron -> Redis pending retraining request (pending_approval)
+  -> dashboard approval API (/mlops/requests/{id}/approve by ADMIN or DATA_MLOPS_ENGINEER)
+  -> /mlops/requests/{id}/execute -> mlops-runner /run-action -> offline model-specific pipeline
 
 telemetry-norm -> telemetry-exporter -> InfluxDB
 
@@ -121,16 +125,22 @@ Configured model names in Compose:
 
 ## Human-in-the-Loop MLOps Control
 
-Retraining now follows a strict approval flow:
+Retraining follows a strict approval flow regardless of trigger source:
 
-1. Drift monitor detects anomaly bursts and creates a Redis request with `status=pending_approval`.
+**Trigger sources:**
+1. **Anomaly-stream** — `mlops-drift-monitor` detects anomaly bursts in the `events.anomaly` stream.
+2. **Kafka** — `mlops-drift-monitor` consumes `drift.alert` events (published by `aiops-drift-monitor`) with severity HIGH or CRITICAL and `auto_trigger_enabled=True`.
+3. **Cron scheduler** — configurable weekly/daily schedule (`RETRAINING_CRON_ENABLED`, `RETRAINING_CRON_EXPR`).
+
+**Approval flow:**
+
+1. Any trigger source creates a Redis request with `status=pending_approval`.
 2. Dashboard control plane lists requests at `/mlops/requests`.
-3. Admin user approves (`/mlops/requests/{id}/approve`) or rejects (`/mlops/requests/{id}/reject`).
-4. Admin explicitly executes approved requests (`/mlops/requests/{id}/execute`).
+3. Admin or DATA_MLOPS_ENGINEER approves (`/mlops/requests/{id}/approve`) or rejects (`/mlops/requests/{id}/reject`).
+4. Admin or DATA_MLOPS_ENGINEER explicitly executes approved requests (`/mlops/requests/{id}/execute`).
 5. Execution calls `mlops-runner` only after control checks (per-model lock, global concurrency limit, cooldown).
 
-Automatic direct retraining from drift detection is disabled by default with `AUTO_RETRAIN_ENABLED=false`.
-The dashboard is the execution control plane for retraining.
+No trigger source executes the pipeline directly. The dashboard is the only execution control plane for retraining.
 
 ## Quick Start
 

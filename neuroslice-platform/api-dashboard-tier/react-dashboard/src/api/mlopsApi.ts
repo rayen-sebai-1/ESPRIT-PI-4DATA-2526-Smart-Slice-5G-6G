@@ -11,6 +11,9 @@ import type {
   MlopsPromotionEvent,
   MlopsRetrainingRequest,
   MlopsRetrainingRequestListResponse,
+  MlopsRetrainingSchedule,
+  MlopsRetrainingScheduleListResponse,
+  MlopsRetrainingScheduleUpsertPayload,
   MlopsRollbackPayload,
   MlopsRunSummary,
   MlopsToolsHealthResponse,
@@ -119,6 +122,17 @@ export async function getMlopsPipelineConfig(): Promise<MlopsPipelineConfig> {
   return data;
 }
 
+export interface TriggerRetrainingResponse {
+  triggered: boolean;
+  reason: string;
+  anomaly_count: number;
+}
+
+export async function triggerMlopsRetraining(): Promise<TriggerRetrainingResponse> {
+  const { data } = await dashboardClient.post<TriggerRetrainingResponse>("/controls/drift/trigger");
+  return data;
+}
+
 export async function getMlopsRequests(params: { status?: string; limit?: number } = {}) {
   const { data } = await dashboardClient.get<MlopsRetrainingRequestListResponse>("/mlops/requests", {
     params: {
@@ -155,6 +169,36 @@ export async function executeMlopsRequest(requestId: string) {
     `/mlops/requests/${encodeURIComponent(requestId)}/execute`,
   );
   return data;
+}
+
+export async function getMlopsRetrainingSchedules() {
+  const { data } = await dashboardClient.get<MlopsRetrainingScheduleListResponse>(
+    "/mlops/retraining/schedule",
+  );
+  return data;
+}
+
+export async function createMlopsRetrainingSchedule(payload: MlopsRetrainingScheduleUpsertPayload) {
+  const { data } = await dashboardClient.post<MlopsRetrainingSchedule>(
+    "/mlops/retraining/schedule",
+    payload,
+  );
+  return data;
+}
+
+export async function updateMlopsRetrainingSchedule(
+  scheduleId: string,
+  payload: Partial<MlopsRetrainingScheduleUpsertPayload>,
+) {
+  const { data } = await dashboardClient.put<MlopsRetrainingSchedule>(
+    `/mlops/retraining/schedule/${encodeURIComponent(scheduleId)}`,
+    payload,
+  );
+  return data;
+}
+
+export async function deleteMlopsRetrainingSchedule(scheduleId: string) {
+  await dashboardClient.delete(`/mlops/retraining/schedule/${encodeURIComponent(scheduleId)}`);
 }
 
 // ---------------------------------------------------------------------------

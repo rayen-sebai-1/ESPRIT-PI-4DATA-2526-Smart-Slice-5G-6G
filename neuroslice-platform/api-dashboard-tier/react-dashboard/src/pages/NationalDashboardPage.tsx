@@ -10,9 +10,11 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
-import { getNationalDashboard } from "@/api/dashboardApi";
+import { getNationalDashboard, getNationalSlaTrend, getNationalSliceDistribution } from "@/api/dashboardApi";
 import { liveApi } from "@/api/liveApi";
 import { RegionLoadChart } from "@/components/charts/region-load-chart";
+import { SlaTrendChart } from "@/components/charts/sla-trend-chart";
+import { SliceDistributionChart } from "@/components/charts/slice-distribution-chart";
 import { NetworkLogsFeed } from "@/components/logs/network-logs-feed";
 import { PageHeader } from "@/components/layout/page-header";
 import { TunisiaNetworkMap } from "@/components/layout/tunisia-network-map";
@@ -87,6 +89,7 @@ export function NationalDashboardPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard", "national"],
     queryFn: getNationalDashboard,
+    staleTime: 60_000,
   });
 
   const liveOverviewQuery = useQuery({
@@ -149,6 +152,20 @@ export function NationalDashboardPage() {
       .sort((left, right) => right.riskScore - left.riskScore)
       .slice(0, 5);
   }, [liveEntities]);
+
+  const slaTrendQuery = useQuery({
+    queryKey: ["dashboard", "national", "sla-trend"],
+    queryFn: getNationalSlaTrend,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const sliceDistributionQuery = useQuery({
+    queryKey: ["dashboard", "national", "slice-distribution"],
+    queryFn: getNationalSliceDistribution,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   if (isLoading) {
     return <div className="py-10 text-sm text-mutedText">Loading national dashboard...</div>;
@@ -299,9 +316,14 @@ export function NationalDashboardPage() {
           </div>
         </Card>
 
-        <EmptyState
-          title="National SLA trend pending"
-          description="This space is reserved for a future national trend curve. The layout is already ready to host it."
+        <SlaTrendChart
+          data={slaTrendQuery.data ?? []}
+          title="National SLA trend"
+          description="Awaiting metrics aggregation — the /metrics/sla-trend endpoint will populate this chart once the aggregation pipeline is active."
+          lines={[
+            { dataKey: "sla_percent", color: "#4ec3ff", label: "SLA %" },
+            { dataKey: "congestion_rate", color: "#f59e0b", label: "Congestion %" },
+          ]}
         />
       </section>
 
@@ -336,9 +358,10 @@ export function NationalDashboardPage() {
           </div>
         </Card>
 
-        <EmptyState
-          title="National slice distribution pending"
-          description="This space is reserved for a future slice distribution view without changing the current template."
+        <SliceDistributionChart
+          data={sliceDistributionQuery.data ?? []}
+          title="Slice distribution"
+          description="Awaiting metrics aggregation — the /metrics/slice-distribution endpoint will populate this chart once the aggregation pipeline is active."
         />
       </section>
 

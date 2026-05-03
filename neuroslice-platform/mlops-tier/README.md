@@ -124,12 +124,12 @@ AIOps services mount generated models from the batch orchestrator as read-only p
 
 - It accepts `POST /run-action` and `GET /health`.
 - Actions are mapped via a fixed `_ACTION_MAP` (e.g. `full_pipeline` → `make mlops-full`); callers cannot inject arbitrary shell strings.
-- It is not published on the host — only `dashboard-backend` and `mlops-drift-monitor` reach it via the internal Compose network.
+- It is not published on the host — only `dashboard-backend` reaches it via the internal Compose network after human approval.
 - A kill switch `MLOPS_ORCHESTRATION_ENABLED=false` in `mlops-runner` immediately disables command execution.
 - An optional shared bearer token `MLOPS_RUNNER_TOKEN` blocks all other callers.
 - Each request carries a `trigger_source` field (`manual` | `drift` | `scheduled`) that is logged and returned in the response.
 
-Trigger flow from the dashboard:
+Trigger flow from the dashboard (manual run):
 
 ```text
 React (/mlops/operations) -> Kong /api/dashboard/mlops/pipeline/run
@@ -140,42 +140,68 @@ React (/mlops/operations) -> Kong /api/dashboard/mlops/pipeline/run
     -> capture stdout/stderr -> redact -> persist on the row
 ```
 
-Trigger flow from drift detection:
+Trigger flow from retraining approval (drift/scheduled/manual request):
 
 ```text
-mlops-drift-monitor (mlops-tier) detects anomaly burst
-  -> mlops-runner POST /run-action {action: "full_pipeline", trigger_source: "drift"}
-    -> docker exec <mlops-api-container> make mlops-full
+mlops-drift-monitor (mlops-tier) creates Redis retraining request (status=pending_approval)
+  -> dashboard-backend GET /mlops/requests lists pending requests
+  -> Admin or DATA_MLOPS_ENGINEER approves via POST /mlops/requests/{id}/approve
+  -> Admin or DATA_MLOPS_ENGINEER executes via POST /mlops/requests/{id}/execute
+    -> dashboard-backend -> mlops-runner POST /run-action {action: "full_pipeline", trigger_source: "drift"|"scheduled"}
+      -> docker exec <mlops-api-container> make mlops-full
 ```
 
 ## mlops-drift-monitor
 
-`mlops-tier/drift-monitor/` (service name `mlops-drift-monitor`) is a lightweight FastAPI service that watches the `events.anomaly` Redis stream and automatically triggers the MLOps pipeline when anomaly bursts exceed a configurable threshold.
+`mlops-tier/drift-monitor/` (service name `mlops-drift-monitor`) is a FastAPI service (v3) that watches three sources and creates human-approval retraining requests. It never executes training directly.
 
-- Polls `events.anomaly` Redis stream every `DRIFT_POLL_INTERVAL_SECONDS` seconds (default: 30).
-- Counts anomaly events within a sliding `DRIFT_WINDOW_SECONDS` window (default: 120 s).
-- Triggers `mlops-runner POST /run-action` when count ≥ `DRIFT_ANOMALY_THRESHOLD` (default: 5).
-- Enforces a `DRIFT_COOLDOWN_SECONDS` window (default: 600 s) between consecutive triggers.
-- Publishes drift events to the `events.drift` Redis stream and persists status in Redis keys `drift:status` and `drift:events`.
-- Reads runtime flag keys under `runtime:service:mlops-drift-monitor:*`; when disabled, trigger attempts are skipped.
+**Three trigger sources:**
+
+1. **Anomaly-stream** — polls `events.anomaly` Redis stream every `DRIFT_POLL_INTERVAL_SECONDS` seconds (default: 30), counts events in a sliding `DRIFT_WINDOW_SECONDS` window (default: 120 s), creates a `pending_approval` request when count ≥ `DRIFT_ANOMALY_THRESHOLD` (default: 15).
+2. **Kafka consumer** — consumes `drift.alert` topic (published by `aiops-drift-monitor`). Creates a request only when `is_drift=True`, severity ∈ `KAFKA_DRIFT_MIN_SEVERITY` (default: HIGH,CRITICAL), and `auto_trigger_enabled=True`.
+3. **Cron scheduler** — fires at `RETRAINING_CRON_EXPR` (default: `0 2 * * 0`) when `RETRAINING_CRON_ENABLED=true`. Uses `RETRAINING_CRON_REQUIRE_APPROVAL` (default: `true`) to set initial status (`pending_approval` or `approved`).
+
+**Safety guarantees:**
+- All three sources create `pending_approval` requests in Redis — no automatic pipeline execution.
+- Duplicate detection: a model with an existing pending/approved request is blocked.
+- `DRIFT_COOLDOWN_SECONDS` (default: 600 s) enforced between consecutive triggers.
+- Redis runtime flag `runtime:service:mlops-drift-monitor:enabled` respected; when disabled, all triggers are skipped.
 - Part of the default Compose runtime (no separate profile required). Internal only — no published host port.
 
+**Key environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DRIFT_ANOMALY_THRESHOLD` | `15` | Anomaly events in window before creating a request |
+| `DRIFT_WINDOW_SECONDS` | `120` | Sliding window length in seconds |
+| `DRIFT_COOLDOWN_SECONDS` | `600` | Minimum seconds between consecutive requests |
+| `DRIFT_POLL_INTERVAL_SECONDS` | `30` | Polling interval |
+| `KAFKA_CONSUMER_ENABLED` | `true` | Enable Kafka `drift.alert` consumer |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | Kafka bootstrap addresses |
+| `KAFKA_DRIFT_TOPIC` | `drift.alert` | Topic to consume |
+| `KAFKA_DRIFT_MIN_SEVERITY` | `HIGH,CRITICAL` | Minimum severity to trigger |
+| `RETRAINING_CRON_ENABLED` | `false` | Enable cron-based scheduled retraining |
+| `RETRAINING_CRON_EXPR` | `0 2 * * 0` | Cron expression (weekly Sunday 02:00) |
+| `RETRAINING_CRON_REQUIRE_APPROVAL` | `true` | If `false`, cron requests start as `approved` |
+| `RETRAINING_CRON_MODELS` | all models | Comma-separated list of models to schedule |
+
 This monitor is distinct from `aiops-tier/drift-monitor`:
-- `mlops-drift-monitor` (this section): anomaly-count trigger for retraining orchestration.
-- `aiops-drift-monitor` (`drift` profile): Alibi Detect MMD statistical detector using `drift_reference.npz` and `drift_feature_schema.json`.
+- `mlops-drift-monitor` (this section): multi-source retraining approval request creator.
+- `aiops-drift-monitor` (`drift` profile): Alibi Detect MMD statistical detector that publishes to `drift.alert` Kafka topic.
 
-## Environment Variables Clarification
-
-- `MLOPS_PIPELINE_ENABLED`: dashboard/drift trigger gate. It controls whether `dashboard-backend` and `mlops-drift-monitor` attempt to trigger a pipeline run.
-- `MLOPS_ORCHESTRATION_ENABLED`: runner execution gate. It controls whether `mlops-runner` executes any mapped action after receiving a trigger.
-- In Scenario B, both should be `true` to allow end-to-end pipeline execution from UI or drift trigger.
-
-Endpoints:
+**Endpoints:**
 
 - `GET /health`
 - `GET /drift/status`
 - `GET /drift/events`
-- `POST /drift/trigger` (manual test trigger)
+- `POST /drift/trigger` (manual anomaly-stream test trigger)
+- `POST /retraining/scheduled/trigger` (manual cron fire for testing)
+
+## Environment Variables Clarification
+
+- `MLOPS_PIPELINE_ENABLED`: dashboard trigger gate. It controls whether `dashboard-backend` can trigger a pipeline run.
+- `MLOPS_ORCHESTRATION_ENABLED`: runner execution gate. It controls whether `mlops-runner` executes any mapped action after receiving a trigger.
+- In Scenario B, both should be `true` to allow end-to-end pipeline execution after human approval.
 
 Dashboard evaluation endpoints:
 

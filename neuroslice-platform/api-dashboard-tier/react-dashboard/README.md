@@ -45,6 +45,7 @@ Scope note: agentic pages are implemented, but `agentic-ai-tier` is excluded fro
 - `/mlops/drift`
 - `/mlops/operations`
 - `/mlops/orchestration`
+- `/mlops/requests`
 - `/admin/users`
 - `*` -> not found page
 
@@ -64,7 +65,7 @@ The topbar displays a pulsing `DATA SOURCE: LIVE` badge when `DASHBOARD_DATA_PRO
 
 ## MLOps Control Center
 
-The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_ENGINEER`, and `NETWORK_MANAGER`. It groups nine sub-views:
+The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_ENGINEER`, and `NETWORK_MANAGER`. It groups ten sub-views:
 
 - vue globale (KPI: modeles promus, quality gate pass/fail, runs en attente, sources)
 - modeles (selection + detail card, metriques cles, actions valider / promouvoir / rollback / rafraichir)
@@ -73,6 +74,7 @@ The "MLOps Control Center" sidebar entry is shown only to `ADMIN`, `DATA_MLOPS_E
 - promotions (historique des decisions promote/reject)
 - monitoring (lecture Elasticsearch `smart-slice-predictions`)
 - drift (etat de drift detection Scenario B: p-value, window fill, severite, et historique des evenements)
+- requests (liste des demandes de retraining en attente d'approbation: trigger type, severity, p-value, drift score; boutons approve/reject/execute pour ADMIN et DATA_MLOPS_ENGINEER)
 - operations (Operations Center: liens externes, sante des services, lancement du pipeline offline, historique + logs)
 - orchestration (pilotage du cycle pipeline/operations selon les droits de role + runtime service controls)
 

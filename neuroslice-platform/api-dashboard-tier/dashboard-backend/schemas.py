@@ -420,15 +420,25 @@ MlopsRetrainingRequestStatus = Literal[
     "skipped",
 ]
 
+MlopsRetrainingTriggerType = Literal["DRIFT", "SCHEDULED", "MANUAL"]
+MlopsRetrainingScheduleFrequency = Literal["DAILY", "WEEKLY", "MONTHLY", "CUSTOM_CRON"]
+MlopsRetrainingScheduleStatus = Literal["ACTIVE", "DISABLED", "ERROR"]
+
 
 class MlopsRetrainingRequest(BaseModel):
     id: str
     model: str
     model_internal: str | None = None
     pipeline_action: str | None = None
+    trigger_type: MlopsRetrainingTriggerType | None = None
     reason: str
     anomaly_count: int
     threshold: int
+    severity: str | None = None
+    drift_score: float | None = None
+    p_value: float | None = None
+    request_source: str | None = None
+    source_schedule_id: str | None = None
     status: MlopsRetrainingRequestStatus
     created_at: str
     approved_by: str | None = None
@@ -444,6 +454,50 @@ class MlopsRetrainingRequest(BaseModel):
 class MlopsRetrainingRequestListResponse(BaseModel):
     count: int
     items: list[MlopsRetrainingRequest]
+
+
+class MlopsRetrainingScheduleBase(BaseModel):
+    model_name: str = Field(min_length=1, max_length=128)
+    enabled: bool = True
+    frequency: MlopsRetrainingScheduleFrequency
+    cron_expr: str = Field(min_length=1, max_length=128)
+    timezone: str = Field(min_length=1, max_length=64)
+    require_approval: bool = True
+
+
+class MlopsRetrainingScheduleCreate(MlopsRetrainingScheduleBase):
+    allow_duplicate_enabled: bool = False
+
+
+class MlopsRetrainingScheduleUpdate(BaseModel):
+    model_name: str | None = Field(default=None, min_length=1, max_length=128)
+    enabled: bool | None = None
+    frequency: MlopsRetrainingScheduleFrequency | None = None
+    cron_expr: str | None = Field(default=None, min_length=1, max_length=128)
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    require_approval: bool | None = None
+    allow_duplicate_enabled: bool = False
+
+
+class MlopsRetrainingScheduleResponse(BaseModel):
+    id: str
+    model_name: str
+    enabled: bool
+    frequency: MlopsRetrainingScheduleFrequency
+    cron_expr: str
+    timezone: str
+    require_approval: bool
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    last_run_at: datetime | None
+    next_run_at: datetime | None
+    status: MlopsRetrainingScheduleStatus
+
+
+class MlopsRetrainingScheduleListResponse(BaseModel):
+    count: int
+    items: list[MlopsRetrainingScheduleResponse]
 
 
 class AgenticHealthResponse(BaseModel):

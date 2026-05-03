@@ -56,15 +56,21 @@ There are two drift detection services in the platform:
 
 **mlops-tier `mlops-drift-monitor`** (default runtime, always-on):
 
-A lightweight FastAPI service that counts anomaly events in the `events.anomaly` Redis stream over a sliding window. When the count exceeds the threshold it calls `mlops-runner` to trigger the full pipeline automatically. Relevant environment variables:
+A FastAPI service (v3) that watches three trigger sources — anomaly-stream, Kafka `drift.alert` consumer, and a cron scheduler — and creates `pending_approval` retraining requests in Redis. It never calls `mlops-runner` directly; a human must approve and execute via the dashboard. Relevant environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DRIFT_ANOMALY_THRESHOLD` | `5` | Anomaly events in window before triggering |
+| `DRIFT_ANOMALY_THRESHOLD` | `15` | Anomaly events in window before creating a request |
 | `DRIFT_WINDOW_SECONDS` | `120` | Sliding window length in seconds |
-| `DRIFT_COOLDOWN_SECONDS` | `600` | Minimum seconds between consecutive triggers |
+| `DRIFT_COOLDOWN_SECONDS` | `600` | Minimum seconds between consecutive requests |
 | `DRIFT_POLL_INTERVAL_SECONDS` | `30` | Polling interval |
-| `MLOPS_PIPELINE_ENABLED` | `true` | Set `false` to disable auto-trigger |
+| `KAFKA_CONSUMER_ENABLED` | `true` | Enable Kafka `drift.alert` consumer |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | Kafka bootstrap addresses |
+| `KAFKA_DRIFT_TOPIC` | `drift.alert` | Topic to consume from `aiops-drift-monitor` |
+| `KAFKA_DRIFT_MIN_SEVERITY` | `HIGH,CRITICAL` | Minimum severity to accept |
+| `RETRAINING_CRON_ENABLED` | `false` | Enable cron-based scheduled retraining |
+| `RETRAINING_CRON_EXPR` | `0 2 * * 0` | Cron expression |
+| `RETRAINING_CRON_REQUIRE_APPROVAL` | `true` | If `false`, cron requests start as `approved` |
 
 **aiops-tier `aiops-drift-monitor`** (`drift` profile, optional):
 
@@ -173,11 +179,11 @@ The `mlops` profile starts:
 - `logstash-aiops-ingest`
 - `kibana`
 - `mlops-api`
-- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend` and `mlops-drift-monitor`)
+- `mlops-runner` (internal-only worker that triggers the pipeline on behalf of `dashboard-backend` after human approval)
 
 The `mlops-worker` profile runs the offline training/promotion pipeline manually.
 
-`mlops-runner` is the only service that owns the Docker socket. It accepts `POST /run-action` calls with a fixed action map (e.g. `full_pipeline`) and executes the corresponding make target inside the mlops-api container. `MLOPS_ORCHESTRATION_ENABLED=false` disables execution inside `mlops-runner`; `MLOPS_PIPELINE_ENABLED=false` disables upstream trigger attempts from `dashboard-backend` and `mlops-drift-monitor`. See `mlops-tier/mlops-runner/README.md`.
+`mlops-runner` is the only service that owns the Docker socket. It accepts `POST /run-action` calls with a fixed action map (e.g. `full_pipeline`) and executes the corresponding make target inside the mlops-api container. `MLOPS_ORCHESTRATION_ENABLED=false` disables execution inside `mlops-runner`; `MLOPS_PIPELINE_ENABLED=false` disables upstream trigger attempts from `dashboard-backend`. See `mlops-tier/mlops-runner/README.md`.
 
 ## Published URLs
 
@@ -268,7 +274,7 @@ Primary variables are wired through Compose and optional `.env` files:
 - MLOps: `MLOPS_POSTGRES_*`, `MINIO_*`, `MLFLOW_*`, `AWS_*`, `MLOPS_API_PORT`, `MLOPS_LOG_MONITORING_MODE`, `KIBANA_PORT`
 - dashboard: `DASHBOARD_JWT_SECRET`, `DASHBOARD_DATA_PROVIDER` (default `bff`)
 - MLOps Operations Center (dashboard-backend + mlops-runner): `MLOPS_PIPELINE_ENABLED` (default `true`), `MLOPS_ORCHESTRATION_ENABLED` (default `true`), `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS` (default `7200`), `MLOPS_RUNNER_TOKEN` (optional shared secret), `MLOPS_TOOLS_*_URL` (default `http://localhost:*` so the browser opens host-published UIs)
-- `mlops-drift-monitor` (mlops-tier): `DRIFT_ANOMALY_THRESHOLD`, `DRIFT_WINDOW_SECONDS`, `DRIFT_COOLDOWN_SECONDS`, `DRIFT_POLL_INTERVAL_SECONDS`
+- `mlops-drift-monitor` (mlops-tier): `DRIFT_ANOMALY_THRESHOLD` (default `15`), `DRIFT_WINDOW_SECONDS`, `DRIFT_COOLDOWN_SECONDS`, `DRIFT_POLL_INTERVAL_SECONDS`, `KAFKA_CONSUMER_ENABLED`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_DRIFT_TOPIC`, `KAFKA_DRIFT_MIN_SEVERITY`, `RETRAINING_CRON_ENABLED`, `RETRAINING_CRON_EXPR`, `RETRAINING_CRON_REQUIRE_APPROVAL`, `RETRAINING_CRON_MODELS`
 - online evaluator: `EVALUATION_WINDOW_SIZE`, `EVALUATION_PENDING_TTL_SECONDS`
 - agentic: `OLLAMA_BASE_URL`, `RCA_OLLAMA_MODEL`, `COPILOT_OLLAMA_MODEL`
 
