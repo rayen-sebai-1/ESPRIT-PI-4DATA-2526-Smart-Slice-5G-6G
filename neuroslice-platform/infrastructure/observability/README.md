@@ -55,6 +55,8 @@ The following metric families are source-wired:
   - `neuroslice_mlops_drift_triggers_total`
   - `neuroslice_mlops_drift_last_trigger_timestamp`
   - `neuroslice_mlops_drift_enabled`
+  - `neuroslice_mlops_kafka_drift_messages_total{result}` (result: `accepted` | `no_drift` | `severity_filtered` | `auto_trigger_off` | `duplicate` | `cooldown` | `error`)
+  - `neuroslice_mlops_cron_retraining_triggers_total{model,status}` (status: `created` | `duplicate` | `disabled`)
 - Online evaluator:
   - `neuroslice_aiops_eval_accuracy`
   - `neuroslice_aiops_eval_precision`

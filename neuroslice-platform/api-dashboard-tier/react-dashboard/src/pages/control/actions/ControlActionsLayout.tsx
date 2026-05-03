@@ -4,10 +4,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { cn } from "@/lib/cn";
 
 const tabs = [
-  { to: "/control/actions/SimulatedActuations", label: "Simulated Actuations" },
-  { to: "/control/actions/ActionHistory", label: "Action History" },
-  { to: "/control/actions/PendingApproval", label: "Pending Approval" },
-  { to: "/control/actions/DriftMonitor", label: "Drift Monitor" },
+  { to: "/control/actions/simulated-actuations", label: "Simulated Actuations" },
+  { to: "/control/actions/action-history", label: "Action History" },
+  { to: "/control/actions/pending-approval", label: "Pending Approval" },
+  { to: "/control/actions/drift-monitor", label: "Drift Monitor" },
 ];
 
 export function ControlActionsLayout() {

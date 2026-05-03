@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Users,
   ShieldAlert,
+  TrendingUp,
+  LayoutDashboard,
 } from "lucide-react";
 
 import type { AssignableRole, UserRole } from "@/types/auth";
@@ -49,7 +51,7 @@ export const navItems: NavItem[] = [
   {
     label: "Predictions & Models",
     to: "/predictions",
-    icon: Radar,
+    icon: TrendingUp,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
@@ -57,6 +59,12 @@ export const navItems: NavItem[] = [
     to: "/mlops",
     icon: Cpu,
     roles: ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"],
+  },
+  {
+    label: "Monitoring Tools",
+    to: "/monitoring-tools",
+    icon: LayoutDashboard,
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
     label: "Control Actions",
@@ -103,7 +111,7 @@ export const assignableRoleOptions: { value: AssignableRole; label: string }[] =
 ];
 
 export const roleDefaultRoute: Record<UserRole, string> = {
-  ADMIN: "/admin/users",
+  ADMIN: "/dashboard/national",
   NETWORK_OPERATOR: "/dashboard/national",
   NETWORK_MANAGER: "/dashboard/national",
   DATA_MLOPS_ENGINEER: "/mlops",

@@ -1,4 +1,4 @@
-import { ChevronRight, CheckCircle, Play, XCircle } from "lucide-react";
+﻿import { ChevronRight, CheckCircle, Play, XCircle } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import type { ActionStatus, ControlAction } from "@/api/controlApi";
@@ -105,7 +105,7 @@ export function ActionRow({
             <RiskBadge level={action.risk_level} />
           </div>
           <p className="mt-0.5 font-mono text-xs text-slate-500">
-            alert: {action.alert_id.slice(0, 8)}... � entity: {action.entity_id}
+            alert: {action.alert_id.slice(0, 8)}... · entity: {action.entity_id}
           </p>
         </div>
         <StatusBadge status={action.status} />

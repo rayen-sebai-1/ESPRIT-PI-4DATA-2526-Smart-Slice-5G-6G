@@ -102,6 +102,11 @@ Current React router exposure:
 - `GET /api/dashboard/mlops/pipeline/runs`
 - `GET /api/dashboard/mlops/pipeline/runs/{run_id}`
 - `GET /api/dashboard/mlops/pipeline/runs/{run_id}/logs`
+- `GET /api/dashboard/mlops/requests`
+- `GET /api/dashboard/mlops/requests/{request_id}`
+- `POST /api/dashboard/mlops/requests/{request_id}/approve`
+- `POST /api/dashboard/mlops/requests/{request_id}/reject`
+- `POST /api/dashboard/mlops/requests/{request_id}/execute`
 
 `dashboard-backend` reads `models/registry.json` and `models/promoted/*/current/metadata.json` from a read-only volume mount, queries Elasticsearch (when `ES_HOST` is configured) for prediction monitoring, and delegates `promote` / `rollback` to `MLOPS_API_BASE_URL`. No MinIO secrets, MLflow database credentials, or JWT secrets are exposed to the browser.
 
@@ -109,6 +114,8 @@ Role access:
 
 - read endpoints: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
 - `promote`, `rollback`, `pipeline/run`: `ADMIN`, `DATA_MLOPS_ENGINEER`
+- `requests` read: `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
+- `requests/approve`, `requests/reject`, `requests/execute`: `ADMIN`, `DATA_MLOPS_ENGINEER`
 
 ## Control Actions Center
 
@@ -172,7 +179,7 @@ The pipeline trigger does **not** run any code in `dashboard-backend`. Instead i
 2. delegates to an internal-only `mlops-runner` service (no published port, no public route) via `POST /run-action` with `{ action: "full_pipeline", trigger_source: "manual" }`
 3. captures stdout/stderr, redacts secrets, truncates, and stores the result on the same row
 
-`mlops-runner` is the only service in the platform that can spawn the offline pipeline. The `mlops-drift-monitor` service also calls `mlops-runner` automatically when anomaly bursts exceed the configured threshold, using `trigger_source=drift`.
+`mlops-runner` is the only service in the platform that can spawn the offline pipeline. It is called by `dashboard-backend` only after a retraining request has been approved and explicitly executed via the dashboard. `mlops-drift-monitor` creates `pending_approval` requests but never calls `mlops-runner` directly.
 
 ## Provider Modes
 

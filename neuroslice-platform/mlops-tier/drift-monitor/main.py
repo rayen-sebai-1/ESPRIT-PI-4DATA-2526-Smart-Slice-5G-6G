@@ -1,9 +1,12 @@
-"""Drift monitor that observes anomaly streams and creates retraining requests.
+"""Drift monitor — human-in-the-loop retraining request creation.
 
-Human-in-the-loop behavior:
-- drift detection never executes training directly
-- drift detection writes pending approval requests into Redis
-- execution is delegated to dashboard approval APIs
+Three sources can create a retraining request (all land as PENDING_APPROVAL):
+  1. Anomaly-count threshold exceeded on a Redis stream (original behaviour).
+  2. Kafka `drift.alert` message from the aiops-tier statistical detector.
+  3. Scheduled cron cycle (configurable interval, never executes automatically).
+
+In every case training is *never* launched here. Requests are written to Redis
+and must be approved + executed via the dashboard approval API.
 """
 from __future__ import annotations
 
@@ -27,16 +30,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("drift-monitor")
 
-app = FastAPI(title="NeuroSlice Drift Monitor", version="2.0.0")
+app = FastAPI(title="NeuroSlice Drift Monitor", version="3.0.0")
 
-# configuration ----------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 AUTO_RETRAIN_ENABLED = os.getenv("AUTO_RETRAIN_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
 
-# Per-model stream -> pipeline mapping.
 _MODEL_CONFIG: dict[str, dict[str, str]] = {
     "congestion_5g": {
         "stream": os.getenv("DRIFT_CONGESTION_STREAM", "events.anomaly"),
@@ -66,11 +70,28 @@ _MODEL_PUBLIC_NAME: dict[str, str] = {
 DRIFT_ANOMALY_THRESHOLD = int(os.getenv("DRIFT_ANOMALY_THRESHOLD", "15"))
 DRIFT_WINDOW_SECONDS = int(os.getenv("DRIFT_WINDOW_SECONDS", "120"))
 DRIFT_COOLDOWN_SECONDS = int(os.getenv("DRIFT_COOLDOWN_SECONDS", "600"))
-
 POLL_INTERVAL_SECONDS = float(os.getenv("DRIFT_POLL_INTERVAL_SECONDS", "30"))
 RUNTIME_SERVICE_NAME = os.getenv("RUNTIME_SERVICE_NAME", "mlops-drift-monitor")
 
+# Kafka consumer (drift.alert from aiops-tier statistical monitor)
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_DRIFT_TOPIC = os.getenv("KAFKA_DRIFT_TOPIC", "drift.alert")
+KAFKA_CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "mlops-drift-monitor")
+KAFKA_CONSUMER_ENABLED = os.getenv("KAFKA_CONSUMER_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
+# Only HIGH and CRITICAL severities create a request when coming from Kafka
+KAFKA_MIN_SEVERITY = {s.strip().upper() for s in os.getenv("KAFKA_DRIFT_MIN_SEVERITY", "HIGH,CRITICAL").split(",")}
+
+# Scheduled cron retraining
+RETRAINING_CRON_ENABLED = os.getenv("RETRAINING_CRON_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
+RETRAINING_CRON_EXPR = os.getenv("RETRAINING_CRON_EXPR", "0 2 * * 0")  # Sunday 02:00 by default
+RETRAINING_CRON_REQUIRE_APPROVAL = os.getenv("RETRAINING_CRON_REQUIRE_APPROVAL", "true").strip().lower() in {"1", "true", "yes"}
+# Comma-separated list of internal model names. Defaults to all known models.
+RETRAINING_CRON_MODELS_RAW = os.getenv("RETRAINING_CRON_MODELS", ",".join(_MODEL_CONFIG.keys()))
+RETRAINING_CRON_MODELS = [m.strip() for m in RETRAINING_CRON_MODELS_RAW.split(",") if m.strip()]
+
+# ---------------------------------------------------------------------------
 # Redis key helpers
+# ---------------------------------------------------------------------------
 
 def _trigger_key(model_name: str) -> str:
     return f"drift:last_trigger_ts:{model_name}"
@@ -85,7 +106,9 @@ _MLOPS_REQUEST_INDEX_KEY = "mlops:requests:index"
 _MLOPS_REQUEST_PREFIX = "mlops:request:"
 _MLOPS_MODEL_PENDING_PREFIX = "mlops:requests:pending:model:"
 
-# metrics ----------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Prometheus metrics
+# ---------------------------------------------------------------------------
 
 mlops_drift_anomaly_events_total = Counter(
     "neuroslice_mlops_drift_anomaly_events_total",
@@ -106,11 +129,25 @@ mlops_drift_enabled = Gauge(
     "neuroslice_mlops_drift_enabled",
     "Whether mlops-drift-monitor request emission is enabled (1) or disabled (0)",
 )
+mlops_kafka_messages_total = Counter(
+    "neuroslice_mlops_kafka_drift_messages_total",
+    "Total Kafka drift.alert messages processed by mlops-drift-monitor",
+    ["result"],
+)
+mlops_cron_triggers_total = Counter(
+    "neuroslice_mlops_cron_retraining_triggers_total",
+    "Total scheduled cron retraining requests created",
+    ["model", "status"],
+)
 
-# state ------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
 
 _redis: aioredis.Redis | None = None
 _monitor_task: asyncio.Task | None = None
+_kafka_task: asyncio.Task | None = None
+_cron_task: asyncio.Task | None = None
 _last_stream_ids: dict[str, str] = {m: "0-0" for m in _MODEL_CONFIG}
 
 
@@ -127,7 +164,9 @@ class ModelDriftStatus(BaseModel):
     pipeline_enabled: bool
 
 
-# helpers ----------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
@@ -262,17 +301,32 @@ async def _has_pending_request(r: aioredis.Redis, model_name: str) -> bool:
     return await r.scard(pending_key) > 0
 
 
-async def _create_retraining_request(r: aioredis.Redis, model_name: str, anomaly_count: int) -> str:
+async def _create_retraining_request(
+    r: aioredis.Redis,
+    model_name: str,
+    *,
+    trigger_type: str = "DRIFT",
+    anomaly_count: int = 0,
+    severity: str | None = None,
+    drift_score: float | None = None,
+    p_value: float | None = None,
+    request_source: str = "mlops-drift-monitor",
+    initial_status: str = "pending_approval",
+) -> str:
     request_id = str(uuid.uuid4())
-    request = {
+    request: dict[str, Any] = {
         "id": request_id,
-        "model": _MODEL_PUBLIC_NAME[model_name],
+        "model": _MODEL_PUBLIC_NAME.get(model_name, model_name),
         "model_internal": model_name,
-        "pipeline_action": _MODEL_CONFIG[model_name]["pipeline_action"],
-        "reason": "drift_detected",
+        "pipeline_action": _MODEL_CONFIG.get(model_name, {}).get("pipeline_action", f"pipeline_{model_name}"),
+        "trigger_type": trigger_type,
+        "reason": "drift_detected" if trigger_type == "DRIFT" else "scheduled",
         "anomaly_count": anomaly_count,
         "threshold": DRIFT_ANOMALY_THRESHOLD,
-        "status": "pending_approval",
+        "severity": severity,
+        "drift_score": drift_score,
+        "p_value": p_value,
+        "status": initial_status,
         "created_at": _now_iso(),
         "approved_by": None,
         "approved_at": None,
@@ -280,40 +334,52 @@ async def _create_retraining_request(r: aioredis.Redis, model_name: str, anomaly
         "executed_at": None,
         "completed_at": None,
         "updated_at": _now_iso(),
-        "request_source": "mlops-drift-monitor",
+        "request_source": request_source,
     }
 
     request_key = f"{_MLOPS_REQUEST_PREFIX}{request_id}"
     pending_key = f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}"
     await r.set(request_key, json.dumps(request))
     await r.zadd(_MLOPS_REQUEST_INDEX_KEY, {request_id: _now_ts()})
-    await r.sadd(pending_key, request_id)
+
+    if initial_status == "pending_approval":
+        await r.sadd(pending_key, request_id)
 
     logger.warning(
-        "[%s] DRIFT DETECTED -> approval required (request_id=%s anomaly_count=%d threshold=%d)",
+        "[%s] RETRAINING REQUEST CREATED -> status=%s trigger_type=%s request_id=%s severity=%s p_value=%s",
         model_name,
+        initial_status,
+        trigger_type,
         request_id,
-        anomaly_count,
-        DRIFT_ANOMALY_THRESHOLD,
+        severity,
+        p_value,
     )
     return request_id
 
 
+# ---------------------------------------------------------------------------
+# Anomaly-stream based drift detection (original behaviour)
+# ---------------------------------------------------------------------------
+
 async def _trigger_mlops_pipeline(model_name: str, anomaly_count: int) -> bool:
-    """Create a retraining request instead of executing training directly."""
+    """Create a drift retraining request; skip if one is already pending."""
     r = await _get_redis()
 
     if await _has_pending_request(r, model_name):
-        logger.info("[%s] Pending approval request already exists - skipping duplicate", model_name)
+        logger.info("[%s] Pending approval request already exists – skipping duplicate", model_name)
         mlops_drift_triggers_total.labels(model=model_name, status="pending_exists").inc()
         return False
 
-    await _create_retraining_request(r, model_name, anomaly_count)
+    await _create_retraining_request(
+        r,
+        model_name,
+        trigger_type="DRIFT",
+        anomaly_count=anomaly_count,
+        request_source="mlops-drift-monitor/anomaly-stream",
+    )
     mlops_drift_triggers_total.labels(model=model_name, status="request_created").inc()
     return True
 
-
-# per-model check --------------------------------------------------------------
 
 async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool) -> None:
     new_anomalies = await _count_new_anomalies(r, model_name)
@@ -332,7 +398,7 @@ async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool
 
     if drift_detected and not cooldown:
         logger.warning(
-            "[%s] DRIFT DETECTED - %d anomalies in %ds window. Creating approval request.",
+            "[%s] DRIFT DETECTED – %d anomalies in %ds window. Creating approval request.",
             model_name, anomaly_count, DRIFT_WINDOW_SECONDS,
         )
         await _publish_drift_event(r, model_name, anomaly_count)
@@ -344,7 +410,7 @@ async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool
                 await _record_trigger(r, model_name)
                 last_trigger_time = _now_iso()
     elif drift_detected and cooldown:
-        logger.info("[%s] Drift detected but cooldown active - skipping request", model_name)
+        logger.info("[%s] Drift detected but cooldown active – skipping request", model_name)
         mlops_drift_triggers_total.labels(model=model_name, status="cooldown").inc()
 
     await _save_model_status(r, model_name, {
@@ -362,15 +428,12 @@ async def _check_model(r: aioredis.Redis, model_name: str, monitor_enabled: bool
     })
 
 
-# monitoring loop --------------------------------------------------------------
-
 async def _monitor_loop() -> None:
     logger.info(
-        "Drift monitor started - poll=%ss threshold=%d window=%ds cooldown=%ds models=%s auto_retrain_enabled=%s",
+        "Anomaly-stream monitor started – poll=%ss threshold=%d window=%ds cooldown=%ds models=%s",
         POLL_INTERVAL_SECONDS, DRIFT_ANOMALY_THRESHOLD, DRIFT_WINDOW_SECONDS,
-        DRIFT_COOLDOWN_SECONDS, list(_MODEL_CONFIG), AUTO_RETRAIN_ENABLED,
+        DRIFT_COOLDOWN_SECONDS, list(_MODEL_CONFIG),
     )
-
     r = await _get_redis()
     while True:
         try:
@@ -392,7 +455,243 @@ async def _monitor_loop() -> None:
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
-# API endpoints ----------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Kafka consumer — drift.alert from aiops statistical detector
+# ---------------------------------------------------------------------------
+
+async def _kafka_consumer_loop() -> None:
+    """Consume drift.alert Kafka events and create retraining requests."""
+    # Import inside function so the service can start even if aiokafka isn't
+    # installed in environments where Kafka isn't available.
+    try:
+        from aiokafka import AIOKafkaConsumer  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning("aiokafka not installed – Kafka consumer disabled")
+        return
+
+    logger.info(
+        "Kafka consumer starting – bootstrap=%s topic=%s group=%s min_severity=%s",
+        KAFKA_BOOTSTRAP_SERVERS, KAFKA_DRIFT_TOPIC, KAFKA_CONSUMER_GROUP, KAFKA_MIN_SEVERITY,
+    )
+
+    consumer: Any = None
+    retry_delay = 5.0
+    while True:
+        try:
+            consumer = AIOKafkaConsumer(
+                KAFKA_DRIFT_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                group_id=KAFKA_CONSUMER_GROUP,
+                auto_offset_reset="latest",
+                enable_auto_commit=True,
+                value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+            )
+            await consumer.start()
+            retry_delay = 5.0
+            logger.info("Kafka consumer connected to %s", KAFKA_BOOTSTRAP_SERVERS)
+
+            async for msg in consumer:
+                try:
+                    await _handle_kafka_drift_event(msg.value)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.error("Error handling Kafka drift event: %s", exc)
+                    mlops_kafka_messages_total.labels(result="error").inc()
+
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Kafka consumer error (retry in %ss): %s", retry_delay, exc)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 120.0)
+        finally:
+            if consumer is not None:
+                try:
+                    await consumer.stop()
+                except Exception:
+                    pass
+                consumer = None
+
+
+async def _handle_kafka_drift_event(event: Any) -> None:
+    """Process one drift.alert message; create a retraining request if criteria met."""
+    if not isinstance(event, dict):
+        mlops_kafka_messages_total.labels(result="invalid").inc()
+        return
+
+    is_drift = bool(event.get("is_drift"))
+    if not is_drift:
+        mlops_kafka_messages_total.labels(result="no_drift").inc()
+        return
+
+    severity = str(event.get("severity") or "").strip().upper()
+    if severity not in KAFKA_MIN_SEVERITY:
+        logger.info(
+            "Kafka drift event ignored – severity=%s not in required set %s",
+            severity, KAFKA_MIN_SEVERITY,
+        )
+        mlops_kafka_messages_total.labels(result="severity_filtered").inc()
+        return
+
+    auto_trigger = bool(event.get("auto_trigger_enabled", False))
+    if not auto_trigger:
+        logger.info(
+            "Kafka drift event: auto_trigger_enabled=false – request blocked by design (human-in-loop)"
+        )
+        mlops_kafka_messages_total.labels(result="auto_trigger_off").inc()
+        return
+
+    model_name_raw = str(event.get("model_name") or "").strip()
+    # Accept both internal (congestion_5g) and canonical names
+    if model_name_raw not in _MODEL_CONFIG:
+        # try reverse-map from public name
+        _reverse = {v: k for k, v in _MODEL_PUBLIC_NAME.items()}
+        model_name_raw = _reverse.get(model_name_raw, model_name_raw)
+    if model_name_raw not in _MODEL_CONFIG:
+        logger.warning("Kafka drift event: unknown model_name '%s' – skipped", model_name_raw)
+        mlops_kafka_messages_total.labels(result="unknown_model").inc()
+        return
+
+    r = await _get_redis()
+
+    runtime_enabled = await _runtime_service_enabled(r)
+    if not runtime_enabled:
+        logger.info("[%s] Kafka drift event – runtime disabled, skipping request", model_name_raw)
+        mlops_kafka_messages_total.labels(result="runtime_disabled").inc()
+        return
+
+    if await _is_in_cooldown(r, model_name_raw):
+        logger.info("[%s] Kafka drift event – cooldown active, skipping request", model_name_raw)
+        mlops_kafka_messages_total.labels(result="cooldown").inc()
+        return
+
+    if await _has_pending_request(r, model_name_raw):
+        logger.info("[%s] Kafka drift event – pending request already exists, skipping duplicate", model_name_raw)
+        mlops_kafka_messages_total.labels(result="duplicate").inc()
+        return
+
+    p_value_raw = event.get("p_value")
+    p_value = float(p_value_raw) if p_value_raw is not None else None
+    drift_score_raw = event.get("drift_score")
+    drift_score = float(drift_score_raw) if drift_score_raw is not None else None
+    window_size = int(event.get("window_size") or 0)
+
+    await _create_retraining_request(
+        r,
+        model_name_raw,
+        trigger_type="DRIFT",
+        anomaly_count=window_size,
+        severity=severity,
+        drift_score=drift_score,
+        p_value=p_value,
+        request_source="kafka/drift.alert",
+        initial_status="pending_approval",
+    )
+    await _record_trigger(r, model_name_raw)
+    mlops_kafka_messages_total.labels(result="request_created").inc()
+    mlops_drift_triggers_total.labels(model=model_name_raw, status="kafka_request_created").inc()
+
+
+# ---------------------------------------------------------------------------
+# Scheduled cron retraining
+# ---------------------------------------------------------------------------
+
+def _seconds_until_next_cron(cron_expr: str) -> float:
+    """Return seconds until the next scheduled firing for a cron expression."""
+    try:
+        from croniter import croniter  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning("croniter not installed – using 24h fallback")
+        return 86400.0
+
+    base = datetime.now(UTC)
+    it = croniter(cron_expr, base)
+    nxt = it.get_next(datetime)
+    diff = (nxt - base).total_seconds()
+    return max(diff, 1.0)
+
+
+async def _cron_scheduler_loop() -> None:
+    """Fire scheduled retraining requests on the configured cron expression."""
+    logger.info(
+        "Cron scheduler started – expr=%r require_approval=%s models=%s",
+        RETRAINING_CRON_EXPR, RETRAINING_CRON_REQUIRE_APPROVAL, RETRAINING_CRON_MODELS,
+    )
+
+    while True:
+        try:
+            wait_sec = _seconds_until_next_cron(RETRAINING_CRON_EXPR)
+            logger.info("Cron scheduler: next fire in %.0f seconds", wait_sec)
+            await asyncio.sleep(wait_sec)
+        except asyncio.CancelledError:
+            raise
+
+        try:
+            await _fire_scheduled_retraining()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("Cron scheduler error during fire: %s", exc)
+
+
+async def _fire_scheduled_retraining() -> None:
+    """Create scheduled retraining requests for all configured models."""
+    r = await _get_redis()
+    runtime_enabled = await _runtime_service_enabled(r)
+
+    for model_name in RETRAINING_CRON_MODELS:
+        if model_name not in _MODEL_CONFIG:
+            logger.warning("Cron: skipping unknown model '%s'", model_name)
+            continue
+        try:
+            await _create_scheduled_request(r, model_name, runtime_enabled)
+        except Exception as exc:
+            logger.error("[%s] Cron: failed to create request: %s", model_name, exc)
+
+
+async def _create_scheduled_request(r: aioredis.Redis, model_name: str, runtime_enabled: bool) -> None:
+    if await _has_pending_request(r, model_name):
+        logger.info("[%s] Cron: pending request exists – skipping duplicate", model_name)
+        mlops_cron_triggers_total.labels(model=model_name, status="duplicate").inc()
+        return
+
+    if not runtime_enabled:
+        logger.info("[%s] Cron: runtime disabled – skipping", model_name)
+        mlops_cron_triggers_total.labels(model=model_name, status="runtime_disabled").inc()
+        return
+
+    # Respect same cooldown as drift triggers to avoid spam
+    if await _is_in_cooldown(r, model_name):
+        logger.info("[%s] Cron: cooldown active – skipping", model_name)
+        mlops_cron_triggers_total.labels(model=model_name, status="cooldown").inc()
+        return
+
+    if RETRAINING_CRON_REQUIRE_APPROVAL:
+        initial_status = "pending_approval"
+    else:
+        # Cron with approval disabled goes straight to approved; execution
+        # still must be triggered explicitly via the API.
+        initial_status = "approved"
+
+    await _create_retraining_request(
+        r,
+        model_name,
+        trigger_type="SCHEDULED",
+        request_source="cron-scheduler",
+        initial_status=initial_status,
+    )
+    await _record_trigger(r, model_name)
+    mlops_cron_triggers_total.labels(model=model_name, status="request_created").inc()
+    logger.info(
+        "[%s] Cron: scheduled retraining request created – status=%s require_approval=%s",
+        model_name, initial_status, RETRAINING_CRON_REQUIRE_APPROVAL,
+    )
+
+
+# ---------------------------------------------------------------------------
+# API endpoints
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health() -> dict:
@@ -411,6 +710,11 @@ async def health() -> dict:
         "redis": "up" if redis_ok else "down",
         "pipeline_enabled": runtime_enabled,
         "auto_retrain_enabled": AUTO_RETRAIN_ENABLED,
+        "kafka_consumer_enabled": KAFKA_CONSUMER_ENABLED,
+        "kafka_topic": KAFKA_DRIFT_TOPIC,
+        "cron_enabled": RETRAINING_CRON_ENABLED,
+        "cron_expr": RETRAINING_CRON_EXPR if RETRAINING_CRON_ENABLED else None,
+        "cron_require_approval": RETRAINING_CRON_REQUIRE_APPROVAL,
         "models": list(_MODEL_CONFIG),
         "timestamp": _now_iso(),
     }
@@ -463,7 +767,7 @@ async def drift_events(limit: int = 20) -> dict:
 
 @app.post("/drift/trigger")
 async def manual_trigger(model_name: str = "congestion_5g") -> dict:
-    """Manually create a retraining request for a specific model."""
+    """Manually create a retraining request (trigger_type=DRIFT) for testing."""
     if model_name not in _MODEL_CONFIG:
         return {"triggered": False, "reason": f"unknown model '{model_name}'", "valid_models": list(_MODEL_CONFIG)}
     r = await _get_redis()
@@ -473,10 +777,10 @@ async def manual_trigger(model_name: str = "congestion_5g") -> dict:
     if not runtime_enabled:
         mlops_drift_enabled.set(0)
         mlops_drift_triggers_total.labels(model=model_name, status="disabled").inc()
-        return {"triggered": False, "reason": "runtime_disabled", "model": model_name, "anomaly_count": anomaly_count}
+        return {"triggered": False, "reason": "runtime_disabled", "model": model_name}
     if cooldown:
         mlops_drift_triggers_total.labels(model=model_name, status="cooldown").inc()
-        return {"triggered": False, "reason": "cooldown_active", "model": model_name, "anomaly_count": anomaly_count}
+        return {"triggered": False, "reason": "cooldown_active", "model": model_name}
     await _publish_drift_event(r, model_name, anomaly_count)
     ok = await _trigger_mlops_pipeline(model_name, anomaly_count)
     if ok:
@@ -484,11 +788,47 @@ async def manual_trigger(model_name: str = "congestion_5g") -> dict:
     return {"triggered": ok, "reason": "manual", "model": model_name, "anomaly_count": anomaly_count}
 
 
+@app.post("/retraining/scheduled/trigger")
+async def trigger_scheduled_now(model_name: str | None = None) -> dict:
+    """Manually fire the scheduled retraining cycle (useful for testing)."""
+    r = await _get_redis()
+    runtime_enabled = await _runtime_service_enabled(r)
+    models = [model_name] if model_name else RETRAINING_CRON_MODELS
+    created = []
+    skipped = []
+    for m in models:
+        if m not in _MODEL_CONFIG:
+            skipped.append({"model": m, "reason": "unknown"})
+            continue
+        try:
+            if await _has_pending_request(r, m):
+                skipped.append({"model": m, "reason": "pending_exists"})
+            elif await _is_in_cooldown(r, m):
+                skipped.append({"model": m, "reason": "cooldown"})
+            else:
+                initial_status = "pending_approval" if RETRAINING_CRON_REQUIRE_APPROVAL else "approved"
+                req_id = await _create_retraining_request(
+                    r, m, trigger_type="SCHEDULED", request_source="manual/scheduled-trigger",
+                    initial_status=initial_status,
+                )
+                await _record_trigger(r, m)
+                mlops_cron_triggers_total.labels(model=m, status="request_created").inc()
+                created.append({"model": m, "request_id": req_id, "status": initial_status})
+        except Exception as exc:
+            skipped.append({"model": m, "reason": str(exc)})
+    return {"created": created, "skipped": skipped, "runtime_enabled": runtime_enabled}
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+
 @app.on_event("startup")
 async def startup() -> None:
-    global _monitor_task
+    global _monitor_task, _kafka_task, _cron_task
     r = await _get_redis()
     mlops_drift_enabled.set(0)
+
     for attempt in range(30):
         try:
             await r.ping()
@@ -506,12 +846,28 @@ async def startup() -> None:
         except Exception as exc:
             logger.warning("Waiting for Redis (%d/30): %s", attempt + 1, exc)
             await asyncio.sleep(2.0)
+
     _monitor_task = asyncio.create_task(_monitor_loop())
+
+    if KAFKA_CONSUMER_ENABLED:
+        _kafka_task = asyncio.create_task(_kafka_consumer_loop())
+        logger.info("Kafka consumer task started – topic=%s", KAFKA_DRIFT_TOPIC)
+    else:
+        logger.info("Kafka consumer disabled (KAFKA_CONSUMER_ENABLED=false)")
+
+    if RETRAINING_CRON_ENABLED:
+        _cron_task = asyncio.create_task(_cron_scheduler_loop())
+        logger.info(
+            "Cron scheduler task started – expr=%r models=%s require_approval=%s",
+            RETRAINING_CRON_EXPR, RETRAINING_CRON_MODELS, RETRAINING_CRON_REQUIRE_APPROVAL,
+        )
+    else:
+        logger.info("Cron scheduler disabled (RETRAINING_CRON_ENABLED=false)")
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global _monitor_task
-    if _monitor_task:
-        _monitor_task.cancel()
-        await asyncio.gather(_monitor_task, return_exceptions=True)
+    for task in (_monitor_task, _kafka_task, _cron_task):
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

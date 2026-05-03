@@ -1,9 +1,63 @@
+# -----------------------------------------------------------------------------
+# Node.js dependencies and frontend build artifacts (recursive)
+# -----------------------------------------------------------------------------
+**/node_modules/
+**/dist/
+**/build/
+**/.vite/
+
+# -----------------------------------------------------------------------------
+# Python cache, bytecode, and virtual environments (recursive)
+# -----------------------------------------------------------------------------
+**/__pycache__/
+*.pyc
+**/*.pyc
+**/venv/
+**/.venv/
+
+# -----------------------------------------------------------------------------
+# Environment files (recursive)
+# Keep template env files
+# -----------------------------------------------------------------------------
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# -----------------------------------------------------------------------------
+# Logs and temporary files (recursive)
+# -----------------------------------------------------------------------------
+*.log
+**/*.log
+tmp/
+temp/
+**/tmp/
+**/temp/
+
+# -----------------------------------------------------------------------------
+# IDE and editor files (recursive)
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+**/.vscode/
+**/.idea/
+
+# -----------------------------------------------------------------------------
+# OS generated files (recursive)
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+**/.DS_Store
+**/Thumbs.db
+
+# -----------------------------------------------------------------------------
+# Local tooling and project-specific generated artifacts
+# -----------------------------------------------------------------------------
 .claude/
 infrastructure/.env
 
-# -----------------------------------------------------------------------
-# NeuroSlice generated MLOps runtime outputs
-# -----------------------------------------------------------------------
 neuroslice-platform/mlops-tier/batch-orchestrator/mlruns/
 neuroslice-platform/mlops-tier/batch-orchestrator/mlflow.db
 neuroslice-platform/mlops-tier/batch-orchestrator/models/registry.json

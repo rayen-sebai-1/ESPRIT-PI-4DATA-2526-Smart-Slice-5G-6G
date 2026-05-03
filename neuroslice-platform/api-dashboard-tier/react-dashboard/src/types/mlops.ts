@@ -175,14 +175,24 @@ export type MlopsRetrainingRequestStatus =
   | "failed"
   | "skipped";
 
+export type MlopsRetrainingTriggerType = "DRIFT" | "SCHEDULED" | "MANUAL";
+export type MlopsRetrainingScheduleFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "CUSTOM_CRON";
+export type MlopsRetrainingScheduleStatus = "ACTIVE" | "DISABLED" | "ERROR";
+
 export interface MlopsRetrainingRequest {
   id: string;
   model: string;
   model_internal: string | null;
   pipeline_action: string | null;
+  trigger_type: MlopsRetrainingTriggerType | null;
   reason: string;
   anomaly_count: number;
   threshold: number;
+  severity: string | null;
+  drift_score: number | null;
+  p_value: number | null;
+  request_source: string | null;
+  source_schedule_id: string | null;
   status: MlopsRetrainingRequestStatus;
   created_at: string;
   approved_by: string | null;
@@ -198,4 +208,35 @@ export interface MlopsRetrainingRequest {
 export interface MlopsRetrainingRequestListResponse {
   count: number;
   items: MlopsRetrainingRequest[];
+}
+
+export interface MlopsRetrainingSchedule {
+  id: string;
+  model_name: string;
+  enabled: boolean;
+  frequency: MlopsRetrainingScheduleFrequency;
+  cron_expr: string;
+  timezone: string;
+  require_approval: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  status: MlopsRetrainingScheduleStatus;
+}
+
+export interface MlopsRetrainingScheduleListResponse {
+  count: number;
+  items: MlopsRetrainingSchedule[];
+}
+
+export interface MlopsRetrainingScheduleUpsertPayload {
+  model_name: string;
+  enabled: boolean;
+  frequency: MlopsRetrainingScheduleFrequency;
+  cron_expr: string;
+  timezone: string;
+  require_approval: boolean;
+  allow_duplicate_enabled?: boolean;
 }

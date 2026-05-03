@@ -1,6 +1,6 @@
 # MLOps Runner
 
-Internal-only worker that executes fixed offline MLOps pipeline actions on demand. It exists so the React dashboard and `mlops-drift-monitor` can trigger the offline training pipeline without giving any other service direct access to the Docker socket or arbitrary shell commands.
+Internal-only worker that executes fixed offline MLOps pipeline actions on demand. It exists so the React dashboard can trigger the offline training pipeline (after human approval of a retraining request) without giving any other service direct access to the Docker socket or arbitrary shell commands.
 
 ## Security model
 
@@ -17,7 +17,7 @@ Internal-only worker that executes fixed offline MLOps pipeline actions on deman
 - `GET /metrics` -> Prometheus metrics
 - `POST /run-action` -> blocks until the action completes (or hits `MLOPS_ORCHESTRATION_TIMEOUT_SECONDS`), then returns `{ accepted, exit_code, duration_seconds, stdout, stderr, command_label, trigger_source, timed_out }`.
 
-`dashboard-backend` calls `POST /run-action` from a background task so the HTTP request from the React dashboard returns immediately with a `RUNNING` status. `mlops-drift-monitor` calls it directly when an anomaly burst is detected.
+`dashboard-backend` calls `POST /run-action` from a background task so the HTTP request from the React dashboard returns immediately with a `RUNNING` status. `mlops-drift-monitor` does not call it directly — it creates `pending_approval` retraining requests that must be approved and executed by a human via the dashboard before `dashboard-backend` calls `mlops-runner`.
 
 ## Request body
 
@@ -61,7 +61,7 @@ Internal-only worker that executes fixed offline MLOps pipeline actions on deman
 
 ## Environment Variables Clarification
 
-- `MLOPS_PIPELINE_ENABLED` does not control command execution inside this service. It is used by upstream trigger callers (`dashboard-backend` and `mlops-drift-monitor`) to decide whether to submit a run request.
+- `MLOPS_PIPELINE_ENABLED` does not control command execution inside this service. It is used by `dashboard-backend` to decide whether to submit a run request.
 - `MLOPS_ORCHESTRATION_ENABLED` is the execution kill switch in `mlops-runner` itself.
 
 ## Prometheus Metrics

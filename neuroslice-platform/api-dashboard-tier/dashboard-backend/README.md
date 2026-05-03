@@ -53,6 +53,11 @@ Last verified: 2026-04-30.
 - `GET /mlops/pipeline/runs`
 - `GET /mlops/pipeline/runs/{run_id}`
 - `GET /mlops/pipeline/runs/{run_id}/logs`
+- `GET /mlops/requests`
+- `GET /mlops/requests/{request_id}`
+- `POST /mlops/requests/{request_id}/approve`
+- `POST /mlops/requests/{request_id}/reject`
+- `POST /mlops/requests/{request_id}/execute`
 - `GET /controls/actions`
 - `GET /controls/actions/{action_id}`
 - `POST /controls/actions/{action_id}/approve`
@@ -75,6 +80,8 @@ Backend API role checks:
 - rerun actions: `ADMIN`, `NETWORK_OPERATOR`
 - MLOps read views (`/mlops/*` GET, including `/mlops/tools`, `/mlops/tools/health`, `/mlops/pipeline/config`, `/mlops/pipeline/runs`, `/mlops/pipeline/runs/{id}/logs`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
 - MLOps write actions (`POST /mlops/promote`, `POST /mlops/rollback`, `POST /mlops/pipeline/run`): `ADMIN`, `DATA_MLOPS_ENGINEER`
+- retraining requests read (`GET /mlops/requests`, `GET /mlops/requests/{id}`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_MANAGER`
+- retraining approve/reject/execute (`POST /mlops/requests/{id}/approve`, `.../reject`, `.../execute`): `ADMIN`, `DATA_MLOPS_ENGINEER`
 - runtime read (`GET /runtime/services*`): `ADMIN`, `NETWORK_MANAGER`, `NETWORK_OPERATOR`, `DATA_MLOPS_ENGINEER`
 - runtime write (`PATCH /runtime/services/{service_name}`): `ADMIN`, `DATA_MLOPS_ENGINEER`, `NETWORK_OPERATOR` (operational AIOps toggles only)
 
@@ -158,6 +165,21 @@ curl -i http://localhost:8008/api/dashboard/national
 ```
 
 `/health` should succeed on the internal service port. Dashboard API calls through Kong should require a valid dashboard access token.
+
+## Retraining Requests
+
+`/mlops/requests` exposes the human-approval gate for all retraining triggers (anomaly-stream, Kafka drift.alert, cron scheduler).
+
+Each request carries:
+
+- `trigger_type`: `DRIFT` | `SCHEDULED` | `MANUAL`
+- `severity`: `LOW` | `MEDIUM` | `HIGH` | `CRITICAL` (null for non-Kafka triggers)
+- `drift_score`: float (null for non-drift triggers)
+- `p_value`: float (null for non-statistical triggers)
+- `request_source`: `mlops-drift-monitor` | `kafka/drift.alert` | `cron-scheduler`
+- `status`: `pending_approval` → `approved` / `rejected` → `running` → `completed` / `failed`
+
+State transitions: only `approved` requests can be executed; `rejected` is a terminal state. Duplicate detection prevents creating a second request for a model that already has a pending/approved request. Per-model cooldown is enforced at execution time.
 
 ## MLOps Operations Center
 

@@ -13,17 +13,46 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { LiveStatePage } from "@/pages/LiveStatePage";
 import { RootCauseAgentPage } from "@/pages/RootCauseAgentPage";
 import { CopilotAgentPage } from "@/pages/CopilotAgentPage";
-import { MlopsLayout } from "@/pages/mlops/MlopsLayout";
-import { MlopsOverviewPage } from "@/pages/mlops/MlopsOverviewPage";
-import { MlopsModelsPage } from "@/pages/mlops/MlopsModelsPage";
-import { MlopsRunsPage } from "@/pages/mlops/MlopsRunsPage";
-import { MlopsArtifactsPage } from "@/pages/mlops/MlopsArtifactsPage";
-import { MlopsPromotionsPage } from "@/pages/mlops/MlopsPromotionsPage";
-import { MlopsMonitoringPage } from "@/pages/mlops/MlopsMonitoringPage";
-import { MlopsOperationsPage } from "@/pages/mlops/MlopsOperationsPage";
-import { MlopsOrchestrationPage } from "@/pages/mlops/MlopsOrchestrationPage";
-import { MlopsDriftPage } from "@/pages/mlops/MlopsDriftPage";
-import { MlopsRequestsPage } from "@/pages/mlops/MlopsRequestsPage";
+import { MonitoringToolsPage } from "@/pages/MonitoringToolsPage";
+
+// MLOps pages are code-split: each sub-page is only loaded when the user
+// navigates to /mlops for the first time, keeping the initial bundle small.
+const MlopsLayout = lazy(() =>
+  import("@/pages/mlops/MlopsLayout").then((m) => ({ default: m.MlopsLayout })),
+);
+const MlopsOverviewPage = lazy(() =>
+  import("@/pages/mlops/MlopsOverviewPage").then((m) => ({ default: m.MlopsOverviewPage })),
+);
+const MlopsModelsPage = lazy(() =>
+  import("@/pages/mlops/MlopsModelsPage").then((m) => ({ default: m.MlopsModelsPage })),
+);
+const MlopsRunsPage = lazy(() =>
+  import("@/pages/mlops/MlopsRunsPage").then((m) => ({ default: m.MlopsRunsPage })),
+);
+const MlopsArtifactsPage = lazy(() =>
+  import("@/pages/mlops/MlopsArtifactsPage").then((m) => ({ default: m.MlopsArtifactsPage })),
+);
+const MlopsPromotionsPage = lazy(() =>
+  import("@/pages/mlops/MlopsPromotionsPage").then((m) => ({ default: m.MlopsPromotionsPage })),
+);
+const MlopsMonitoringPage = lazy(() =>
+  import("@/pages/mlops/MlopsMonitoringPage").then((m) => ({ default: m.MlopsMonitoringPage })),
+);
+const MlopsOperationsPage = lazy(() =>
+  import("@/pages/mlops/MlopsOperationsPage").then((m) => ({ default: m.MlopsOperationsPage })),
+);
+const MlopsOrchestrationPage = lazy(() =>
+  import("@/pages/mlops/MlopsOrchestrationPage").then((m) => ({ default: m.MlopsOrchestrationPage })),
+);
+const MlopsDriftPage = lazy(() =>
+  import("@/pages/mlops/MlopsDriftPage").then((m) => ({ default: m.MlopsDriftPage })),
+);
+const MlopsRequestsPage = lazy(() =>
+  import("@/pages/mlops/MlopsRequestsPage").then((m) => ({ default: m.MlopsRequestsPage })),
+);
+const MlopsRetrainingSchedulePage = lazy(() =>
+  import("@/pages/mlops/MlopsRetrainingSchedulePage").then((m) => ({ default: m.MlopsRetrainingSchedulePage })),
+);
 
 const ControlActionsLayout = lazy(() =>
   import("@/pages/control/actions/ControlActionsLayout").then((module) => ({
@@ -77,6 +106,7 @@ export const router = createBrowserRouter([
             ),
             children: [{ path: "/predictions", element: <PredictionsCenterPage /> }],
           },
+          { path: "/monitoring-tools", element: <MonitoringToolsPage /> },
           { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
           { path: "/agentic/copilot", element: <CopilotAgentPage /> },
           {
@@ -88,21 +118,21 @@ export const router = createBrowserRouter([
                 path: "/control/actions",
                 element: withSuspense(<ControlActionsLayout />),
                 children: [
-                  { index: true, element: <Navigate to="/control/actions/SimulatedActuations" replace /> },
+                  { index: true, element: <Navigate to="/control/actions/simulated-actuations" replace /> },
                   {
-                    path: "SimulatedActuations",
+                    path: "simulated-actuations",
                     element: withSuspense(<SimulatedActuationsPage />),
                   },
                   {
-                    path: "ActionHistory",
+                    path: "action-history",
                     element: withSuspense(<ActionHistoryPage />),
                   },
                   {
-                    path: "PendingApproval",
+                    path: "pending-approval",
                     element: withSuspense(<PendingApprovalPage />),
                   },
                   {
-                    path: "DriftMonitor",
+                    path: "drift-monitor",
                     element: withSuspense(<DriftMonitorPage />),
                   },
                 ],
@@ -118,18 +148,19 @@ export const router = createBrowserRouter([
             children: [
               {
                 path: "/mlops",
-                element: <MlopsLayout />,
+                element: withSuspense(<MlopsLayout />),
                 children: [
-                  { index: true, element: <MlopsOverviewPage /> },
-                  { path: "models", element: <MlopsModelsPage /> },
-                  { path: "runs", element: <MlopsRunsPage /> },
-                  { path: "artifacts", element: <MlopsArtifactsPage /> },
-                  { path: "promotions", element: <MlopsPromotionsPage /> },
-                  { path: "monitoring", element: <MlopsMonitoringPage /> },
-                  { path: "drift", element: <MlopsDriftPage /> },
-                  { path: "requests", element: <MlopsRequestsPage /> },
-                  { path: "operations", element: <MlopsOperationsPage /> },
-                  { path: "orchestration", element: <MlopsOrchestrationPage /> },
+                  { index: true, element: withSuspense(<MlopsOverviewPage />) },
+                  { path: "models", element: withSuspense(<MlopsModelsPage />) },
+                  { path: "runs", element: withSuspense(<MlopsRunsPage />) },
+                  { path: "artifacts", element: withSuspense(<MlopsArtifactsPage />) },
+                  { path: "promotions", element: withSuspense(<MlopsPromotionsPage />) },
+                  { path: "monitoring", element: withSuspense(<MlopsMonitoringPage />) },
+                  { path: "drift", element: withSuspense(<MlopsDriftPage />) },
+                  { path: "requests", element: withSuspense(<MlopsRequestsPage />) },
+                  { path: "retraining-schedule", element: withSuspense(<MlopsRetrainingSchedulePage />) },
+                  { path: "operations", element: withSuspense(<MlopsOperationsPage />) },
+                  { path: "orchestration", element: withSuspense(<MlopsOrchestrationPage />) },
                 ],
               },
             ],

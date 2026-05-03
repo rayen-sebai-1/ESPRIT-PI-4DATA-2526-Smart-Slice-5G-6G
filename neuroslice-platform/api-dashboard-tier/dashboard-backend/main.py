@@ -1,26 +1,35 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import redis
 import uuid
+try:
+    from croniter import croniter as _croniter
+except Exception:  # noqa: BLE001
+    _croniter = None
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db import check_database_connection, get_db
+from db import check_database_connection, get_db, get_session_factory
 from mlops import MlopsService, get_mlops_service
 from mlops_ops import MlopsOpsService, background_execute_run
 from mlops_orchestration import MlopsOrchestrationService, background_execute_orchestration_run
+from models import MlopsRetrainingSchedule
 from schemas import (
     AgenticHealthResponse,
     AlertAcknowledgePayload,
@@ -46,6 +55,10 @@ from schemas import (
     MlopsPromotionEvent,
     MlopsRetrainingRequest,
     MlopsRetrainingRequestListResponse,
+    MlopsRetrainingScheduleCreate,
+    MlopsRetrainingScheduleListResponse,
+    MlopsRetrainingScheduleResponse,
+    MlopsRetrainingScheduleUpdate,
     MlopsRollbackRequest,
     MlopsRunSummary,
     MlopsToolsHealthResponse,
@@ -56,6 +69,8 @@ from schemas import (
     RunBatchRequest,
     SessionListResponse,
     SessionSummary,
+    SliceDistributionPoint,
+    TrendPoint,
 )
 from service import DashboardService, get_current_user, get_dashboard_provider, get_dashboard_service, require_roles
 
@@ -141,6 +156,31 @@ async def dashboard_metrics_middleware(request: Request, call_next):
     return response
 
 
+@app.on_event("startup")
+async def startup_scheduler() -> None:
+    global _mlops_schedule_task
+    if not _MLOPS_SCHEDULE_ENABLED:
+        logger.info("MLOps schedule loop disabled by MLOPS_SCHEDULE_ENABLED=false.")
+        return
+    if _mlops_schedule_task is None or _mlops_schedule_task.done():
+        _mlops_schedule_task = asyncio.create_task(_mlops_schedule_loop())
+        logger.info("MLOps schedule loop started (poll=%ss).", _MLOPS_SCHEDULE_POLL_SECONDS)
+
+
+@app.on_event("shutdown")
+async def shutdown_scheduler() -> None:
+    global _mlops_schedule_task
+    if _mlops_schedule_task is None:
+        return
+    _mlops_schedule_task.cancel()
+    try:
+        await _mlops_schedule_task
+    except asyncio.CancelledError:
+        pass
+    _mlops_schedule_task = None
+    logger.info("MLOps schedule loop stopped.")
+
+
 class RuntimeServicePatchRequest(BaseModel):
     enabled: bool | None = None
     mode: str | None = None
@@ -172,6 +212,9 @@ _MLOPS_REQUEST_ACTION_BY_MODEL: dict[str, str] = {
     "congestion-5g": "pipeline_congestion_5g",
     "sla-5g": "pipeline_sla_5g",
     "slice-type-5g": "pipeline_slice_type_5g",
+    "congestion_5g": "pipeline_congestion_5g",
+    "sla_5g": "pipeline_sla_5g",
+    "slice_type_5g": "pipeline_slice_type_5g",
 }
 
 _MLOPS_INTERNAL_TO_PUBLIC_MODEL: dict[str, str] = {
@@ -202,10 +245,24 @@ try:
 except ValueError:
     _MLOPS_RUNNER_TIMEOUT_SECONDS = 7200
 
+try:
+    _MLOPS_SCHEDULE_POLL_SECONDS = max(
+        10,
+        int(os.getenv("MLOPS_SCHEDULE_POLL_SECONDS", "30")),
+    )
+except ValueError:
+    _MLOPS_SCHEDULE_POLL_SECONDS = 30
+
+_MLOPS_SCHEDULE_ALLOWED_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "CUSTOM_CRON"}
+_mlops_schedule_task: asyncio.Task | None = None
+
 def _parse_bool(value: str | None, *, default: bool = True) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+_MLOPS_SCHEDULE_ENABLED = _parse_bool(os.getenv("MLOPS_SCHEDULE_ENABLED"), default=True)
 
 
 def _runtime_default_mode(enabled: bool) -> str:
@@ -275,11 +332,393 @@ def _request_model_internal(raw: dict[str, Any]) -> str:
 def _request_model_public(raw: dict[str, Any]) -> str:
     value = str(raw.get("model") or "").strip()
     if value:
+        if value in _MLOPS_INTERNAL_TO_PUBLIC_MODEL:
+            return _MLOPS_INTERNAL_TO_PUBLIC_MODEL[value]
         return value
     internal = str(raw.get("model_internal") or "").strip()
     if internal in _MLOPS_INTERNAL_TO_PUBLIC_MODEL:
         return _MLOPS_INTERNAL_TO_PUBLIC_MODEL[internal]
     return internal
+
+
+def _normalize_schedule_model_name(model_name: str) -> str:
+    raw = model_name.strip()
+    return _MLOPS_INTERNAL_TO_PUBLIC_MODEL.get(raw, raw)
+
+
+def _validate_timezone_name(timezone_name: str) -> None:
+    try:
+        ZoneInfo(timezone_name)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid timezone '{timezone_name}'.") from exc
+
+
+def _expand_cron_field(raw: str, minimum: int, maximum: int) -> set[int]:
+    values: set[int] = set()
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            raise ValueError("empty cron token")
+        if token == "*":
+            values.update(range(minimum, maximum + 1))
+            continue
+
+        step = 1
+        if "/" in token:
+            left, right = token.split("/", 1)
+            if not right.isdigit():
+                raise ValueError("invalid cron step")
+            step = int(right)
+            if step <= 0:
+                raise ValueError("invalid cron step")
+        else:
+            left = token
+
+        if left == "*":
+            start = minimum
+            end = maximum
+        elif "-" in left:
+            start_s, end_s = left.split("-", 1)
+            start = int(start_s)
+            end = int(end_s)
+        else:
+            start = int(left)
+            end = int(left)
+
+        if start < minimum or end > maximum or start > end:
+            raise ValueError("cron token out of bounds")
+
+        values.update(range(start, end + 1, step))
+
+    if not values:
+        raise ValueError("empty cron values")
+    return values
+
+
+def _cron_fallback_next_run(cron_expr: str, base_local: datetime) -> datetime:
+    fields = cron_expr.split()
+    if len(fields) != 5:
+        raise ValueError("cron expression must have 5 fields")
+    minute_set = _expand_cron_field(fields[0], 0, 59)
+    hour_set = _expand_cron_field(fields[1], 0, 23)
+    dom_set = _expand_cron_field(fields[2], 1, 31)
+    month_set = _expand_cron_field(fields[3], 1, 12)
+    dow_set = _expand_cron_field(fields[4], 0, 6)
+
+    probe = base_local.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    for _ in range(0, 366 * 24 * 60):
+        if (
+            probe.minute in minute_set
+            and probe.hour in hour_set
+            and probe.day in dom_set
+            and probe.month in month_set
+            and ((probe.weekday() + 1) % 7) in dow_set
+        ):
+            return probe
+        probe += timedelta(minutes=1)
+    raise ValueError("could not compute next run for cron expression")
+
+
+def _validate_cron_expr(cron_expr: str) -> None:
+    if _croniter is not None:
+        if not _croniter.is_valid(cron_expr):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cron expression.")
+        return
+    try:
+        _cron_fallback_next_run(cron_expr, datetime.now(UTC))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cron expression.") from exc
+
+
+def _validate_frequency(value: str) -> str:
+    frequency = value.strip().upper()
+    if frequency not in _MLOPS_SCHEDULE_ALLOWED_FREQUENCIES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid schedule frequency.")
+    return frequency
+
+
+def _compute_next_run_at(cron_expr: str, timezone_name: str, *, from_dt: datetime | None = None) -> datetime:
+    _validate_timezone_name(timezone_name)
+    _validate_cron_expr(cron_expr)
+
+    tz = ZoneInfo(timezone_name)
+    base_utc = (from_dt or datetime.now(UTC)).astimezone(UTC)
+    base_local = base_utc.astimezone(tz)
+    if _croniter is not None:
+        iterator = _croniter(cron_expr, base_local)
+        next_local = iterator.get_next(datetime)
+        if next_local.tzinfo is None:
+            next_local = next_local.replace(tzinfo=tz)
+    else:
+        next_local = _cron_fallback_next_run(cron_expr, base_local)
+    return next_local.astimezone(UTC)
+
+
+def _schedule_to_response(item: MlopsRetrainingSchedule) -> MlopsRetrainingScheduleResponse:
+    frequency = str(item.frequency or "").strip().upper()
+    if frequency not in _MLOPS_SCHEDULE_ALLOWED_FREQUENCIES:
+        frequency = "CUSTOM_CRON"
+    return MlopsRetrainingScheduleResponse(
+        id=str(item.id),
+        model_name=item.model_name,
+        enabled=bool(item.enabled),
+        frequency=frequency,
+        cron_expr=item.cron_expr,
+        timezone=item.timezone,
+        require_approval=bool(item.require_approval),
+        created_by=item.created_by,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        last_run_at=item.last_run_at,
+        next_run_at=item.next_run_at,
+        status=(item.status if item.status in {"ACTIVE", "DISABLED", "ERROR"} else "ERROR"),
+    )
+
+
+def _assert_no_duplicate_enabled_schedule(
+    db: Session,
+    *,
+    model_name: str,
+    allow_duplicate_enabled: bool,
+    exclude_id: uuid.UUID | None = None,
+) -> None:
+    if allow_duplicate_enabled:
+        return
+    statement = (
+        select(MlopsRetrainingSchedule.id)
+        .where(MlopsRetrainingSchedule.enabled.is_(True))
+        .where(MlopsRetrainingSchedule.model_name == model_name)
+    )
+    if exclude_id is not None:
+        statement = statement.where(MlopsRetrainingSchedule.id != exclude_id)
+    existing_id = db.scalar(statement.limit(1))
+    if existing_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"An enabled schedule already exists for model '{model_name}'.",
+        )
+
+
+def _create_scheduled_retraining_request(
+    client: redis.Redis,
+    *,
+    model_name_public: str,
+    require_approval: bool,
+    source_schedule_id: str,
+) -> str:
+    model_internal = _MLOPS_PUBLIC_TO_INTERNAL_MODEL.get(model_name_public, model_name_public)
+    pipeline_action = (
+        _MLOPS_REQUEST_ACTION_BY_MODEL.get(model_name_public)
+        or _MLOPS_REQUEST_ACTION_BY_MODEL.get(model_internal)
+    )
+    request_id = str(uuid.uuid4())
+    now_iso = _now_iso()
+    request_status = "pending_approval" if require_approval else "approved"
+    request = {
+        "id": request_id,
+        "model": model_name_public,
+        "model_internal": model_internal,
+        "pipeline_action": pipeline_action,
+        "trigger_type": "SCHEDULED",
+        "reason": "scheduled",
+        "anomaly_count": 0,
+        "threshold": 0,
+        "severity": None,
+        "drift_score": None,
+        "p_value": None,
+        "status": request_status,
+        "created_at": now_iso,
+        "approved_by": None,
+        "approved_at": None,
+        "executed_by": None,
+        "executed_at": None,
+        "completed_at": None,
+        "updated_at": now_iso,
+        "request_source": "dashboard-scheduler",
+        "source_schedule_id": source_schedule_id,
+        "auto_execute": (not require_approval),
+    }
+    client.set(_request_key(request_id), json.dumps(request))
+    client.zadd(_MLOPS_REQUEST_INDEX_KEY, {request_id: time.time()})
+    if request_status == "pending_approval":
+        client.sadd(_request_pending_key(model_internal), request_id)
+    return request_id
+
+
+def _launch_retraining_background(request_id: str) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(asyncio.to_thread(_execute_retraining_request_background, request_id))
+    except RuntimeError:
+        threading.Thread(
+            target=_execute_retraining_request_background,
+            args=(request_id,),
+            daemon=True,
+        ).start()
+
+
+def _retry_auto_execute_requests(client: redis.Redis, *, limit: int = 500) -> None:
+    request_ids = client.zrevrange(_MLOPS_REQUEST_INDEX_KEY, 0, max(0, limit - 1))
+    for request_id in request_ids:
+        raw = client.get(_request_key(request_id))
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("trigger_type") or "").upper() != "SCHEDULED":
+            continue
+        if not bool(payload.get("auto_execute")):
+            continue
+        if str(payload.get("status") or "") != "approved":
+            continue
+        try:
+            _attempt_execute_retraining_request(
+                client,
+                str(request_id),
+                executed_by="scheduler@system",
+                launch_background=_launch_retraining_background,
+            )
+            logger.info(
+                "Auto-execution retry succeeded for scheduled request_id=%s",
+                request_id,
+            )
+        except HTTPException as exc:
+            logger.info(
+                "Auto-execution retry deferred for request_id=%s detail=%s",
+                request_id,
+                exc.detail,
+            )
+
+
+def _has_live_pending_request(client: redis.Redis, model_internal: str) -> bool:
+    pending_key = _request_pending_key(model_internal)
+    request_ids = list(client.smembers(pending_key) or [])
+    if not request_ids:
+        return False
+
+    live_statuses = {"pending_approval", "approved", "running"}
+    has_live = False
+    for request_id in request_ids:
+        raw = client.get(_request_key(request_id))
+        if not raw:
+            client.srem(pending_key, request_id)
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            client.srem(pending_key, request_id)
+            continue
+        if not isinstance(payload, dict):
+            client.srem(pending_key, request_id)
+            continue
+        status_value = str(payload.get("status") or "")
+        if status_value in live_statuses:
+            has_live = True
+        else:
+            client.srem(pending_key, request_id)
+    return has_live
+
+
+def _run_mlops_schedule_cycle() -> None:
+    session_factory = get_session_factory()
+    redis_client = _runtime_redis_client()
+    now_utc = datetime.now(UTC)
+
+    with session_factory() as db:
+        schedules = list(
+            db.scalars(
+                select(MlopsRetrainingSchedule)
+                .where(MlopsRetrainingSchedule.enabled.is_(True))
+            )
+        )
+        for item in schedules:
+            schedule_id = str(item.id)
+            try:
+                if item.next_run_at is None:
+                    item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
+                    item.status = "ACTIVE"
+                    continue
+                due_at = item.next_run_at.astimezone(UTC)
+                if due_at > now_utc:
+                    continue
+
+                model_internal = _MLOPS_PUBLIC_TO_INTERNAL_MODEL.get(item.model_name, item.model_name)
+                has_pending = _has_live_pending_request(redis_client, model_internal)
+                block_creation = bool(item.require_approval) and has_pending
+                if block_creation:
+                    logger.info(
+                        "Schedule trigger skipped: schedule_id=%s model=%s reason=pending_request_exists",
+                        schedule_id,
+                        item.model_name,
+                    )
+                    item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
+                    item.status = "ACTIVE"
+                else:
+                    request_id = _create_scheduled_retraining_request(
+                        redis_client,
+                        model_name_public=item.model_name,
+                        require_approval=bool(item.require_approval),
+                        source_schedule_id=schedule_id,
+                    )
+                    logger.info(
+                        "Schedule trigger created retraining request: schedule_id=%s model=%s request_id=%s status=%s",
+                        schedule_id,
+                        item.model_name,
+                        request_id,
+                        "pending_approval" if item.require_approval else "approved",
+                    )
+                    if not item.require_approval:
+                        try:
+                            execution = _attempt_execute_retraining_request(
+                                redis_client,
+                                request_id,
+                                executed_by="scheduler@system",
+                                launch_background=_launch_retraining_background,
+                            )
+                            logger.info(
+                                "Schedule trigger auto-execution result: schedule_id=%s request_id=%s status=%s",
+                                schedule_id,
+                                request_id,
+                                execution.status,
+                            )
+                        except HTTPException as exc:
+                            logger.warning(
+                                "Schedule trigger auto-execution skipped: schedule_id=%s request_id=%s detail=%s",
+                                schedule_id,
+                                request_id,
+                                exc.detail,
+                            )
+
+                    item.last_run_at = now_utc
+                    item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
+                    item.status = "ACTIVE"
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Schedule trigger failed: schedule_id=%s", schedule_id)
+                item.status = "ERROR"
+                # Keep advancing next_run_at to avoid a tight error loop on every poll.
+                try:
+                    item.next_run_at = _compute_next_run_at(item.cron_expr, item.timezone, from_dt=now_utc)
+                except Exception:
+                    pass
+                logger.error("Schedule error detail: %s", exc)
+        # Best-effort retries for any previously approved auto-execute scheduled requests.
+        _retry_auto_execute_requests(redis_client, limit=500)
+        db.commit()
+
+
+async def _mlops_schedule_loop() -> None:
+    while True:
+        try:
+            _run_mlops_schedule_cycle()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("MLOps scheduler loop failed: %s", exc)
+        await asyncio.sleep(_MLOPS_SCHEDULE_POLL_SECONDS)
 
 
 def _normalize_retraining_request(raw: dict[str, Any]) -> MlopsRetrainingRequest:
@@ -288,9 +727,19 @@ def _normalize_retraining_request(raw: dict[str, Any]) -> MlopsRetrainingRequest
     normalized["model"] = _request_model_public(raw)
     normalized["model_internal"] = _request_model_internal(raw)
     normalized["pipeline_action"] = raw.get("pipeline_action") or _MLOPS_REQUEST_ACTION_BY_MODEL.get(normalized["model"])
+    # trigger_type: normalise legacy requests (no trigger_type stored) to DRIFT
+    raw_trigger = str(raw.get("trigger_type") or "").strip().upper()
+    normalized["trigger_type"] = raw_trigger if raw_trigger in {"DRIFT", "SCHEDULED", "MANUAL"} else "DRIFT"
     normalized["reason"] = str(raw.get("reason") or "drift_detected")
     normalized["anomaly_count"] = int(raw.get("anomaly_count") or 0)
     normalized["threshold"] = int(raw.get("threshold") or 0)
+    normalized["severity"] = raw.get("severity") or None
+    raw_ds = raw.get("drift_score")
+    normalized["drift_score"] = float(raw_ds) if raw_ds is not None else None
+    raw_pv = raw.get("p_value")
+    normalized["p_value"] = float(raw_pv) if raw_pv is not None else None
+    normalized["request_source"] = raw.get("request_source") or None
+    normalized["source_schedule_id"] = str(raw.get("source_schedule_id") or "") or None
     normalized["status"] = str(raw.get("status") or "pending_approval")
     normalized["created_at"] = str(raw.get("created_at") or _now_iso())
     normalized["updated_at"] = str(raw.get("updated_at") or normalized["created_at"])
@@ -534,6 +983,104 @@ def acknowledge_alert(
     return dashboard_service.acknowledge_alert(current_user, alert_key=alert_key, note=payload.note)
 
 
+@app.get("/metrics/sla-trend", response_model=list[TrendPoint], tags=["dashboard"])
+def get_sla_trend(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*dashboard_reader_roles))],
+    hours: int = Query(default=12, ge=1, le=168, description="Lookback window in hours (1–168)"),
+) -> list[TrendPoint]:
+    """Return hourly national SLA / congestion trend points from InfluxDB via BFF.
+
+    If BFF is unreachable (service not yet deployed) the endpoint returns an
+    empty list so the frontend EmptyState renders naturally.
+    """
+    window = f"-{hours}h"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/network/national", params={"window": window})
+        if resp.status_code >= 400:
+            logger.warning("BFF /network/national returned %s for sla-trend", resp.status_code)
+            return []
+        payload = resp.json()
+    except Exception:
+        logger.exception("BFF unreachable while fetching sla-trend")
+        return []
+
+    raw_trend = payload.get("trend") or []
+    if not isinstance(raw_trend, list):
+        return []
+
+    now = datetime.now(UTC)
+    points: list[TrendPoint] = []
+    for item in raw_trend:
+        if not isinstance(item, dict):
+            continue
+        ts_raw = item.get("timestamp")
+        if not ts_raw:
+            continue
+        try:
+            ts_str = str(ts_raw).strip()
+            if ts_str.endswith("Z"):
+                ts_str = ts_str[:-1] + "+00:00"
+            generated_at = datetime.fromisoformat(ts_str)
+        except Exception:
+            generated_at = now
+        label = generated_at.strftime("%H:%M")
+        points.append(
+            TrendPoint(
+                label=label,
+                generated_at=generated_at,
+                sla_percent=round(float(item.get("sla_percent") or 0.0), 2),
+                congestion_rate=round(float(item.get("congestion_rate") or 0.0), 2),
+                active_alerts_count=int(item.get("active_alerts_count") or 0),
+                anomalies_count=int(item.get("anomalies_count") or 0),
+                total_sessions=int(item.get("total_sessions") or 0),
+            )
+        )
+    return points
+
+
+@app.get("/metrics/slice-distribution", response_model=list[SliceDistributionPoint], tags=["dashboard"])
+def get_slice_distribution(
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*dashboard_reader_roles))],
+) -> list[SliceDistributionPoint]:
+    """Return current slice type distribution from InfluxDB via BFF.
+
+    Aggregated across all network domains (core / edge / RAN).
+    Returns an empty list when BFF is not yet deployed so the frontend
+    EmptyState renders without error.
+    """
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(f"{_BFF_BASE_URL}/api/v1/network/national")
+        if resp.status_code >= 400:
+            logger.warning("BFF /network/national returned %s for slice-distribution", resp.status_code)
+            return []
+        payload = resp.json()
+    except Exception:
+        logger.exception("BFF unreachable while fetching slice-distribution")
+        return []
+
+    raw_dist = payload.get("slice_distribution") or []
+    if not isinstance(raw_dist, list):
+        return []
+
+    points: list[SliceDistributionPoint] = []
+    for item in raw_dist:
+        if not isinstance(item, dict):
+            continue
+        slice_type = str(item.get("slice_type") or "").strip()
+        if not slice_type:
+            continue
+        sessions_count = int(
+            item.get("sessions_count")
+            or item.get("entities_count")
+            or item.get("count")
+            or 0
+        )
+        points.append(SliceDistributionPoint(slice_type=slice_type, sessions_count=sessions_count))
+    return points
+
+
 @app.get("/sessions", response_model=SessionListResponse, tags=["sessions"])
 def get_sessions(
     dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
@@ -752,7 +1299,7 @@ def get_mlops_retraining_request(
 @app.post("/mlops/requests/{request_id}/approve", response_model=MlopsRetrainingRequest, tags=["mlops"])
 def approve_mlops_retraining_request(
     request_id: str,
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN", "DATA_MLOPS_ENGINEER"))],
 ) -> MlopsRetrainingRequest:
     client = _runtime_redis_client()
     request = _load_retraining_request(client, request_id)
@@ -773,7 +1320,7 @@ def approve_mlops_retraining_request(
 @app.post("/mlops/requests/{request_id}/reject", response_model=MlopsRetrainingRequest, tags=["mlops"])
 def reject_mlops_retraining_request(
     request_id: str,
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN", "DATA_MLOPS_ENGINEER"))],
 ) -> MlopsRetrainingRequest:
     client = _runtime_redis_client()
     request = _load_retraining_request(client, request_id)
@@ -791,24 +1338,20 @@ def reject_mlops_retraining_request(
     return _normalize_retraining_request(request)
 
 
-@app.post(
-    "/mlops/requests/{request_id}/execute",
-    response_model=MlopsRetrainingRequest,
-    status_code=status.HTTP_202_ACCEPTED,
-    tags=["mlops"],
-)
-def execute_mlops_retraining_request(
+def _attempt_execute_retraining_request(
+    client: redis.Redis,
     request_id: str,
-    background_tasks: BackgroundTasks,
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    *,
+    executed_by: str,
+    launch_background: Any,
 ) -> MlopsRetrainingRequest:
-    client = _runtime_redis_client()
     decision_lock = client.lock(_MLOPS_DECISION_LOCK_KEY, timeout=10, blocking_timeout=2)
     if not decision_lock.acquire(blocking=True):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Another execution decision is in progress. Retry.")
     try:
         request = _load_retraining_request(client, request_id)
         current_status = str(request.get("status") or "")
+        auto_execute = bool(request.get("auto_execute"))
         if current_status != "approved":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Request must be approved before execution (current status: {current_status}).")
 
@@ -826,31 +1369,45 @@ def execute_mlops_retraining_request(
             except ValueError:
                 elapsed = cooldown_sec + 1
             if elapsed < cooldown_sec:
-                request["status"] = "skipped"
-                request["execution_detail"] = (
-                    f"Skipped due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes)."
-                )
+                if auto_execute:
+                    request["status"] = "approved"
+                    request["execution_detail"] = (
+                        f"Deferred due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes). Auto-retry will continue."
+                    )
+                else:
+                    request["status"] = "skipped"
+                    request["execution_detail"] = (
+                        f"Skipped due to cooldown ({_MLOPS_RETRAIN_COOLDOWN_MINUTES} minutes)."
+                    )
                 _save_retraining_request(client, request)
                 logger.warning(
-                    "Retraining request %s skipped due to cooldown model=%s cooldown_minutes=%d",
+                    "Retraining request %s %s due to cooldown model=%s cooldown_minutes=%d",
                     request_id,
+                    "deferred" if auto_execute else "skipped",
                     model,
                     _MLOPS_RETRAIN_COOLDOWN_MINUTES,
                 )
-                if model_internal:
+                if model_internal and not auto_execute:
                     client.srem(_request_pending_key(model_internal), request_id)
                 return _normalize_retraining_request(request)
 
         running_count = int(client.scard(_MLOPS_RUNNING_SET_KEY) or 0)
         if running_count >= _MAX_PARALLEL_TRAINING:
-            request["status"] = "skipped"
-            request["execution_detail"] = (
-                f"Skipped due to global concurrency limit ({_MAX_PARALLEL_TRAINING})."
-            )
+            if auto_execute:
+                request["status"] = "approved"
+                request["execution_detail"] = (
+                    f"Deferred by global concurrency limit ({_MAX_PARALLEL_TRAINING}). Auto-retry will continue."
+                )
+            else:
+                request["status"] = "skipped"
+                request["execution_detail"] = (
+                    f"Skipped due to global concurrency limit ({_MAX_PARALLEL_TRAINING})."
+                )
             _save_retraining_request(client, request)
             logger.warning(
-                "Retraining request %s skipped by global concurrency limit running=%d limit=%d",
+                "Retraining request %s %s by global concurrency limit running=%d limit=%d",
                 request_id,
+                "deferred" if auto_execute else "skipped",
                 running_count,
                 _MAX_PARALLEL_TRAINING,
             )
@@ -859,12 +1416,17 @@ def execute_mlops_retraining_request(
         lock_ttl = _MLOPS_RUNNER_TIMEOUT_SECONDS + 300
         lock_acquired = bool(client.set(lock_key, request_id, nx=True, ex=lock_ttl))
         if not lock_acquired:
-            request["status"] = "skipped"
-            request["execution_detail"] = "Skipped because another training for this model is already running."
+            if auto_execute:
+                request["status"] = "approved"
+                request["execution_detail"] = "Deferred because another training for this model is currently running. Auto-retry will continue."
+            else:
+                request["status"] = "skipped"
+                request["execution_detail"] = "Skipped because another training for this model is already running."
             _save_retraining_request(client, request)
             logger.warning(
-                "Retraining request %s skipped because model lock is active for model=%s",
+                "Retraining request %s %s because model lock is active for model=%s",
                 request_id,
+                "deferred" if auto_execute else "skipped",
                 model,
             )
             return _normalize_retraining_request(request)
@@ -873,7 +1435,7 @@ def execute_mlops_retraining_request(
         now_iso = _now_iso()
         client.sadd(_MLOPS_RUNNING_SET_KEY, request_id)
         request["status"] = "running"
-        request["executed_by"] = current_user.email
+        request["executed_by"] = executed_by
         request["executed_at"] = now_iso
         request["execution_run_id"] = run_ref
         request["execution_detail"] = "Execution accepted by dashboard control plane."
@@ -881,17 +1443,161 @@ def execute_mlops_retraining_request(
         logger.info(
             "Retraining request %s execution accepted by %s model=%s run_ref=%s",
             request_id,
-            current_user.email,
+            executed_by,
             model,
             run_ref,
         )
-        background_tasks.add_task(_execute_retraining_request_background, request_id)
+        launch_background(request_id)
         return _normalize_retraining_request(request)
     finally:
         try:
             decision_lock.release()
         except Exception:
             pass
+
+
+@app.post(
+    "/mlops/requests/{request_id}/execute",
+    response_model=MlopsRetrainingRequest,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["mlops"],
+)
+def execute_mlops_retraining_request(
+    request_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN", "DATA_MLOPS_ENGINEER"))],
+) -> MlopsRetrainingRequest:
+    client = _runtime_redis_client()
+    return _attempt_execute_retraining_request(
+        client,
+        request_id,
+        executed_by=current_user.email,
+        launch_background=lambda rid: background_tasks.add_task(_execute_retraining_request_background, rid),
+    )
+
+
+@app.get("/mlops/retraining/schedule", response_model=MlopsRetrainingScheduleListResponse, tags=["mlops"])
+def list_mlops_retraining_schedules(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> MlopsRetrainingScheduleListResponse:
+    rows = list(
+        db.scalars(
+            select(MlopsRetrainingSchedule)
+            .order_by(MlopsRetrainingSchedule.created_at.desc())
+        )
+    )
+    items = [_schedule_to_response(item) for item in rows]
+    return MlopsRetrainingScheduleListResponse(count=len(items), items=items)
+
+
+@app.post(
+    "/mlops/retraining/schedule",
+    response_model=MlopsRetrainingScheduleResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["mlops"],
+)
+def create_mlops_retraining_schedule(
+    payload: MlopsRetrainingScheduleCreate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> MlopsRetrainingScheduleResponse:
+    frequency = _validate_frequency(payload.frequency)
+    cron_expr = payload.cron_expr.strip()
+    timezone_name = payload.timezone.strip()
+    _validate_cron_expr(cron_expr)
+    _validate_timezone_name(timezone_name)
+
+    model_name = _normalize_schedule_model_name(payload.model_name)
+    if payload.enabled:
+        _assert_no_duplicate_enabled_schedule(
+            db,
+            model_name=model_name,
+            allow_duplicate_enabled=bool(payload.allow_duplicate_enabled),
+        )
+
+    next_run_at = _compute_next_run_at(cron_expr, timezone_name)
+    row = MlopsRetrainingSchedule(
+        model_name=model_name,
+        enabled=bool(payload.enabled),
+        frequency=frequency,
+        cron_expr=cron_expr,
+        timezone=timezone_name,
+        require_approval=bool(payload.require_approval),
+        created_by=current_user.email,
+        next_run_at=next_run_at,
+        status="ACTIVE" if payload.enabled else "DISABLED",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _schedule_to_response(row)
+
+
+@app.put("/mlops/retraining/schedule/{schedule_id}", response_model=MlopsRetrainingScheduleResponse, tags=["mlops"])
+def update_mlops_retraining_schedule(
+    schedule_id: str,
+    payload: MlopsRetrainingScheduleUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> MlopsRetrainingScheduleResponse:
+    try:
+        schedule_uuid = uuid.UUID(schedule_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid schedule id.") from exc
+
+    row = db.get(MlopsRetrainingSchedule, schedule_uuid)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found.")
+
+    model_name = _normalize_schedule_model_name(payload.model_name) if payload.model_name is not None else row.model_name
+    enabled = bool(payload.enabled) if payload.enabled is not None else bool(row.enabled)
+    frequency = _validate_frequency(payload.frequency) if payload.frequency is not None else _validate_frequency(row.frequency)
+    cron_expr = payload.cron_expr.strip() if payload.cron_expr is not None else row.cron_expr
+    timezone_name = payload.timezone.strip() if payload.timezone is not None else row.timezone
+    require_approval = bool(payload.require_approval) if payload.require_approval is not None else bool(row.require_approval)
+
+    _validate_cron_expr(cron_expr)
+    _validate_timezone_name(timezone_name)
+    if enabled:
+        _assert_no_duplicate_enabled_schedule(
+            db,
+            model_name=model_name,
+            allow_duplicate_enabled=bool(payload.allow_duplicate_enabled),
+            exclude_id=schedule_uuid,
+        )
+
+    row.model_name = model_name
+    row.enabled = enabled
+    row.frequency = frequency
+    row.cron_expr = cron_expr
+    row.timezone = timezone_name
+    row.require_approval = require_approval
+    row.next_run_at = _compute_next_run_at(cron_expr, timezone_name)
+    row.status = "ACTIVE" if enabled else "DISABLED"
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _schedule_to_response(row)
+
+
+@app.delete("/mlops/retraining/schedule/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["mlops"])
+def delete_mlops_retraining_schedule(
+    schedule_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+) -> Response:
+    try:
+        schedule_uuid = uuid.UUID(schedule_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid schedule id.") from exc
+
+    row = db.get(MlopsRetrainingSchedule, schedule_uuid)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found.")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/mlops/tools", response_model=MlopsToolsResponse, tags=["mlops-ops"])

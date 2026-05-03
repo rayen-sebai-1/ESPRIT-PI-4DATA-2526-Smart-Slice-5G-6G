@@ -13,26 +13,11 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { formatMetric } from "./mlopsHelpers";
+import { driftSeverityClass, formatMetric } from "./mlopsHelpers";
 
 // ---------------------------------------------------------------------------
-// Drift severity colours
+// Compact drift status badge (monitoring summary view)
 // ---------------------------------------------------------------------------
-
-function severityClass(severity?: string): string {
-  switch (severity?.toUpperCase()) {
-    case "CRITICAL":
-      return "text-red-400 font-bold";
-    case "HIGH":
-      return "text-orange-400 font-bold";
-    case "MEDIUM":
-      return "text-amber-400";
-    case "LOW":
-      return "text-yellow-300";
-    default:
-      return "text-green-400";
-  }
-}
 
 function statusBadge(status?: string, isDrift?: boolean): JSX.Element {
   if (isDrift) {
@@ -44,36 +29,16 @@ function statusBadge(status?: string, isDrift?: boolean): JSX.Element {
   }
   switch (status) {
     case "no_drift":
-      return (
-        <span className="rounded bg-green-900/50 px-2 py-0.5 text-xs text-green-400">
-          No Drift
-        </span>
-      );
+      return <span className="rounded bg-green-900/50 px-2 py-0.5 text-xs text-green-400">Stable</span>;
     case "insufficient_data":
-      return (
-        <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
-          Collecting data
-        </span>
-      );
+      return <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">Collecting data</span>;
     case "reference_missing":
-      return (
-        <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
-          Reference missing
-        </span>
-      );
+      return <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">Reference missing</span>;
     case "alibi_unavailable":
-      return (
-        <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">
-          Alibi unavailable
-        </span>
-      );
+      return <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs text-amber-300">Alibi unavailable</span>;
     case "no_data":
     default:
-      return (
-        <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-400">
-          No data
-        </span>
-      );
+      return <span className="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-400">No data</span>;
   }
 }
 
@@ -117,7 +82,7 @@ function DriftModelCard({ state }: { state: DriftModelState }) {
         {state.severity && state.severity !== "NONE" ? (
           <>
             <span className="text-mutedText">Severity</span>
-            <span className={severityClass(state.severity)}>{state.severity}</span>
+            <span className={driftSeverityClass(state.severity)}>{state.severity}</span>
           </>
         ) : null}
 
