@@ -1,17 +1,28 @@
-import { useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ScanSearch, ShieldAlert } from "lucide-react";
 import axios from "axios";
 
 import { agentApi, type AgentDomain, type RcaScanResponse } from "@/api/agentApi";
+import { liveApi } from "@/api/liveApi";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 const DEFAULT_TIME_RANGE = { start: "-30m", stop: "now()" };
+const DOMAIN_LABELS: Record<string, string> = {
+  core: "Core",
+  edge: "Edge",
+  ran: "RAN",
+};
+
+interface LiveSliceOption {
+  sliceId?: string;
+  entityId?: string;
+  domain?: string;
+}
 
 function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -39,8 +50,42 @@ function extractErrorMessage(error: unknown): string {
 export function RootCauseAgentPage() {
   usePageTitle("Root Cause Agent");
 
-  const [sliceId, setSliceId] = useState("");
+  const [selectedSliceId, setSelectedSliceId] = useState("");
   const [domain, setDomain] = useState<"" | AgentDomain>("");
+
+  const entitiesQuery = useQuery({
+    queryKey: ["live", "entities", "root-cause-selector"],
+    queryFn: () => liveApi.getEntities(500),
+    refetchInterval: 3000,
+  });
+
+  const availableSlices = useMemo(() => {
+    const collected = new Map<string, LiveSliceOption>();
+    for (const rawEntity of entitiesQuery.data?.items ?? []) {
+      const entity = rawEntity as LiveSliceOption;
+      const normalizedSliceId = String(entity.sliceId ?? "").trim();
+      if (!normalizedSliceId || collected.has(normalizedSliceId)) {
+        continue;
+      }
+      collected.set(normalizedSliceId, {
+        sliceId: normalizedSliceId,
+        entityId: String(entity.entityId ?? ""),
+        domain: String(entity.domain ?? ""),
+      });
+    }
+
+    return Array.from(collected.values()).sort((a, b) =>
+      String(a.sliceId ?? "").localeCompare(String(b.sliceId ?? "")),
+    );
+  }, [entitiesQuery.data?.items]);
+
+  useEffect(() => {
+    if (!availableSlices.length) return;
+    const currentStillExists = availableSlices.some((item) => item.sliceId === selectedSliceId);
+    if (!selectedSliceId || !currentStillExists) {
+      setSelectedSliceId(availableSlices[0].sliceId ?? "");
+    }
+  }, [availableSlices, selectedSliceId]);
 
   const mutation = useMutation<RcaScanResponse, unknown, { sliceId: string; domain: "" | AgentDomain }>({
     mutationFn: async ({ sliceId: id, domain: dom }) => {
@@ -54,7 +99,7 @@ export function RootCauseAgentPage() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = sliceId.trim();
+    const trimmed = selectedSliceId.trim();
     if (!trimmed) {
       return;
     }
@@ -76,16 +121,35 @@ export function RootCauseAgentPage() {
         <form className="grid gap-4 md:grid-cols-[2fr_1fr_auto]" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.22em] text-mutedText" htmlFor="rca-entity">
-              Entity to scan (slice id)
+              Slice ID to scan
             </label>
-            <Input
+            <Select
               id="rca-entity"
-              placeholder="ex: slice-embb-01-02"
-              value={sliceId}
-              onChange={(event) => setSliceId(event.target.value)}
-              autoComplete="off"
+              value={selectedSliceId}
+              onChange={(event) => setSelectedSliceId(event.target.value)}
+              disabled={entitiesQuery.isLoading || availableSlices.length === 0}
               required
-            />
+            >
+              {availableSlices.length === 0 ? (
+                <option value="">
+                  {entitiesQuery.isLoading ? "Loading live slice IDs..." : "No live slice ID available"}
+                </option>
+              ) : null}
+              {availableSlices.map((item) => {
+                const normalizedSliceId = item.sliceId ?? "";
+                const domainLabel = DOMAIN_LABELS[item.domain ?? ""] ?? item.domain ?? "unknown";
+                const entitySuffix = item.entityId && item.entityId !== normalizedSliceId
+                  ? ` - ${item.entityId}`
+                  : "";
+                return (
+                  <option key={normalizedSliceId} value={normalizedSliceId}>
+                    {normalizedSliceId} - {domainLabel}
+                    {entitySuffix}
+                  </option>
+                );
+              })}
+            </Select>
+            <p className="text-xs text-mutedText">Selected scan target: {selectedSliceId || "N/A"}</p>
           </div>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.22em] text-mutedText" htmlFor="rca-domain">
@@ -103,12 +167,20 @@ export function RootCauseAgentPage() {
             </Select>
           </div>
           <div className="flex items-end">
-            <Button type="submit" disabled={mutation.isPending || sliceId.trim().length === 0}>
+            <Button
+              type="submit"
+              disabled={mutation.isPending || selectedSliceId.trim().length === 0 || availableSlices.length === 0}
+            >
               <ScanSearch size={16} />
               {mutation.isPending ? "Scan in progress..." : "Run scan"}
             </Button>
           </div>
         </form>
+        {entitiesQuery.isError ? (
+          <p className="mt-3 text-xs text-red-300">
+            Live entity list is unavailable. Verify `api-bff-service` and Redis connectivity.
+          </p>
+        ) : null}
         <p className="mt-3 text-xs text-mutedText">
           Analysis window: last 30 minutes. The agent may take up to one minute depending on local Ollama model load.
         </p>

@@ -1,12 +1,22 @@
 _format_version: "3.0"
 _transform: true
 
+###############################################################################
+# Global CORS plugin
+#
+# Origins: localhost:5173 is the Vite dev server / nginx production port.
+# To allow an additional deployed origin (e.g. a staging URL), set the
+# KONG_EXTRA_CORS_ORIGIN environment variable on the kong-gateway service.
+# The docker-entrypoint.sh script replaces the EXTRA_CORS_PLACEHOLDER comment
+# with the extra origin entry at container startup.
+###############################################################################
 plugins:
   - name: cors
     config:
       origins:
         - http://localhost:5173
         - http://127.0.0.1:5173
+        # EXTRA_CORS_PLACEHOLDER
       methods:
         - GET
         - POST
@@ -25,6 +35,31 @@ plugins:
       credentials: true
       max_age: 3600
 
+###############################################################################
+# JWT consumers
+#
+# The auth-service signs tokens with:
+#   algorithm: HS256
+#   iss claim: "neuroslice-auth"
+#   secret:    DASHBOARD_JWT_SECRET
+#
+# Kong's JWT plugin resolves the consumer by matching the token's `iss` claim
+# against the `key` field of the consumer's jwt_secrets.  The `$KONG_JWT_SECRET`
+# placeholder is substituted by docker-entrypoint.sh at startup — it is never
+# stored in the image.
+###############################################################################
+consumers:
+  - username: neuroslice-dashboard
+    jwt_secrets:
+      - key: neuroslice-auth
+        algorithm: HS256
+        secret: "$KONG_JWT_SECRET"
+
+###############################################################################
+# Services & Routes
+###############################################################################
+
+# ── Auth — public endpoints (no JWT required at gateway level) ───────────────
 services:
   - name: auth-service-login
     url: http://auth-service:8001/auth/login
@@ -60,8 +95,15 @@ services:
           - POST
           - OPTIONS
 
+# ── Auth — admin user management (JWT required) ───────────────────────────────
   - name: auth-service-users
     url: http://auth-service:8001/users
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: auth-service-users-route
         paths:
@@ -74,8 +116,16 @@ services:
           - DELETE
           - OPTIONS
 
+# ── Dashboard — all require a valid JWT ──────────────────────────────────────
+
   - name: dashboard-service-sessions
     url: http://dashboard-backend:8002/sessions
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-sessions-route
         paths:
@@ -103,6 +153,12 @@ services:
 
   - name: dashboard-service-predictions
     url: http://dashboard-backend:8002/predictions
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-predictions-route
         paths:
@@ -131,6 +187,12 @@ services:
 
   - name: dashboard-service-models
     url: http://dashboard-backend:8002/models
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-models-route
         paths:
@@ -158,6 +220,12 @@ services:
 
   - name: dashboard-service-mlops
     url: http://dashboard-backend:8002/mlops
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-mlops-route
         paths:
@@ -189,6 +257,12 @@ services:
 
   - name: dashboard-service-root
     url: http://dashboard-backend:8002/dashboard
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-root-route
         paths:
@@ -217,6 +291,7 @@ services:
                 headers:
                   - "X-Kong-Authenticated: true"
 
+# ── BFF live data — unauthenticated (internal simulation data) ────────────────
   - name: api-bff-service
     url: http://api-bff-service:8000
     routes:
@@ -228,8 +303,15 @@ services:
           - GET
           - OPTIONS
 
+# ── Agentic AI — JWT required ─────────────────────────────────────────────────
   - name: dashboard-service-agentic
     url: http://dashboard-backend:8002/agentic
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-agentic-route
         paths:
@@ -256,8 +338,15 @@ services:
                 headers:
                   - "X-Kong-Authenticated: true"
 
+# ── Control actions — JWT required ────────────────────────────────────────────
   - name: dashboard-service-controls
     url: http://dashboard-backend:8002/controls
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-controls-route
         paths:
@@ -284,8 +373,15 @@ services:
                 headers:
                   - "X-Kong-Authenticated: true"
 
+# ── Runtime service controls — JWT required ───────────────────────────────────
   - name: dashboard-service-runtime
     url: http://dashboard-backend:8002/runtime
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
     routes:
       - name: dashboard-service-runtime-route
         paths:

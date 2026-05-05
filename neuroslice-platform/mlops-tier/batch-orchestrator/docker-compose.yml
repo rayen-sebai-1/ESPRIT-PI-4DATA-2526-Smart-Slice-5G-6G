@@ -1,6 +1,9 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      args:
+        PYTORCH_INDEX: ${PYTORCH_INDEX:-cpu}
     ports:
       - "${API_PORT:-8010}:${API_PORT:-8010}"
     environment:

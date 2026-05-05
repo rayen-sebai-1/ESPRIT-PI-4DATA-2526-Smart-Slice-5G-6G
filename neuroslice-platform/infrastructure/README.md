@@ -74,7 +74,7 @@ A FastAPI service (v3) that watches three trigger sources — anomaly-stream, Ka
 
 **aiops-tier `aiops-drift-monitor`** (`drift` profile, optional):
 
-A statistically rigorous service using `alibi-detect[torch]` (PyTorch MMD test) that requires pre-built drift reference artifacts. It is a separate profile because PyTorch adds significant build time and image size.
+A statistically rigorous service using Alibi Detect with a PyTorch MMD backend that requires pre-built drift reference artifacts. It is a separate profile because PyTorch adds significant build time and image size.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

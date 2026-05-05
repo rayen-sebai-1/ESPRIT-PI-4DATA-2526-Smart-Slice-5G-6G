@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   TrendingUp,
   LayoutDashboard,
+  Info,
 } from "lucide-react";
 
 import type { AssignableRole, UserRole } from "@/types/auth";
@@ -82,6 +83,12 @@ export const navItems: NavItem[] = [
     label: "Copilot Agent",
     to: "/agentic/copilot",
     icon: Bot,
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+  },
+  {
+    label: "About ORION",
+    to: "/about",
+    icon: Info,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {

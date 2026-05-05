@@ -1,7 +1,7 @@
 # Model Training Summary
 
-Generated at: `2026-05-03T05:37:54+00:00`
-Registry updated at: `2026-05-03T05:37:52+00:00`
+Generated at: `2026-05-05T19:27:35+00:00`
+Registry updated at: `2026-05-05T19:27:29+00:00`
 
 ## Dataset Processed Status
 
@@ -16,12 +16,12 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 
 ## Latest Model Lifecycle Results
 
-### congestion_5g (v8)
+### congestion_5g (v2)
 
 - Model family: `pytorch_lstm`
 - Task type: `binary_classification`
-- Created at: `2026-05-03T05:33:59+00:00`
-- MLflow run ID: `ba33c719ed744cbba56b952917ae7f88`
+- Created at: `2026-05-05T18:49:32+00:00`
+- MLflow run ID: `a05e3a1383104a4e970b5509b25f2072`
 - Experiment: `neuroslice-aiops`
 - Quality gate: `fail`
 - Stage: `rejected`
@@ -29,27 +29,27 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 - Promotion decision: `rejected`
 - Artifact format: `onnx_fp16`
 - Local artifact: `congestion_5g_lstm_traced.pt`
-- Artifact URI: `s3://mlflow-artifacts/1/ba33c719ed744cbba56b952917ae7f88/artifacts/models/congestion_5g_lstm_traced.pt`
-- ONNX artifact URI: `s3://mlflow-artifacts/1/ba33c719ed744cbba56b952917ae7f88/artifacts/onnx/congestion_5g.onnx`
-- ONNX FP16 artifact: `s3://mlflow-artifacts/1/ba33c719ed744cbba56b952917ae7f88/artifacts/onnx/congestion_5g_fp16.onnx`
-- Preprocessor URI: `s3://mlflow-artifacts/1/ba33c719ed744cbba56b952917ae7f88/artifacts/preprocessing/preprocessor_congestion_5g.pkl`
+- Artifact URI: `s3://mlflow-artifacts/1/a05e3a1383104a4e970b5509b25f2072/artifacts/models/congestion_5g_lstm_traced.pt`
+- ONNX artifact URI: `s3://mlflow-artifacts/1/a05e3a1383104a4e970b5509b25f2072/artifacts/onnx/congestion_5g.onnx`
+- ONNX FP16 artifact: `s3://mlflow-artifacts/1/a05e3a1383104a4e970b5509b25f2072/artifacts/onnx/congestion_5g_fp16.onnx`
+- Preprocessor URI: `s3://mlflow-artifacts/1/a05e3a1383104a4e970b5509b25f2072/artifacts/preprocessing/preprocessor_congestion_5g.pkl`
 - ONNX export status: `success`
-- Reason: val_precision=0.1370 is below 0.50; congestion_5g is not auto-promoted on AUC alone.
+- Reason: val_precision=0.2273 is below 0.50; congestion_5g is not auto-promoted on AUC alone.
 
 | Metric | Value |
 | --- | --- |
-| val_accuracy | `0.970284` |
-| val_f1 | `0.224719` |
-| val_precision | `0.136986` |
+| val_accuracy | `0.982773` |
+| val_f1 | `0.333333` |
+| val_precision | `0.227273` |
 | val_recall | `0.625000` |
-| val_roc_auc | `0.968723` |
+| val_roc_auc | `0.982058` |
 
 ### congestion_6g (v2)
 
 - Model family: `pytorch_lstm`
 - Task type: `regression_forecast`
-- Created at: `2026-05-03T00:19:58+00:00`
-- MLflow run ID: `c4058187fcda469d9395da46d40e51e8`
+- Created at: `2026-05-05T18:51:20+00:00`
+- MLflow run ID: `f32487854d0245028d0658a707adcd7d`
 - Experiment: `neuroslice-aiops`
 - Quality gate: `pass`
 - Stage: `production`
@@ -57,25 +57,25 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 - Promotion decision: `promoted`
 - Artifact format: `onnx_fp16`
 - Local artifact: `congestion_6g_lstm_traced.pt`
-- Artifact URI: `s3://mlflow-artifacts/1/c4058187fcda469d9395da46d40e51e8/artifacts/models/congestion_6g_lstm_traced.pt`
-- ONNX artifact URI: `s3://mlflow-artifacts/1/c4058187fcda469d9395da46d40e51e8/artifacts/onnx/congestion_6g.onnx`
-- ONNX FP16 artifact: `s3://mlflow-artifacts/1/c4058187fcda469d9395da46d40e51e8/artifacts/onnx/congestion_6g_fp16.onnx`
+- Artifact URI: `s3://mlflow-artifacts/1/f32487854d0245028d0658a707adcd7d/artifacts/models/congestion_6g_lstm_traced.pt`
+- ONNX artifact URI: `s3://mlflow-artifacts/1/f32487854d0245028d0658a707adcd7d/artifacts/onnx/congestion_6g.onnx`
+- ONNX FP16 artifact: `s3://mlflow-artifacts/1/f32487854d0245028d0658a707adcd7d/artifacts/onnx/congestion_6g_fp16.onnx`
 - Preprocessor URI: `n/a`
 - ONNX export status: `success`
-- Reason: val_mae=0.0390 meets the < 5.0 rule.
+- Reason: val_mae=0.0376 meets the < 5.0 rule.
 
 | Metric | Value |
 | --- | --- |
-| val_mae | `0.038969` |
-| val_mape | `26.322996` |
-| val_rmse | `0.048941` |
+| val_mae | `0.037553` |
+| val_mape | `23.369250` |
+| val_rmse | `0.047319` |
 
-### sla_5g (v29)
+### sla_5g (v2)
 
 - Model family: `xgboost_classifier`
 - Task type: `binary_classification`
-- Created at: `2026-05-03T05:37:51+00:00`
-- MLflow run ID: `28b3470e140b4929a0a398f8ce379835`
+- Created at: `2026-05-05T18:48:20+00:00`
+- MLflow run ID: `28ede6e78aeb4de3a239dc74a0e5c780`
 - Experiment: `neuroslice-aiops`
 - Quality gate: `pass`
 - Stage: `production`
@@ -83,10 +83,10 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 - Promotion decision: `promoted`
 - Artifact format: `onnx_fp16`
 - Local artifact: `sla_5g_model.ubj`
-- Artifact URI: `s3://mlflow-artifacts/1/28b3470e140b4929a0a398f8ce379835/artifacts/models/sla_5g_model.ubj`
-- ONNX artifact URI: `s3://mlflow-artifacts/1/28b3470e140b4929a0a398f8ce379835/artifacts/onnx/sla_5g.onnx`
-- ONNX FP16 artifact: `s3://mlflow-artifacts/1/28b3470e140b4929a0a398f8ce379835/artifacts/onnx/sla_5g_fp16.onnx`
-- Preprocessor URI: `s3://mlflow-artifacts/1/28b3470e140b4929a0a398f8ce379835/artifacts/preprocessing/scaler_sla_5g.pkl`
+- Artifact URI: `s3://mlflow-artifacts/1/28ede6e78aeb4de3a239dc74a0e5c780/artifacts/models/sla_5g_model.ubj`
+- ONNX artifact URI: `s3://mlflow-artifacts/1/28ede6e78aeb4de3a239dc74a0e5c780/artifacts/onnx/sla_5g.onnx`
+- ONNX FP16 artifact: `s3://mlflow-artifacts/1/28ede6e78aeb4de3a239dc74a0e5c780/artifacts/onnx/sla_5g_fp16.onnx`
+- Preprocessor URI: `s3://mlflow-artifacts/1/28ede6e78aeb4de3a239dc74a0e5c780/artifacts/preprocessing/scaler_sla_5g.pkl`
 - ONNX export status: `success`
 - Reason: val_roc_auc=0.9901 meets the >= 0.75 rule.
 
@@ -98,12 +98,12 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 | val_recall | `1.000000` |
 | val_roc_auc | `0.990077` |
 
-### sla_6g (v3)
+### sla_6g (v2)
 
 - Model family: `xgboost_classifier`
 - Task type: `binary_classification`
-- Created at: `2026-05-03T00:17:05+00:00`
-- MLflow run ID: `d990a698788f429f835abbedb9ee69ba`
+- Created at: `2026-05-05T18:48:32+00:00`
+- MLflow run ID: `1319838289804578a120dca38099ec81`
 - Experiment: `neuroslice-aiops`
 - Quality gate: `pass`
 - Stage: `production`
@@ -111,10 +111,10 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 - Promotion decision: `promoted`
 - Artifact format: `onnx_fp16`
 - Local artifact: `sla_6g_model.ubj`
-- Artifact URI: `s3://mlflow-artifacts/1/d990a698788f429f835abbedb9ee69ba/artifacts/models/sla_6g_model.ubj`
-- ONNX artifact URI: `s3://mlflow-artifacts/1/d990a698788f429f835abbedb9ee69ba/artifacts/onnx/sla_6g.onnx`
-- ONNX FP16 artifact: `s3://mlflow-artifacts/1/d990a698788f429f835abbedb9ee69ba/artifacts/onnx/sla_6g_fp16.onnx`
-- Preprocessor URI: `s3://mlflow-artifacts/1/d990a698788f429f835abbedb9ee69ba/artifacts/preprocessing/scaler_sla_6g.pkl`
+- Artifact URI: `s3://mlflow-artifacts/1/1319838289804578a120dca38099ec81/artifacts/models/sla_6g_model.ubj`
+- ONNX artifact URI: `s3://mlflow-artifacts/1/1319838289804578a120dca38099ec81/artifacts/onnx/sla_6g.onnx`
+- ONNX FP16 artifact: `s3://mlflow-artifacts/1/1319838289804578a120dca38099ec81/artifacts/onnx/sla_6g_fp16.onnx`
+- Preprocessor URI: `s3://mlflow-artifacts/1/1319838289804578a120dca38099ec81/artifacts/preprocessing/scaler_sla_6g.pkl`
 - ONNX export status: `success`
 - Reason: val_roc_auc=0.9736 meets the >= 0.75 rule.
 
@@ -126,12 +126,12 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 | val_recall | `0.883784` |
 | val_roc_auc | `0.973591` |
 
-### slice_type_5g (v14)
+### slice_type_5g (v3)
 
 - Model family: `lightgbm_classifier`
 - Task type: `multiclass_classification`
-- Created at: `2026-05-03T05:28:31+00:00`
-- MLflow run ID: `0958137d155e4b809d3111441fa740fd`
+- Created at: `2026-05-05T19:27:28+00:00`
+- MLflow run ID: `a14dc8dec6c04cda9087db86336322f7`
 - Experiment: `neuroslice-aiops`
 - Quality gate: `pass`
 - Stage: `production`
@@ -139,10 +139,10 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 - Promotion decision: `promoted`
 - Artifact format: `onnx_fp16`
 - Local artifact: `slice_type_5g_model.pkl`
-- Artifact URI: `s3://mlflow-artifacts/1/0958137d155e4b809d3111441fa740fd/artifacts/models/slice_type_5g_model.pkl`
-- ONNX artifact URI: `s3://mlflow-artifacts/1/0958137d155e4b809d3111441fa740fd/artifacts/onnx/slice_type_5g.onnx`
-- ONNX FP16 artifact: `s3://mlflow-artifacts/1/0958137d155e4b809d3111441fa740fd/artifacts/onnx/slice_type_5g_fp16.onnx`
-- Preprocessor URI: `s3://mlflow-artifacts/1/0958137d155e4b809d3111441fa740fd/artifacts/preprocessing/label_encoder_slice_type_5g.pkl`
+- Artifact URI: `s3://mlflow-artifacts/1/a14dc8dec6c04cda9087db86336322f7/artifacts/models/slice_type_5g_model.pkl`
+- ONNX artifact URI: `s3://mlflow-artifacts/1/a14dc8dec6c04cda9087db86336322f7/artifacts/onnx/slice_type_5g.onnx`
+- ONNX FP16 artifact: `s3://mlflow-artifacts/1/a14dc8dec6c04cda9087db86336322f7/artifacts/onnx/slice_type_5g_fp16.onnx`
+- Preprocessor URI: `s3://mlflow-artifacts/1/a14dc8dec6c04cda9087db86336322f7/artifacts/preprocessing/label_encoder_slice_type_5g.pkl`
 - ONNX export status: `success`
 - Reason: val_accuracy=0.8926 meets the >= 0.80 rule.
 
@@ -160,8 +160,8 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 
 - Model family: `xgboost_classifier`
 - Task type: `multiclass_classification`
-- Created at: `2026-05-03T00:20:17+00:00`
-- MLflow run ID: `45746424750f4269a6dbd7363ce09cd9`
+- Created at: `2026-05-05T18:51:48+00:00`
+- MLflow run ID: `4742e193ea6d406c9f13c4e4837c3114`
 - Experiment: `neuroslice-aiops`
 - Quality gate: `pass`
 - Stage: `production`
@@ -169,10 +169,10 @@ Registry updated at: `2026-05-03T05:37:52+00:00`
 - Promotion decision: `promoted`
 - Artifact format: `onnx_fp16`
 - Local artifact: `slice_type_6g_model.ubj`
-- Artifact URI: `s3://mlflow-artifacts/1/45746424750f4269a6dbd7363ce09cd9/artifacts/models/slice_type_6g_model.ubj`
-- ONNX artifact URI: `s3://mlflow-artifacts/1/45746424750f4269a6dbd7363ce09cd9/artifacts/onnx/slice_type_6g.onnx`
-- ONNX FP16 artifact: `s3://mlflow-artifacts/1/45746424750f4269a6dbd7363ce09cd9/artifacts/onnx/slice_type_6g_fp16.onnx`
-- Preprocessor URI: `s3://mlflow-artifacts/1/45746424750f4269a6dbd7363ce09cd9/artifacts/preprocessing/label_encoder_slice_type_6g.pkl`
+- Artifact URI: `s3://mlflow-artifacts/1/4742e193ea6d406c9f13c4e4837c3114/artifacts/models/slice_type_6g_model.ubj`
+- ONNX artifact URI: `s3://mlflow-artifacts/1/4742e193ea6d406c9f13c4e4837c3114/artifacts/onnx/slice_type_6g.onnx`
+- ONNX FP16 artifact: `s3://mlflow-artifacts/1/4742e193ea6d406c9f13c4e4837c3114/artifacts/onnx/slice_type_6g_fp16.onnx`
+- Preprocessor URI: `s3://mlflow-artifacts/1/4742e193ea6d406c9f13c4e4837c3114/artifacts/preprocessing/label_encoder_slice_type_6g.pkl`
 - ONNX export status: `success`
 - Reason: val_accuracy=1.0000 meets the >= 0.80 rule.
 

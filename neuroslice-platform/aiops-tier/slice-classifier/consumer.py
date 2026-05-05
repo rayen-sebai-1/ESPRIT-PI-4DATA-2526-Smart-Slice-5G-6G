@@ -22,6 +22,7 @@ from shared.metrics import (
 )
 from shared.runtime_control import RuntimeControlGate
 from shared.redis_client import ack_message, ensure_consumer_group, read_group
+from shared.logstash_sender import send_prediction as _logstash_send
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,15 @@ class SliceConsumer:
                                 prediction=output.prediction,
                             ).inc()
                             await self.publisher.publish(output)
+                            asyncio.ensure_future(_logstash_send(
+                                service_name=self.cfg.service_name,
+                                model=self._model_name,
+                                prediction=output.prediction,
+                                confidence=output.score,
+                                site_id=output.site_id,
+                                slice_id=output.slice_id,
+                                timestamp=output.timestamp,
+                            ))
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Failed processing message %s: %s", msg_id, exc)
                     finally:
