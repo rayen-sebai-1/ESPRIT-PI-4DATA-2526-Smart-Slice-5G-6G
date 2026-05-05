@@ -14,6 +14,7 @@ import { LiveStatePage } from "@/pages/LiveStatePage";
 import { RootCauseAgentPage } from "@/pages/RootCauseAgentPage";
 import { CopilotAgentPage } from "@/pages/CopilotAgentPage";
 import { MonitoringToolsPage } from "@/pages/MonitoringToolsPage";
+import { AboutOrionPage } from "@/pages/AboutOrionPage";
 
 // MLOps pages are code-split: each sub-page is only loaded when the user
 // navigates to /mlops for the first time, keeping the initial bundle small.
@@ -107,6 +108,7 @@ export const router = createBrowserRouter([
             children: [{ path: "/predictions", element: <PredictionsCenterPage /> }],
           },
           { path: "/monitoring-tools", element: <MonitoringToolsPage /> },
+          { path: "/about", element: <AboutOrionPage /> },
           { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
           { path: "/agentic/copilot", element: <CopilotAgentPage /> },
           {

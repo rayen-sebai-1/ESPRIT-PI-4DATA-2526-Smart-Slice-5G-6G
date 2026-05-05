@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { OrionLogo } from "@/components/layout/orion-logo";
 import { navItems } from "@/lib/constants";
 import { cn } from "@/lib/cn";
@@ -83,18 +82,8 @@ export function Sidebar({ role, open, onToggle }: SidebarProps) {
             </NavLink>
           ))}
         </nav>
-
-        {/* Footer card */}
-        <div className="rounded-[20px] border border-border bg-card p-4">
-          <p className="text-xs uppercase tracking-[0.22em] text-mutedText">Status</p>
-          <p className="mt-2 text-sm leading-6 text-inkSecondary">
-            Live backend connected — dashboard, monitoring and prediction active.
-          </p>
-          <Button className="mt-4 w-full" variant="secondary">
-            Monitoring active
-          </Button>
-        </div>
       </aside>
     </>
   );
 }
+

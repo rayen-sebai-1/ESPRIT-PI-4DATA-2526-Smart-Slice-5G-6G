@@ -7,6 +7,5 @@ influxdb-client==1.44.0
 numpy==1.26.4
 prometheus-client==0.20.0
 httpx==0.27.0
-# Alibi Detect with PyTorch backend (lighter than TensorFlow).
-# torch is pulled in as a dependency of alibi-detect[torch].
-alibi-detect[torch]==0.12.0
+# Alibi Detect core package; PyTorch backend is installed explicitly in Dockerfile.
+alibi-detect==0.13.0

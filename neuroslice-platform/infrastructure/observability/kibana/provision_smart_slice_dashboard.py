@@ -184,6 +184,17 @@ def main() -> int:
         data_view_payload,
     )
 
+    print("Refreshing data view fields...")
+    try:
+        _request_json(
+            "POST",
+            args.kibana_url,
+            f"/api/data_views/data_view/{DATA_VIEW_ID}/fields",
+            {},
+        )
+    except RuntimeError:
+        pass
+
     line_vis_state = {
         "title": "Predictions Over Time",
         "type": "line",
@@ -196,7 +207,6 @@ def main() -> int:
                 "schema": "segment",
                 "params": {
                     "field": "@timestamp",
-                    "timeRange": {"from": "now-24h", "to": "now"},
                     "useNormalizedEsInterval": True,
                     "scaleMetricValues": False,
                     "interval": "auto",
@@ -221,18 +231,29 @@ def main() -> int:
             },
         ],
         "params": {
+            "type": "line",
             "addTooltip": True,
             "addLegend": True,
             "legendPosition": "right",
+            "addTimeMarker": False,
             "times": [],
+            "labels": {},
+            "thresholdLine": {
+                "show": False,
+                "value": 10,
+                "width": 1,
+                "style": "full",
+                "color": "#E7664C",
+            },
             "categoryAxes": [
                 {
                     "id": "CategoryAxis-1",
                     "type": "category",
                     "position": "bottom",
                     "show": True,
-                    "labels": {"show": True, "truncate": 100},
+                    "labels": {"show": True, "truncate": 100, "filter": True, "rotate": 0},
                     "title": {},
+                    "scale": {"type": "linear"},
                 }
             ],
             "valueAxes": [
@@ -244,6 +265,7 @@ def main() -> int:
                     "show": True,
                     "labels": {"show": True, "rotate": 0, "filter": False, "truncate": 100},
                     "title": {"text": "Predictions"},
+                    "scale": {"type": "linear", "mode": "normal"},
                 }
             ],
             "seriesParams": [
@@ -254,10 +276,13 @@ def main() -> int:
                     "data": {"id": "1", "label": "Count"},
                     "valueAxis": "ValueAxis-1",
                     "drawLinesBetweenPoints": True,
+                    "lineWidth": 2,
                     "showCircles": True,
+                    "circlesRadius": 3,
+                    "interpolate": "linear",
                 }
             ],
-            "grid": {"categoryLines": False, "style": {"color": "#eee"}},
+            "grid": {"categoryLines": False},
         },
     }
 
@@ -282,11 +307,16 @@ def main() -> int:
             },
         ],
         "params": {
+            "type": "pie",
             "addTooltip": True,
             "addLegend": True,
             "legendPosition": "right",
             "isDonut": True,
             "labels": {"show": True, "values": True, "last_level": True, "truncate": 100},
+            "dimensions": {
+                "metric": {"accessor": 0, "format": {"id": "number"}, "params": {}, "aggType": "count"},
+                "buckets": [{"accessor": 1, "format": {"id": "terms", "params": {"id": "string", "otherBucketLabel": "Other", "missingBucketLabel": "Missing"}}, "params": {}, "aggType": "terms"}],
+            },
         },
     }
 
@@ -311,17 +341,23 @@ def main() -> int:
             },
         ],
         "params": {
+            "type": "histogram",
             "addTooltip": True,
             "addLegend": False,
             "legendPosition": "right",
+            "times": [],
+            "addTimeMarker": False,
+            "labels": {},
+            "thresholdLine": {"show": False, "value": 10, "width": 1, "style": "full", "color": "#E7664C"},
             "categoryAxes": [
                 {
                     "id": "CategoryAxis-1",
                     "type": "category",
                     "position": "bottom",
                     "show": True,
-                    "labels": {"show": True, "truncate": 100, "rotate": 45},
+                    "labels": {"show": True, "truncate": 100, "filter": True, "rotate": 45},
                     "title": {"text": "service.name"},
+                    "scale": {"type": "linear"},
                 }
             ],
             "valueAxes": [
@@ -333,6 +369,7 @@ def main() -> int:
                     "show": True,
                     "labels": {"show": True, "rotate": 0, "filter": False, "truncate": 100},
                     "title": {"text": "Predictions"},
+                    "scale": {"type": "linear", "mode": "normal"},
                 }
             ],
             "seriesParams": [
@@ -342,10 +379,11 @@ def main() -> int:
                     "mode": "stacked",
                     "data": {"id": "1", "label": "Count"},
                     "valueAxis": "ValueAxis-1",
-                    "drawLinesBetweenPoints": True,
-                    "showCircles": True,
+                    "drawLinesBetweenPoints": False,
+                    "showCircles": False,
                 }
             ],
+            "grid": {"categoryLines": False},
         },
     }
 
@@ -355,7 +393,36 @@ def main() -> int:
         "aggs": [
             {"id": "1", "enabled": True, "type": "count", "schema": "metric", "params": {}}
         ],
-        "params": {"fontSize": 48},
+        "params": {
+            "addTooltip": True,
+            "addLegend": False,
+            "type": "metric",
+            "metric": {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [{"from": 0, "to": 10000}],
+                "labels": {"show": True},
+                "invertColors": False,
+                "style": {
+                    "bgFill": "#000",
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": 48,
+                },
+            },
+            "dimensions": {
+                "metrics": [
+                    {
+                        "type": "vis_dimension",
+                        "accessor": 0,
+                        "format": {"id": "number", "params": {"pattern": "0,0"}},
+                    }
+                ]
+            },
+        },
     }
 
     avg_confidence_vis_state = {
@@ -370,7 +437,36 @@ def main() -> int:
                 "params": {"field": args.confidence_field},
             }
         ],
-        "params": {"fontSize": 40},
+        "params": {
+            "addTooltip": True,
+            "addLegend": False,
+            "type": "metric",
+            "metric": {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [{"from": 0, "to": 1}],
+                "labels": {"show": True},
+                "invertColors": False,
+                "style": {
+                    "bgFill": "#000",
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": 40,
+                },
+            },
+            "dimensions": {
+                "metrics": [
+                    {
+                        "type": "vis_dimension",
+                        "accessor": 0,
+                        "format": {"id": "number", "params": {"pattern": "0.000"}},
+                    }
+                ]
+            },
+        },
     }
 
     print("Creating/updating visualizations...")
