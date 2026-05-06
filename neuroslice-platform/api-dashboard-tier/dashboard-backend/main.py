@@ -139,6 +139,22 @@ dashboard_mlops_pipeline_requests_total = Counter(
     "Total MLOps pipeline trigger requests received by dashboard-backend",
     ["status"],
 )
+dashboard_mlops_pending_marker_events_total = Counter(
+    "neuroslice_dashboard_mlops_pending_marker_events_total",
+    "Pending retraining marker lifecycle events",
+    ["event", "model"],
+)
+dashboard_mlops_pending_cleanup_failures_total = Counter(
+    "neuroslice_dashboard_mlops_pending_cleanup_failures_total",
+    "Pending retraining cleanup failures",
+    ["model"],
+)
+dashboard_mlops_pending_age_seconds = Histogram(
+    "neuroslice_dashboard_mlops_pending_age_seconds",
+    "Age of pending retraining markers when inspected/cleared",
+    ["event", "model"],
+    buckets=[1, 5, 15, 30, 60, 120, 300, 600, 1200, 2400, 3600, 7200, 14400, 28800],
+)
 dashboard_auth_failures_total = Counter(
     "neuroslice_dashboard_auth_failures_total",
     "Total dashboard authentication and authorization failures",
@@ -176,6 +192,11 @@ async def dashboard_metrics_middleware(request: Request, call_next):
 @app.on_event("startup")
 async def startup_scheduler() -> None:
     global _mlops_schedule_task
+    if _MLOPS_PENDING_RECONCILE_ON_STARTUP:
+        try:
+            _reconcile_pending_retraining_state(_runtime_redis_client())
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Startup pending reconciliation failed: %s", exc)
     if not _MLOPS_SCHEDULE_ENABLED:
         logger.info("MLOps schedule loop disabled by MLOPS_SCHEDULE_ENABLED=false.")
         return
@@ -209,17 +230,34 @@ def _runtime_key(service_name: str, suffix: str) -> str:
 
 
 def _runtime_redis_client() -> redis.Redis:
+    try:
+        socket_timeout = max(0.2, float(os.getenv("REDIS_SOCKET_TIMEOUT_SECONDS", "2.0")))
+    except ValueError:
+        socket_timeout = 2.0
+    try:
+        connect_timeout = max(0.2, float(os.getenv("REDIS_CONNECT_TIMEOUT_SECONDS", "1.0")))
+    except ValueError:
+        connect_timeout = 1.0
     return redis.Redis(
         host=os.getenv("REDIS_HOST", "redis"),
         port=int(os.getenv("REDIS_PORT", "6379")),
         db=int(os.getenv("REDIS_DB", "0")),
         decode_responses=True,
+        socket_timeout=socket_timeout,
+        socket_connect_timeout=connect_timeout,
     )
 
 
 _MLOPS_REQUEST_INDEX_KEY = "mlops:requests:index"
 _MLOPS_REQUEST_PREFIX = "mlops:request:"
 _MLOPS_MODEL_PENDING_PREFIX = "mlops:requests:pending:model:"
+# Pending retraining markers:
+# - set key per model stores request ids currently blocking new approval-required requests
+# - request key stores per-request lease metadata (id/model/created/expires/owner/source)
+# - model lease key stores the current model-level blocker for safe stale recovery
+# Cleanup must remain idempotent because terminal updates may race across workers/restarts.
+_MLOPS_PENDING_REQUEST_PREFIX = "mlops:requests:pending:request:"
+_MLOPS_PENDING_MODEL_LEASE_PREFIX = "mlops:requests:pending:lease:model:"
 _MLOPS_RUNNING_SET_KEY = "mlops:requests:running"
 _MLOPS_DECISION_LOCK_KEY = "mlops:requests:decision_lock"
 _MLOPS_COOLDOWN_PREFIX = "mlops:cooldown:last_executed:"
@@ -263,6 +301,14 @@ except ValueError:
     _MLOPS_RUNNER_TIMEOUT_SECONDS = 7200
 
 try:
+    _MLOPS_PENDING_TTL_SECONDS = max(
+        300,
+        int(os.getenv("MLOPS_PENDING_TTL_SECONDS", str(_MLOPS_RUNNER_TIMEOUT_SECONDS + 600))),
+    )
+except ValueError:
+    _MLOPS_PENDING_TTL_SECONDS = _MLOPS_RUNNER_TIMEOUT_SECONDS + 600
+
+try:
     _MLOPS_SCHEDULE_POLL_SECONDS = max(
         10,
         int(os.getenv("MLOPS_SCHEDULE_POLL_SECONDS", "30")),
@@ -280,6 +326,10 @@ def _parse_bool(value: str | None, *, default: bool = True) -> bool:
 
 
 _MLOPS_SCHEDULE_ENABLED = _parse_bool(os.getenv("MLOPS_SCHEDULE_ENABLED"), default=True)
+_MLOPS_PENDING_RECONCILE_ON_STARTUP = _parse_bool(
+    os.getenv("MLOPS_PENDING_RECONCILE_ON_STARTUP"),
+    default=True,
+)
 
 
 def _runtime_default_mode(enabled: bool) -> str:
@@ -328,6 +378,14 @@ def _request_pending_key(model_internal: str) -> str:
     return f"{_MLOPS_MODEL_PENDING_PREFIX}{model_internal}"
 
 
+def _pending_request_key(request_id: str) -> str:
+    return f"{_MLOPS_PENDING_REQUEST_PREFIX}{request_id}"
+
+
+def _pending_model_lease_key(model_internal: str) -> str:
+    return f"{_MLOPS_PENDING_MODEL_LEASE_PREFIX}{model_internal}"
+
+
 def _model_lock_key(model: str) -> str:
     return f"{_MLOPS_MODEL_LOCK_PREFIX}{model}"
 
@@ -356,6 +414,292 @@ def _request_model_public(raw: dict[str, Any]) -> str:
     if internal in _MLOPS_INTERNAL_TO_PUBLIC_MODEL:
         return _MLOPS_INTERNAL_TO_PUBLIC_MODEL[internal]
     return internal
+
+
+def _request_trigger_type(raw: dict[str, Any]) -> str:
+    value = str(raw.get("trigger_type") or "").strip().upper()
+    if value in {"DRIFT", "SCHEDULED", "MANUAL"}:
+        return value
+    return "DRIFT"
+
+
+_PENDING_LIVE_REQUEST_STATUSES = {"pending_approval", "approved", "running"}
+_PENDING_TERMINAL_REQUEST_STATUSES = {
+    "completed",
+    "failed",
+    "skipped",
+    "cancelled",
+    "timeout",
+    "rejected",
+    "expired",
+}
+
+
+def _safe_iso_to_ts(value: Any) -> float | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.timestamp()
+
+
+def _load_json_dict(raw: Any) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        value = json.loads(str(raw))
+    except Exception:  # noqa: BLE001
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return value
+
+
+def _extract_pending_age_seconds(payload: dict[str, Any], now_ts: float) -> float | None:
+    for key in ("created_at", "created_at_iso", "created_at_epoch"):
+        if key.endswith("_epoch"):
+            try:
+                created_ts = float(payload.get(key))
+                return max(0.0, now_ts - created_ts)
+            except (TypeError, ValueError):
+                continue
+        created_ts = _safe_iso_to_ts(payload.get(key))
+        if created_ts is not None:
+            return max(0.0, now_ts - created_ts)
+    return None
+
+
+def _mark_pending_retraining(
+    client: redis.Redis,
+    *,
+    model_internal: str,
+    request_id: str,
+    owner: str,
+    source: str,
+    created_at_iso: str | None = None,
+) -> None:
+    if not model_internal or not request_id:
+        return
+    now_ts = time.time()
+    created_ts = _safe_iso_to_ts(created_at_iso) if created_at_iso else now_ts
+    if created_ts is None:
+        created_ts = now_ts
+    expires_ts = created_ts + float(_MLOPS_PENDING_TTL_SECONDS)
+    marker = {
+        "request_id": request_id,
+        "model_name": model_internal,
+        "created_at": created_at_iso or datetime.fromtimestamp(created_ts, UTC).isoformat(),
+        "created_at_epoch": created_ts,
+        "expires_at": datetime.fromtimestamp(expires_ts, UTC).isoformat(),
+        "expires_at_epoch": expires_ts,
+        "owner": owner,
+        "source": source,
+    }
+
+    client.sadd(_request_pending_key(model_internal), request_id)
+    client.set(_pending_request_key(request_id), json.dumps(marker), ex=_MLOPS_PENDING_TTL_SECONDS)
+    client.set(_pending_model_lease_key(model_internal), json.dumps(marker), ex=_MLOPS_PENDING_TTL_SECONDS)
+    dashboard_mlops_pending_marker_events_total.labels(event="created", model=model_internal).inc()
+    dashboard_mlops_pending_age_seconds.labels(event="created", model=model_internal).observe(max(0.0, now_ts - created_ts))
+    logger.info(
+        "Pending retraining marker created model=%s request_id=%s owner=%s source=%s expires_in=%ss",
+        model_internal,
+        request_id,
+        owner,
+        source,
+        _MLOPS_PENDING_TTL_SECONDS,
+    )
+
+
+def clear_pending_retraining(
+    client: redis.Redis,
+    *,
+    model_name: str,
+    request_id: str,
+    reason: str,
+    request_status: str | None = None,
+) -> None:
+    if not model_name or not request_id:
+        return
+
+    now_ts = time.time()
+    pending_key = _request_pending_key(model_name)
+    lease_key = _pending_model_lease_key(model_name)
+    request_meta_key = _pending_request_key(request_id)
+    request_meta = _load_json_dict(client.get(request_meta_key))
+    lease_meta = _load_json_dict(client.get(lease_key))
+
+    terminal = str(request_status or "").strip() in _PENDING_TERMINAL_REQUEST_STATUSES
+    lease_request_id = str(lease_meta.get("request_id") or "")
+    lease_expires_at = lease_meta.get("expires_at_epoch")
+    lease_expired = False
+    try:
+        lease_expired = lease_expires_at is not None and float(lease_expires_at) <= now_ts
+    except (TypeError, ValueError):
+        lease_expired = False
+
+    if lease_expired:
+        dashboard_mlops_pending_marker_events_total.labels(event="stale_detected", model=model_name).inc()
+        logger.warning(
+            "Stale pending retraining marker detected model=%s lease_request_id=%s reason=%s",
+            model_name,
+            lease_request_id,
+            reason,
+        )
+
+    can_clear_model_lease = (
+        lease_request_id == request_id
+        or terminal
+        or lease_expired
+        or not lease_meta
+    )
+
+    age = _extract_pending_age_seconds(request_meta or lease_meta, now_ts)
+    try:
+        client.srem(pending_key, request_id)
+        client.delete(request_meta_key)
+        if can_clear_model_lease:
+            client.delete(lease_key)
+            if lease_expired:
+                dashboard_mlops_pending_marker_events_total.labels(event="stale_removed", model=model_name).inc()
+        dashboard_mlops_pending_marker_events_total.labels(event="cleared", model=model_name).inc()
+        if age is not None:
+            dashboard_mlops_pending_age_seconds.labels(event="cleared", model=model_name).observe(age)
+        logger.info(
+            "Pending retraining marker cleared model=%s request_id=%s status=%s reason=%s",
+            model_name,
+            request_id,
+            request_status or "unknown",
+            reason,
+        )
+    except Exception as exc:  # noqa: BLE001
+        dashboard_mlops_pending_cleanup_failures_total.labels(model=model_name).inc()
+        dashboard_mlops_pending_marker_events_total.labels(event="cleanup_failed", model=model_name).inc()
+        logger.exception(
+            "Pending retraining cleanup failed model=%s request_id=%s reason=%s error=%s",
+            model_name,
+            request_id,
+            reason,
+            exc,
+        )
+
+
+def _reconcile_pending_model_state(
+    client: redis.Redis,
+    model_internal: str,
+    *,
+    trigger_type: str | None = None,
+) -> bool:
+    pending_key = _request_pending_key(model_internal)
+    request_ids = list(client.smembers(pending_key) or [])
+    if not request_ids:
+        return False
+
+    has_live = False
+    now_ts = time.time()
+    for request_id in request_ids:
+        raw = client.get(_request_key(request_id))
+        if not raw:
+            clear_pending_retraining(
+                client,
+                model_name=model_internal,
+                request_id=str(request_id),
+                reason="missing_request_payload",
+                request_status="expired",
+            )
+            continue
+        payload = _load_json_dict(raw)
+        if not payload:
+            clear_pending_retraining(
+                client,
+                model_name=model_internal,
+                request_id=str(request_id),
+                reason="invalid_request_payload",
+                request_status="expired",
+            )
+            continue
+        status_value = str(payload.get("status") or "")
+        if status_value in _PENDING_TERMINAL_REQUEST_STATUSES:
+            clear_pending_retraining(
+                client,
+                model_name=model_internal,
+                request_id=str(request_id),
+                reason=f"terminal_status:{status_value}",
+                request_status=status_value,
+            )
+            continue
+        if status_value not in _PENDING_LIVE_REQUEST_STATUSES:
+            clear_pending_retraining(
+                client,
+                model_name=model_internal,
+                request_id=str(request_id),
+                reason=f"unknown_status:{status_value or 'empty'}",
+                request_status="expired",
+            )
+            continue
+
+        created_ts = _safe_iso_to_ts(payload.get("created_at"))
+        if created_ts is not None:
+            age_sec = max(0.0, now_ts - created_ts)
+            dashboard_mlops_pending_age_seconds.labels(event="inspected", model=model_internal).observe(age_sec)
+            if age_sec > float(_MLOPS_PENDING_TTL_SECONDS):
+                payload["status"] = "expired"
+                payload["completed_at"] = _now_iso()
+                payload["execution_detail"] = (
+                    f"Pending marker expired after {int(age_sec)} seconds without reaching a terminal state."
+                )
+                _save_retraining_request(client, payload)
+                clear_pending_retraining(
+                    client,
+                    model_name=model_internal,
+                    request_id=str(request_id),
+                    reason="stale_pending_ttl_exceeded",
+                    request_status="expired",
+                )
+                continue
+        if trigger_type is None:
+            has_live = True
+        else:
+            if _request_trigger_type(payload) == trigger_type:
+                has_live = True
+    return has_live
+
+
+def _reconcile_pending_retraining_state(client: redis.Redis) -> None:
+    pending_keys = list(client.keys(f"{_MLOPS_MODEL_PENDING_PREFIX}*"))
+    for pending_key in pending_keys:
+        model_internal = str(pending_key).removeprefix(_MLOPS_MODEL_PENDING_PREFIX)
+        _reconcile_pending_model_state(client, model_internal)
+
+    lease_keys = list(client.keys(f"{_MLOPS_PENDING_MODEL_LEASE_PREFIX}*"))
+    now_ts = time.time()
+    for lease_key in lease_keys:
+        model_internal = str(lease_key).removeprefix(_MLOPS_PENDING_MODEL_LEASE_PREFIX)
+        lease_meta = _load_json_dict(client.get(str(lease_key)))
+        lease_request_id = str(lease_meta.get("request_id") or "")
+        expires_epoch = lease_meta.get("expires_at_epoch")
+        expired = False
+        try:
+            expired = expires_epoch is not None and float(expires_epoch) <= now_ts
+        except (TypeError, ValueError):
+            expired = False
+        if lease_request_id and expired:
+            clear_pending_retraining(
+                client,
+                model_name=model_internal,
+                request_id=lease_request_id,
+                reason="startup_reconcile_stale_lease",
+                request_status="expired",
+            )
 
 
 def _normalize_schedule_model_name(model_name: str) -> str:
@@ -558,7 +902,14 @@ def _create_scheduled_retraining_request(
     client.set(_request_key(request_id), json.dumps(request))
     client.zadd(_MLOPS_REQUEST_INDEX_KEY, {request_id: time.time()})
     if request_status == "pending_approval":
-        client.sadd(_request_pending_key(model_internal), request_id)
+        _mark_pending_retraining(
+            client,
+            model_internal=model_internal,
+            request_id=request_id,
+            owner="dashboard-scheduler",
+            source="dashboard-scheduler",
+            created_at_iso=now_iso,
+        )
     return request_id
 
 
@@ -611,33 +962,13 @@ def _retry_auto_execute_requests(client: redis.Redis, *, limit: int = 500) -> No
             )
 
 
-def _has_live_pending_request(client: redis.Redis, model_internal: str) -> bool:
-    pending_key = _request_pending_key(model_internal)
-    request_ids = list(client.smembers(pending_key) or [])
-    if not request_ids:
-        return False
-
-    live_statuses = {"pending_approval", "approved", "running"}
-    has_live = False
-    for request_id in request_ids:
-        raw = client.get(_request_key(request_id))
-        if not raw:
-            client.srem(pending_key, request_id)
-            continue
-        try:
-            payload = json.loads(raw)
-        except Exception:  # noqa: BLE001
-            client.srem(pending_key, request_id)
-            continue
-        if not isinstance(payload, dict):
-            client.srem(pending_key, request_id)
-            continue
-        status_value = str(payload.get("status") or "")
-        if status_value in live_statuses:
-            has_live = True
-        else:
-            client.srem(pending_key, request_id)
-    return has_live
+def _has_live_pending_request(
+    client: redis.Redis,
+    model_internal: str,
+    *,
+    trigger_type: str | None = None,
+) -> bool:
+    return _reconcile_pending_model_state(client, model_internal, trigger_type=trigger_type)
 
 
 def _run_mlops_schedule_cycle() -> None:
@@ -664,7 +995,11 @@ def _run_mlops_schedule_cycle() -> None:
                     continue
 
                 model_internal = _MLOPS_PUBLIC_TO_INTERNAL_MODEL.get(item.model_name, item.model_name)
-                has_pending = _has_live_pending_request(redis_client, model_internal)
+                has_pending = _has_live_pending_request(
+                    redis_client,
+                    model_internal,
+                    trigger_type="SCHEDULED",
+                )
                 block_creation = bool(item.require_approval) and has_pending
                 if block_creation:
                     logger.info(
@@ -817,20 +1152,12 @@ def _runner_url() -> str:
 def _execute_retraining_request_background(request_id: str) -> None:
     client = _runtime_redis_client()
     request = _load_retraining_request(client, request_id)
+    model_internal = _request_model_internal(request)
     action = str(
         request.get("pipeline_action")
         or _MLOPS_REQUEST_ACTION_BY_MODEL.get(_request_model_public(request))
         or ""
     ).strip()
-
-    if not action:
-        logger.warning("Retraining request %s failed before execution: missing pipeline action mapping.", request_id)
-        request["status"] = "failed"
-        request["completed_at"] = _now_iso()
-        request["execution_detail"] = "Missing pipeline action mapping."
-        _save_retraining_request(client, request)
-        _release_running_controls(client, request)
-        return
 
     payload = {
         "action": action,
@@ -844,38 +1171,42 @@ def _execute_retraining_request_background(request_id: str) -> None:
     status_value = "failed"
     detail = "mlops-runner request failed"
     try:
-        logger.info(
-            "Executing retraining request %s model=%s action=%s anomaly_count=%s",
-            request_id,
-            _request_model_public(request),
-            action,
-            request.get("anomaly_count"),
-        )
-        with httpx.Client(timeout=_MLOPS_RUNNER_TIMEOUT_SECONDS + 30) as http_client:
-            response = http_client.post(
-                f"{_runner_url()}/run-action",
-                json=payload,
-                headers=_runner_headers(),
-            )
-        if response.status_code >= 400:
-            detail = f"mlops-runner returned HTTP {response.status_code}"
+        if not action:
+            detail = "Missing pipeline action mapping."
+            logger.warning("Retraining request %s failed before execution: %s", request_id, detail)
         else:
-            data = response.json()
-            timed_out = bool(data.get("timed_out"))
-            accepted = bool(data.get("accepted"))
-            exit_code = data.get("exit_code")
-            if timed_out:
-                status_value = "failed"
-                detail = "Runner execution timed out."
-            elif accepted and isinstance(exit_code, int) and exit_code == 0:
-                status_value = "completed"
-                detail = "Training completed successfully."
-            elif accepted and isinstance(exit_code, int):
-                status_value = "failed"
-                detail = f"Training failed with exit code {exit_code}."
+            logger.info(
+                "Executing retraining request %s model=%s action=%s anomaly_count=%s",
+                request_id,
+                _request_model_public(request),
+                action,
+                request.get("anomaly_count"),
+            )
+            with httpx.Client(timeout=_MLOPS_RUNNER_TIMEOUT_SECONDS + 30) as http_client:
+                response = http_client.post(
+                    f"{_runner_url()}/run-action",
+                    json=payload,
+                    headers=_runner_headers(),
+                )
+            if response.status_code >= 400:
+                detail = f"mlops-runner returned HTTP {response.status_code}"
             else:
-                status_value = "failed"
-                detail = str(data.get("detail") or "Runner reported failure.")
+                data = response.json()
+                timed_out = bool(data.get("timed_out"))
+                accepted = bool(data.get("accepted"))
+                exit_code = data.get("exit_code")
+                if timed_out:
+                    status_value = "timeout"
+                    detail = "Runner execution timed out."
+                elif accepted and isinstance(exit_code, int) and exit_code == 0:
+                    status_value = "completed"
+                    detail = "Training completed successfully."
+                elif accepted and isinstance(exit_code, int):
+                    status_value = "failed"
+                    detail = f"Training failed with exit code {exit_code}."
+                else:
+                    status_value = "failed"
+                    detail = str(data.get("detail") or "Runner reported failure.")
     except Exception as exc:  # noqa: BLE001
         status_value = "failed"
         detail = f"Runner call exception: {type(exc).__name__}: {exc}"
@@ -887,10 +1218,15 @@ def _execute_retraining_request_background(request_id: str) -> None:
         if status_value == "completed":
             model = _request_model_public(request)
             client.set(_request_cooldown_key(model), str(time.time()))
-            model_internal = _request_model_internal(request)
-            if model_internal:
-                client.srem(_request_pending_key(model_internal), request_id)
         _save_retraining_request(client, request)
+        if model_internal:
+            clear_pending_retraining(
+                client,
+                model_name=model_internal,
+                request_id=request_id,
+                reason=f"background_terminal_state:{status_value}",
+                request_status=status_value,
+            )
         _release_running_controls(client, request)
         logger.info(
             "Retraining request %s finished status=%s detail=%s",
@@ -1278,11 +1614,15 @@ def rollback_mlops_model(
 def list_mlops_retraining_requests(
     _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
     status_filter: str | None = Query(default=None, alias="status"),
+    trigger_type_filter: str | None = Query(default=None, alias="trigger_type"),
+    request_source_filter: str | None = Query(default=None, alias="request_source"),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> MlopsRetrainingRequestListResponse:
     client = _runtime_redis_client()
     request_ids = client.zrevrange(_MLOPS_REQUEST_INDEX_KEY, 0, max(0, limit - 1))
     allowed_statuses = {part.strip() for part in (status_filter or "").split(",") if part.strip()}
+    allowed_trigger_types = {part.strip().upper() for part in (trigger_type_filter or "").split(",") if part.strip()}
+    allowed_request_sources = {part.strip() for part in (request_source_filter or "").split(",") if part.strip()}
 
     items: list[MlopsRetrainingRequest] = []
     for request_id in request_ids:
@@ -1297,6 +1637,10 @@ def list_mlops_retraining_requests(
             continue
         normalized = _normalize_retraining_request(parsed)
         if allowed_statuses and normalized.status not in allowed_statuses:
+            continue
+        if allowed_trigger_types and str(normalized.trigger_type or "").upper() not in allowed_trigger_types:
+            continue
+        if allowed_request_sources and str(normalized.request_source or "") not in allowed_request_sources:
             continue
         items.append(normalized)
 
@@ -1349,7 +1693,13 @@ def reject_mlops_retraining_request(
     request["execution_detail"] = f"Rejected by {current_user.email}."
     model_internal = _request_model_internal(request)
     if model_internal:
-        client.srem(_request_pending_key(model_internal), request_id)
+        clear_pending_retraining(
+            client,
+            model_name=model_internal,
+            request_id=request_id,
+            reason="rejected_by_user",
+            request_status="rejected",
+        )
     _save_retraining_request(client, request)
     logger.info("Retraining request %s rejected by %s", request_id, current_user.email)
     return _normalize_retraining_request(request)
@@ -1405,7 +1755,13 @@ def _attempt_execute_retraining_request(
                     _MLOPS_RETRAIN_COOLDOWN_MINUTES,
                 )
                 if model_internal and not auto_execute:
-                    client.srem(_request_pending_key(model_internal), request_id)
+                    clear_pending_retraining(
+                        client,
+                        model_name=model_internal,
+                        request_id=request_id,
+                        reason="skipped_due_to_cooldown",
+                        request_status="skipped",
+                    )
                 return _normalize_retraining_request(request)
 
         running_count = int(client.scard(_MLOPS_RUNNING_SET_KEY) or 0)
@@ -1428,6 +1784,14 @@ def _attempt_execute_retraining_request(
                 running_count,
                 _MAX_PARALLEL_TRAINING,
             )
+            if model_internal and not auto_execute:
+                clear_pending_retraining(
+                    client,
+                    model_name=model_internal,
+                    request_id=request_id,
+                    reason="skipped_due_to_global_concurrency_limit",
+                    request_status="skipped",
+                )
             return _normalize_retraining_request(request)
 
         lock_ttl = _MLOPS_RUNNER_TIMEOUT_SECONDS + 300
@@ -1446,6 +1810,14 @@ def _attempt_execute_retraining_request(
                 "deferred" if auto_execute else "skipped",
                 model,
             )
+            if model_internal and not auto_execute:
+                clear_pending_retraining(
+                    client,
+                    model_name=model_internal,
+                    request_id=request_id,
+                    reason="skipped_due_to_model_lock",
+                    request_status="skipped",
+                )
             return _normalize_retraining_request(request)
 
         run_ref = str(uuid.uuid4())

@@ -13,6 +13,8 @@ if str(ROOT) not in sys.path:
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("MLOPS_SCHEDULE_ENABLED", "false")
+os.environ.setdefault("MLOPS_PENDING_RECONCILE_ON_STARTUP", "false")
 
 
 @pytest.fixture

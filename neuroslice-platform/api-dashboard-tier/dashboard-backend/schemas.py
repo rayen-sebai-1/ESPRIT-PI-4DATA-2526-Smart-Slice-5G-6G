@@ -418,6 +418,9 @@ MlopsRetrainingRequestStatus = Literal[
     "completed",
     "failed",
     "skipped",
+    "cancelled",
+    "timeout",
+    "expired",
 ]
 
 MlopsRetrainingTriggerType = Literal["DRIFT", "SCHEDULED", "MANUAL"]
