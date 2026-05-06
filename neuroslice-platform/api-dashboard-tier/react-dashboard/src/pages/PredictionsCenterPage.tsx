@@ -37,8 +37,8 @@ export function PredictionsCenterPage() {
   usePageTitle("Simple predictions");
 
   const { user } = useAuth();
-  // NETWORK_MANAGER has read-only access; only ADMIN and NETWORK_OPERATOR can rerun
-  const canRunPredictions = user?.role === "ADMIN" || user?.role === "NETWORK_OPERATOR";
+  // Predictions are read-only for non-admin roles in the target RBAC model.
+  const canRunPredictions = user?.role === "ADMIN";
 
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);

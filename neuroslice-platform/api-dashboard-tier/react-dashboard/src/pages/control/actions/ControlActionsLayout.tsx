@@ -7,7 +7,6 @@ const tabs = [
   { to: "/control/actions/simulated-actuations", label: "Simulated Actuations" },
   { to: "/control/actions/action-history", label: "Action History" },
   { to: "/control/actions/pending-approval", label: "Pending Approval" },
-  { to: "/control/actions/drift-monitor", label: "Drift Monitor" },
 ];
 
 export function ControlActionsLayout() {
