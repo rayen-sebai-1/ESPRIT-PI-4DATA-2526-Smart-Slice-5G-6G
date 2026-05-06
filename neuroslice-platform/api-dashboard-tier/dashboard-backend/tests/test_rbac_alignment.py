@@ -158,6 +158,8 @@ def test_pipeline_run_is_role_based_not_account_bound() -> None:
     app = main.app
     app.dependency_overrides[get_current_user] = override_user
     app.dependency_overrides[main.get_mlops_ops_service] = lambda: _FakeOps()
+    old_background_execute_run = main.background_execute_run
+    main.background_execute_run = lambda _run_id: None
 
     with TestClient(app) as client:
         holder["principal"] = _principal("NETWORK_MANAGER")
@@ -173,6 +175,7 @@ def test_pipeline_run_is_role_based_not_account_bound() -> None:
         assert operator_response.status_code == 403
         assert operator_response.json().get("detail") == "Access denied."
 
+    main.background_execute_run = old_background_execute_run
     app.dependency_overrides.clear()
 
 

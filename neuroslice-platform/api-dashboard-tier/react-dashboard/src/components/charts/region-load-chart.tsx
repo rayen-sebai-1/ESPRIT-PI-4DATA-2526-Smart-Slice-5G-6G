@@ -21,18 +21,19 @@ export function RegionLoadChart({ data }: { data: RegionComparison[] }) {
       />
     );
   }
+  const sorted = [...data].sort((left, right) => right.network_load - left.network_load);
 
   return (
     <Card className="p-5">
       <div className="mb-5">
         <h3 className="text-lg font-semibold text-white">Network load by region</h3>
         <p className="text-sm text-mutedText">
-          Network load and congestion exposure across the most stressed areas.
+          Live national split by Tunisian operational regions.
         </p>
       </div>
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data.slice(0, 6)} barGap={10}>
+          <BarChart data={sorted} barGap={10}>
             <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
             <XAxis dataKey="code" stroke="#96a4ba" tickLine={false} axisLine={false} />
             <YAxis stroke="#96a4ba" tickLine={false} axisLine={false} domain={[0, 100]} />

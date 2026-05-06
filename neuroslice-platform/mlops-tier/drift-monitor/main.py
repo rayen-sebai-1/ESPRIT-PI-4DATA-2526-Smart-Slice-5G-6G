@@ -105,6 +105,15 @@ _DRIFT_EVENTS_LOG_KEY = "drift:events:log"
 _MLOPS_REQUEST_INDEX_KEY = "mlops:requests:index"
 _MLOPS_REQUEST_PREFIX = "mlops:request:"
 _MLOPS_MODEL_PENDING_PREFIX = "mlops:requests:pending:model:"
+_MLOPS_PENDING_REQUEST_PREFIX = "mlops:requests:pending:request:"
+_MLOPS_PENDING_MODEL_LEASE_PREFIX = "mlops:requests:pending:lease:model:"
+try:
+    _MLOPS_PENDING_TTL_SECONDS = max(
+        300,
+        int(os.getenv("MLOPS_PENDING_TTL_SECONDS", os.getenv("DRIFT_PENDING_TTL_SECONDS", "7800"))),
+    )
+except ValueError:
+    _MLOPS_PENDING_TTL_SECONDS = 7800
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
@@ -174,6 +183,95 @@ def _now_iso() -> str:
 
 def _now_ts() -> float:
     return time.time()
+
+
+def _pending_request_key(request_id: str) -> str:
+    return f"{_MLOPS_PENDING_REQUEST_PREFIX}{request_id}"
+
+
+def _pending_model_lease_key(model_name: str) -> str:
+    return f"{_MLOPS_PENDING_MODEL_LEASE_PREFIX}{model_name}"
+
+
+def _safe_iso_to_ts(value: Any) -> float | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.timestamp()
+
+
+def _load_json_dict(raw: Any) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        value = json.loads(str(raw))
+    except Exception:  # noqa: BLE001
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return value
+
+
+def _request_trigger_type(raw: dict[str, Any]) -> str:
+    value = str(raw.get("trigger_type") or "").strip().upper()
+    if value in {"DRIFT", "SCHEDULED", "MANUAL"}:
+        return value
+    return "DRIFT"
+
+
+async def _mark_pending_retraining(r: aioredis.Redis, *, model_name: str, request_id: str, owner: str, source: str, created_at: str) -> None:
+    created_ts = _safe_iso_to_ts(created_at) or _now_ts()
+    expires_ts = created_ts + float(_MLOPS_PENDING_TTL_SECONDS)
+    marker = {
+        "request_id": request_id,
+        "model_name": model_name,
+        "created_at": created_at,
+        "created_at_epoch": created_ts,
+        "expires_at": datetime.fromtimestamp(expires_ts, UTC).isoformat(),
+        "expires_at_epoch": expires_ts,
+        "owner": owner,
+        "source": source,
+    }
+    await r.sadd(f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}", request_id)
+    await r.set(_pending_request_key(request_id), json.dumps(marker), ex=_MLOPS_PENDING_TTL_SECONDS)
+    await r.set(_pending_model_lease_key(model_name), json.dumps(marker), ex=_MLOPS_PENDING_TTL_SECONDS)
+    logger.info(
+        "[%s] Pending marker created request_id=%s owner=%s source=%s expires_in=%ss",
+        model_name,
+        request_id,
+        owner,
+        source,
+        _MLOPS_PENDING_TTL_SECONDS,
+    )
+
+
+async def _clear_pending_retraining(r: aioredis.Redis, *, model_name: str, request_id: str, reason: str) -> None:
+    pending_key = f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}"
+    lease_key = _pending_model_lease_key(model_name)
+    lease_meta = _load_json_dict(await r.get(lease_key))
+    lease_request_id = str(lease_meta.get("request_id") or "")
+    expires_epoch = lease_meta.get("expires_at_epoch")
+    lease_expired = False
+    try:
+        lease_expired = expires_epoch is not None and float(expires_epoch) <= _now_ts()
+    except (TypeError, ValueError):
+        lease_expired = False
+
+    await r.srem(pending_key, request_id)
+    await r.delete(_pending_request_key(request_id))
+    if lease_request_id == request_id or lease_expired or not lease_meta:
+        await r.delete(lease_key)
+    logger.info("[%s] Pending marker cleared request_id=%s reason=%s", model_name, request_id, reason)
 
 
 async def _get_redis() -> aioredis.Redis:
@@ -296,9 +394,78 @@ async def _save_model_status(r: aioredis.Redis, model_name: str, status: dict[st
         logger.warning("Could not save drift status for %s: %s", model_name, exc)
 
 
-async def _has_pending_request(r: aioredis.Redis, model_name: str) -> bool:
+async def _has_pending_request(
+    r: aioredis.Redis,
+    model_name: str,
+    *,
+    trigger_type: str | None = None,
+) -> bool:
     pending_key = f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}"
-    return await r.scard(pending_key) > 0
+    request_ids = list(await r.smembers(pending_key) or [])
+    if not request_ids:
+        return False
+
+    now_ts = _now_ts()
+    live_statuses = {"pending_approval", "approved", "running"}
+    terminal_statuses = {"completed", "failed", "skipped", "cancelled", "timeout", "rejected", "expired"}
+    has_live = False
+    for request_id in request_ids:
+        raw = await r.get(f"{_MLOPS_REQUEST_PREFIX}{request_id}")
+        if not raw:
+            await _clear_pending_retraining(
+                r,
+                model_name=model_name,
+                request_id=str(request_id),
+                reason="missing_request_payload",
+            )
+            continue
+        payload = _load_json_dict(raw)
+        if not payload:
+            await _clear_pending_retraining(
+                r,
+                model_name=model_name,
+                request_id=str(request_id),
+                reason="invalid_request_payload",
+            )
+            continue
+
+        status_value = str(payload.get("status") or "")
+        if status_value in terminal_statuses:
+            await _clear_pending_retraining(
+                r,
+                model_name=model_name,
+                request_id=str(request_id),
+                reason=f"terminal_status:{status_value}",
+            )
+            continue
+
+        created_ts = _safe_iso_to_ts(payload.get("created_at"))
+        if created_ts is not None and (now_ts - created_ts) > float(_MLOPS_PENDING_TTL_SECONDS):
+            payload["status"] = "expired"
+            payload["completed_at"] = _now_iso()
+            payload["execution_detail"] = (
+                f"Expired stale pending marker after {int(now_ts - created_ts)} seconds."
+            )
+            await r.set(f"{_MLOPS_REQUEST_PREFIX}{request_id}", json.dumps(payload))
+            await _clear_pending_retraining(
+                r,
+                model_name=model_name,
+                request_id=str(request_id),
+                reason="stale_pending_ttl_exceeded",
+            )
+            continue
+
+        if status_value in live_statuses:
+            if trigger_type is None or _request_trigger_type(payload) == trigger_type:
+                has_live = True
+        else:
+            await _clear_pending_retraining(
+                r,
+                model_name=model_name,
+                request_id=str(request_id),
+                reason=f"unknown_status:{status_value or 'empty'}",
+            )
+    return has_live
 
 
 async def _create_retraining_request(
@@ -338,12 +505,18 @@ async def _create_retraining_request(
     }
 
     request_key = f"{_MLOPS_REQUEST_PREFIX}{request_id}"
-    pending_key = f"{_MLOPS_MODEL_PENDING_PREFIX}{model_name}"
     await r.set(request_key, json.dumps(request))
     await r.zadd(_MLOPS_REQUEST_INDEX_KEY, {request_id: _now_ts()})
 
     if initial_status == "pending_approval":
-        await r.sadd(pending_key, request_id)
+        await _mark_pending_retraining(
+            r,
+            model_name=model_name,
+            request_id=request_id,
+            owner="mlops-drift-monitor",
+            source=request_source,
+            created_at=str(request["created_at"]),
+        )
 
     logger.warning(
         "[%s] RETRAINING REQUEST CREATED -> status=%s trigger_type=%s request_id=%s severity=%s p_value=%s",
@@ -365,7 +538,7 @@ async def _trigger_mlops_pipeline(model_name: str, anomaly_count: int) -> bool:
     """Create a drift retraining request; skip if one is already pending."""
     r = await _get_redis()
 
-    if await _has_pending_request(r, model_name):
+    if await _has_pending_request(r, model_name, trigger_type="DRIFT"):
         logger.info("[%s] Pending approval request already exists – skipping duplicate", model_name)
         mlops_drift_triggers_total.labels(model=model_name, status="pending_exists").inc()
         return False
@@ -566,7 +739,7 @@ async def _handle_kafka_drift_event(event: Any) -> None:
         mlops_kafka_messages_total.labels(result="cooldown").inc()
         return
 
-    if await _has_pending_request(r, model_name_raw):
+    if await _has_pending_request(r, model_name_raw, trigger_type="DRIFT"):
         logger.info("[%s] Kafka drift event – pending request already exists, skipping duplicate", model_name_raw)
         mlops_kafka_messages_total.labels(result="duplicate").inc()
         return
@@ -651,7 +824,7 @@ async def _fire_scheduled_retraining() -> None:
 
 
 async def _create_scheduled_request(r: aioredis.Redis, model_name: str, runtime_enabled: bool) -> None:
-    if await _has_pending_request(r, model_name):
+    if await _has_pending_request(r, model_name, trigger_type="SCHEDULED"):
         logger.info("[%s] Cron: pending request exists – skipping duplicate", model_name)
         mlops_cron_triggers_total.labels(model=model_name, status="duplicate").inc()
         return
@@ -801,7 +974,7 @@ async def trigger_scheduled_now(model_name: str | None = None) -> dict:
             skipped.append({"model": m, "reason": "unknown"})
             continue
         try:
-            if await _has_pending_request(r, m):
+            if await _has_pending_request(r, m, trigger_type="SCHEDULED"):
                 skipped.append({"model": m, "reason": "pending_exists"})
             elif await _is_in_cooldown(r, m):
                 skipped.append({"model": m, "reason": "cooldown"})
@@ -836,6 +1009,7 @@ async def startup() -> None:
             runtime_enabled = await _runtime_service_enabled(r)
             mlops_drift_enabled.set(1 if runtime_enabled else 0)
             for model_name in _MODEL_CONFIG:
+                await _has_pending_request(r, model_name)
                 last_ts = await r.get(_trigger_key(model_name))
                 if last_ts:
                     try:

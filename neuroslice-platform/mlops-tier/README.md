@@ -163,7 +163,8 @@ mlops-drift-monitor (mlops-tier) creates Redis retraining request (status=pendin
 
 **Safety guarantees:**
 - All three sources create `pending_approval` requests in Redis — no automatic pipeline execution.
-- Duplicate detection: a model with an existing pending/approved request is blocked.
+- Duplicate detection is scoped by trigger type (`DRIFT` vs `SCHEDULED`), so a pending drift request does not block creating a scheduled request for the same model (and vice versa).
+- Pending blockers are lease-based (`mlops:requests:pending:request:*`, `mlops:requests:pending:lease:model:*`) and stale markers are pruned when expired to avoid permanent deadlocks.
 - `DRIFT_COOLDOWN_SECONDS` (default: 600 s) enforced between consecutive triggers.
 - Redis runtime flag `runtime:service:mlops-drift-monitor:enabled` respected; when disabled, all triggers are skipped.
 - Part of the default Compose runtime (no separate profile required). Internal only — no published host port.

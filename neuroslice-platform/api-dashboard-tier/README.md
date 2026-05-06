@@ -103,10 +103,18 @@ Current React router exposure:
 - `GET /api/dashboard/mlops/pipeline/runs/{run_id}`
 - `GET /api/dashboard/mlops/pipeline/runs/{run_id}/logs`
 - `GET /api/dashboard/mlops/requests`
+- `GET /api/dashboard/mlops/requests?trigger_type=SCHEDULED` (scheduler-only view)
+- `GET /api/dashboard/mlops/requests?trigger_type=DRIFT` (drift-only view)
 - `GET /api/dashboard/mlops/requests/{request_id}`
 - `POST /api/dashboard/mlops/requests/{request_id}/approve`
 - `POST /api/dashboard/mlops/requests/{request_id}/reject`
 - `POST /api/dashboard/mlops/requests/{request_id}/execute`
+
+Pending marker lifecycle (`mlops:requests:pending:*`) is lease-based:
+- created when a request enters `pending_approval`
+- cleared on terminal statuses (`completed`, `failed`, `skipped`, `rejected`, `timeout`, `expired`, `cancelled`)
+- reconciled on backend startup and during scheduler checks to remove stale markers safely
+- cleanup is idempotent and only clears model-level lease when request id matches or marker is stale/terminal
 
 `dashboard-backend` reads `models/registry.json` and `models/promoted/*/current/metadata.json` from a read-only volume mount, queries Elasticsearch (when `ES_HOST` is configured) for prediction monitoring, and delegates `promote` / `rollback` to `MLOPS_API_BASE_URL`. No MinIO secrets, MLflow database credentials, or JWT secrets are exposed to the browser.
 

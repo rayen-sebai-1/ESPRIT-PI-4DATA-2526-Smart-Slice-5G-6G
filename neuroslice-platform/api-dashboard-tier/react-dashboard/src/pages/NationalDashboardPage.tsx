@@ -189,6 +189,20 @@ export function NationalDashboardPage() {
     + (liveOverview?.sla_risk_count ?? 0)
     + (liveOverview?.slice_mismatch_count ?? 0);
   const mostRiskyEntity = topRiskEntities[0];
+  const hasSlaTrend = Boolean(slaTrendQuery.data?.length);
+  const hasSliceDistribution = Boolean(sliceDistributionQuery.data?.length);
+  const liveMetricsActive = hasSlaTrend || hasSliceDistribution;
+  const liveMetricsSyncing = slaTrendQuery.isFetching || sliceDistributionQuery.isFetching;
+  const liveMetricsLabel = liveMetricsActive
+    ? "Live Metrics Active"
+    : liveMetricsSyncing
+      ? "Live Metrics Syncing"
+      : "Live Metrics Unavailable";
+  const liveMetricsTone = liveMetricsActive
+    ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+    : liveMetricsSyncing
+      ? "border-amber-300/30 bg-amber-500/10 text-amber-100"
+      : "border-rose-400/30 bg-rose-500/10 text-rose-100";
 
   return (
     <div className="space-y-6">
@@ -257,6 +271,12 @@ export function NationalDashboardPage() {
         <TunisiaNetworkMap regions={regions} />
       </section>
 
+      <div className="flex justify-end">
+        <div className={`rounded-full border px-3 py-1 text-xs ${liveMetricsTone}`}>
+          {liveMetricsLabel}
+        </div>
+      </div>
+
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <Card className="p-5">
           <div className="mb-5">
@@ -319,7 +339,11 @@ export function NationalDashboardPage() {
         <SlaTrendChart
           data={slaTrendQuery.data ?? []}
           title="National SLA trend"
-          description="Awaiting metrics aggregation — the /metrics/sla-trend endpoint will populate this chart once the aggregation pipeline is active."
+          description={
+            hasSlaTrend
+              ? "Live feed from /metrics/sla-trend. Values are refreshed from InfluxDB through the BFF."
+              : "No SLA trend points were returned for the current window. Verify telemetry flow and BFF connectivity."
+          }
           lines={[
             { dataKey: "sla_percent", color: "#4ec3ff", label: "SLA %" },
             { dataKey: "congestion_rate", color: "#f59e0b", label: "Congestion %" },
@@ -361,7 +385,11 @@ export function NationalDashboardPage() {
         <SliceDistributionChart
           data={sliceDistributionQuery.data ?? []}
           title="Slice distribution"
-          description="Awaiting metrics aggregation — the /metrics/slice-distribution endpoint will populate this chart once the aggregation pipeline is active."
+          description={
+            hasSliceDistribution
+              ? "Live distribution from /metrics/slice-distribution across national traffic slices."
+              : "No slice-distribution points were returned for the current window. Verify telemetry flow and BFF connectivity."
+          }
         />
       </section>
 
@@ -377,3 +405,4 @@ export function NationalDashboardPage() {
     </div>
   );
 }
+

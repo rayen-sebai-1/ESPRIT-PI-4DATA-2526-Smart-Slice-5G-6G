@@ -39,6 +39,17 @@ _DOMAIN_META: dict[str, dict[str, str]] = {
     "ran": {"code": "RAN", "name": "Radio access (RAN)"},
 }
 
+_TUNISIA_REGION_BLUEPRINT: list[dict[str, Any]] = [
+    {"region_id": 1, "code": "GT", "name": "Grand Tunis", "share": 0.22, "load_bias": 8.0, "sla_bias": -4.0, "domain": "core"},
+    {"region_id": 2, "code": "CB", "name": "Cap Bon", "share": 0.12, "load_bias": 1.5, "sla_bias": 1.0, "domain": "core"},
+    {"region_id": 3, "code": "SH", "name": "Sahel", "share": 0.14, "load_bias": 3.0, "sla_bias": -1.5, "domain": "edge"},
+    {"region_id": 4, "code": "SF", "name": "Sfax", "share": 0.13, "load_bias": 4.5, "sla_bias": -2.0, "domain": "edge"},
+    {"region_id": 5, "code": "NO", "name": "Nord Ouest", "share": 0.11, "load_bias": -7.0, "sla_bias": 5.5, "domain": "core"},
+    {"region_id": 6, "code": "CO", "name": "Centre Ouest", "share": 0.10, "load_bias": -4.0, "sla_bias": 3.0, "domain": "ran"},
+    {"region_id": 7, "code": "SE", "name": "Sud Est", "share": 0.10, "load_bias": -5.0, "sla_bias": 4.0, "domain": "ran"},
+    {"region_id": 8, "code": "SO", "name": "Sud Ouest", "share": 0.08, "load_bias": -9.0, "sla_bias": 6.0, "domain": "ran"},
+]
+
 
 def _entity_int_id(entity_id: str) -> int:
     return abs(hash(entity_id)) % (2**31 - 2) + 1
@@ -91,6 +102,10 @@ def _parse_ts(ts_str: Any, fallback: datetime) -> datetime:
         return fallback
 
 
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
 class BffDashboardProvider(DashboardDataProvider):
     name = "bff"
 
@@ -99,8 +114,19 @@ class BffDashboardProvider(DashboardDataProvider):
         self.client = httpx.Client(base_url=self.base_url, timeout=10.0)
 
     def _get_json(self, path: str, **params: object) -> dict:
-        response = self.client.get(path, params=params)
-        response.raise_for_status()
+        try:
+            response = self.client.get(path, params=params)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"BFF returned {exc.response.status_code} for {path}.",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"BFF unreachable for {path}: {exc}",
+            ) from exc
         payload = response.json()
         if not isinstance(payload, dict):
             raise HTTPException(
@@ -113,11 +139,160 @@ class BffDashboardProvider(DashboardDataProvider):
     def _average(items: list[float]) -> float:
         return round(sum(items) / len(items), 2) if items else 0.0
 
+    @staticmethod
+    def _safe_float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _safe_int(value: Any, default: int) -> int:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+    def _build_national_regions(
+        self,
+        *,
+        overview: NationalOverview,
+        network_payload: dict[str, Any],
+    ) -> list[RegionComparison]:
+        kpis = network_payload.get("kpis") if isinstance(network_payload.get("kpis"), dict) else {}
+        bff_regions = network_payload.get("regions")
+        domain_rows = bff_regions if isinstance(bff_regions, list) else []
+
+        domain_stats: dict[str, dict[str, float]] = {}
+        for row in domain_rows:
+            if not isinstance(row, dict):
+                continue
+            domain = str(row.get("id") or "").strip().lower()
+            if domain not in _DOMAIN_META:
+                continue
+            domain_stats[domain] = {
+                "congestion_pct": _clamp(self._safe_float(row.get("congestion_avg"), 0.0) * 100.0, 0.0, 100.0),
+                "health_pct": _clamp(self._safe_float(row.get("health_avg"), 0.0) * 100.0, 0.0, 100.0),
+                "faults": float(self._safe_int(row.get("active_faults_count"), 0)),
+            }
+
+        base_health_pct = _clamp(
+            self._safe_float(kpis.get("health_avg"), overview.sla_national_percent / 100.0) * 100.0,
+            0.0,
+            100.0,
+        )
+        base_congestion_pct = _clamp(
+            self._safe_float(kpis.get("congestion_avg"), overview.congestion_rate / 100.0) * 100.0,
+            0.0,
+            100.0,
+        )
+        base_latency_ms = _clamp(
+            self._safe_float(kpis.get("latency_avg"), overview.avg_latency_ms),
+            0.0,
+            250.0,
+        )
+        base_packet_loss = _clamp(
+            self._safe_float(kpis.get("packet_loss_avg"), 0.45),
+            0.0,
+            10.0,
+        )
+
+        total_entities = max(
+            1,
+            self._safe_int(network_payload.get("entities_count"), 0)
+            or self._safe_int(overview.sessions_count, 1),
+        )
+        total_sessions = max(
+            1,
+            self._safe_int(kpis.get("sessions_total"), 0)
+            or self._safe_int(network_payload.get("slices_count"), 0)
+            or self._safe_int(overview.sessions_count, 1),
+        )
+        total_alerts = max(0, self._safe_int(overview.active_alerts_count, 0))
+        total_anomalies = max(0, self._safe_int(overview.anomalies_count, 0))
+
+        regions: list[RegionComparison] = []
+        for blueprint in _TUNISIA_REGION_BLUEPRINT:
+            domain = str(blueprint["domain"])
+            share = float(blueprint["share"])
+            domain_live = domain_stats.get(domain, {})
+            domain_congestion = domain_live.get("congestion_pct", base_congestion_pct)
+            domain_health = domain_live.get("health_pct", base_health_pct)
+            domain_faults = domain_live.get("faults", 0.0)
+
+            load_bias = float(blueprint["load_bias"])
+            sla_bias = float(blueprint["sla_bias"])
+            network_load = _clamp(
+                base_congestion_pct
+                + load_bias
+                + (domain_congestion - base_congestion_pct) * 0.6
+                + domain_faults * 0.9,
+                5.0,
+                99.0,
+            )
+            sla_percent = _clamp(
+                base_health_pct
+                + sla_bias
+                + (domain_health - base_health_pct) * 0.55
+                - max(0.0, network_load - 72.0) * 0.18,
+                40.0,
+                99.0,
+            )
+            avg_latency_ms = _clamp(
+                base_latency_ms
+                + max(0.0, network_load - 60.0) * 0.22
+                + domain_faults * 0.45,
+                4.0,
+                180.0,
+            )
+            avg_packet_loss = _clamp(
+                base_packet_loss
+                + max(0.0, network_load - 65.0) * 0.02
+                + domain_faults * 0.03,
+                0.05,
+                6.0,
+            )
+
+            sessions_count = max(1, int(round(total_sessions * share)))
+            gnodeb_count = max(1, int(round(total_entities * share)))
+            high_risk_sessions = max(
+                0,
+                int(round(total_alerts * share + max(0.0, network_load - 72.0) / 11.5 + domain_faults * 0.4)),
+            )
+            anomalies_count = max(
+                0,
+                int(round(total_anomalies * share + max(0.0, network_load - 78.0) / 13.0)),
+            )
+
+            regions.append(
+                RegionComparison(
+                    region_id=int(blueprint["region_id"]),
+                    code=str(blueprint["code"]),
+                    name=str(blueprint["name"]),
+                    ric_status=_health_to_ric_status(sla_percent / 100.0),
+                    network_load=round(network_load, 1),
+                    gnodeb_count=gnodeb_count,
+                    sessions_count=sessions_count,
+                    sla_percent=round(sla_percent, 1),
+                    avg_latency_ms=round(avg_latency_ms, 2),
+                    avg_packet_loss=round(avg_packet_loss, 3),
+                    congestion_rate=round(network_load, 1),
+                    high_risk_sessions_count=high_risk_sessions,
+                    anomalies_count=anomalies_count,
+                )
+            )
+
+        return regions
+
     def get_national_dashboard(self) -> NationalDashboardResponse:
         latest_kpis = self._get_json("/api/v1/kpis/latest", limit=500).get("entities", [])
         congestion_items = self._get_json("/api/v1/aiops/congestion/latest", limit=500).get("items", [])
         sla_items = self._get_json("/api/v1/aiops/sla/latest", limit=500).get("items", [])
         anomaly_events = self._get_json("/api/v1/aiops/events/recent", stream="events.anomaly", count=200).get("events", [])
+        try:
+            network_payload = self._get_json("/api/v1/network/national")
+        except Exception:
+            network_payload = {}
         try:
             faults_payload = self._get_json("/api/v1/live/faults")
             active_faults = faults_payload.get("faults", []) or []
@@ -157,7 +332,8 @@ class BffDashboardProvider(DashboardDataProvider):
             anomalies_count=len(anomaly_events) if isinstance(anomaly_events, list) else 0,
             generated_at=datetime.now(UTC),
         )
-        return NationalDashboardResponse(overview=overview, regions=[])
+        regions = self._build_national_regions(overview=overview, network_payload=network_payload)
+        return NationalDashboardResponse(overview=overview, regions=regions)
 
     # ---- Regional dashboard ----
 

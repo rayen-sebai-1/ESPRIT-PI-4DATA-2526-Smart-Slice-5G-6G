@@ -137,10 +137,16 @@ def patch_get_redis(fake_redis: _FakeRedis):
 
 import importlib
 import sys
+from prometheus_client import REGISTRY
 
 @pytest.fixture(autouse=True)
 def import_main():
     """Re-import main freshly so module-level state is clean each test."""
+    for collector in list(getattr(REGISTRY, "_collector_to_names", {}).keys()):
+        try:
+            REGISTRY.unregister(collector)
+        except Exception:
+            pass
     if "main" in sys.modules:
         del sys.modules["main"]
     import main as m

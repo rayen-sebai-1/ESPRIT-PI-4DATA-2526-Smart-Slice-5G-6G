@@ -15,9 +15,13 @@ interface LogFiltersBarProps {
 const categoryLabels: Record<LogCategory, string> = {
   FAULT_OPENED: "Fault open",
   FAULT_CLEARED: "Fault clear",
-  KPI_BREACH: "KPI breach",
+  KPI_HEALTH: "KPI health",
+  KPI_CONGESTION: "KPI congestion",
+  KPI_PACKET_LOSS: "Packet loss",
+  KPI_RB_UTIL: "RB utilization",
+  KPI_LATENCY: "Latency",
   AIOPS_CONGESTION: "Congestion",
-  AIOPS_SLA_RISK: "SLA risk",
+  AIOPS_SLA: "SLA risk",
   AIOPS_SLICE_MISMATCH: "Slice mismatch",
 };
 
