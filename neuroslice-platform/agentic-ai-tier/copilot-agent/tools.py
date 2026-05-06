@@ -30,7 +30,7 @@ def _extract_slice_id(
     query_parameters: Optional[Dict[str, Any]] = None,
 ) -> str:
     filters, _ = normalize_filters(slice_id=slice_id or "", query_parameters=query_parameters)
-    return str(filters.get("slice_id") or "slice-001")
+    return str(filters.get("slice_id") or "")
 
 
 @tool
@@ -69,7 +69,7 @@ def fetch_redis_state(
 ) -> Dict[str, Any]:
     """
     Fetch compact live Redis state for a slice, including entity hashes, active faults, and AIOps outputs.
-    Pass null/omit slice_id if unknown; the tool will fall back to a default slice.
+    Pass null/omit slice_id if unknown; the tool will query without a slice filter.
     """
     try:
         normalized_slice_id = _extract_slice_id(slice_id=slice_id, query_parameters=query_parameters)

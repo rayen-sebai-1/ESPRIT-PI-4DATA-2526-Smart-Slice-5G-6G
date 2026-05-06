@@ -16,7 +16,10 @@ export default function PendingApprovalPage() {
   const queryClient = useQueryClient();
   const [actionErr, setActionErr] = useState<string | null>(null);
 
-  const canControl = user?.role === "ADMIN" || user?.role === "NETWORK_OPERATOR";
+  const canControl =
+    user?.role === "ADMIN"
+    || user?.role === "NETWORK_MANAGER"
+    || user?.role === "DATA_MLOPS_ENGINEER";
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["controls", "actions"],
@@ -104,3 +107,4 @@ export default function PendingApprovalPage() {
     </section>
   );
 }
+

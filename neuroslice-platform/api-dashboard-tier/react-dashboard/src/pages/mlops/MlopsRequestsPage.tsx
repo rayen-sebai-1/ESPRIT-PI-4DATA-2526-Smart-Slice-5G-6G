@@ -293,7 +293,10 @@ export function MlopsRequestsPage() {
   const [triggerFilter, setTriggerFilter] = useState<string>("all");
   const [modelFilter, setModelFilter] = useState<string>("");
 
-  const canWrite = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
+  const canWrite =
+    user?.role === "ADMIN"
+    || user?.role === "NETWORK_MANAGER"
+    || user?.role === "DATA_MLOPS_ENGINEER";
 
   // -------------------------------------------------------------------------
   // Query — auto-refresh 10s while running, 15s otherwise
@@ -456,7 +459,7 @@ export function MlopsRequestsPage() {
             {!canWrite && (
               <p className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs text-amber-300">
                 <AlertTriangle size={12} />
-                Read-only — Admin or MLOps Engineer role required to approve or
+                Read-only — Manager (Admin) or MLOps Engineer role required to approve or
                 execute.
               </p>
             )}

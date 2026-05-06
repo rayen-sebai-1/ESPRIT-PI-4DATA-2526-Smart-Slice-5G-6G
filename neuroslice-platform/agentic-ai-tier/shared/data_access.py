@@ -222,8 +222,22 @@ class InfluxTelemetryClient:
         ]
         for tag in ("slice_id", "domain", "entity_id", "entity_type", "slice_type"):
             value = filters.get(tag)
-            if value:
-                filter_lines.append(f'  |> filter(fn: (r) => r.{tag} == "{_flux_escape(str(value))}")')
+            if not value:
+                continue
+            if tag == "slice_id":
+                variants = _slice_id_variants(value)
+                if variants:
+                    checks = " or ".join(
+                        f'strings.toLower(v: r.slice_id) == "{_flux_escape(candidate)}"'
+                        for candidate in variants
+                    )
+                    filter_lines.append(f"  |> filter(fn: (r) => exists r.slice_id and ({checks}))")
+                continue
+
+            escaped = _flux_escape(str(value).strip().lower())
+            filter_lines.append(
+                f'  |> filter(fn: (r) => exists r.{tag} and strings.toLower(v: r.{tag}) == "{escaped}")'
+            )
 
         return "\n".join(
             [
@@ -459,7 +473,8 @@ class RedisStateClient:
         )
 
     def _discover_entities_from_stream(self, redis_client: Any, slice_id: str, count: int = 1200) -> List[str]:
-        if not slice_id:
+        normalized_slice_id = _normalize_token(slice_id)
+        if not normalized_slice_id:
             return []
 
         entity_ids: List[str] = []
@@ -468,7 +483,7 @@ class RedisStateClient:
             if not isinstance(event, dict):
                 continue
             event_slice_id = event.get("sliceId") or event.get("slice_id")
-            if str(event_slice_id or "") != slice_id:
+            if not _slice_id_matches(event_slice_id, normalized_slice_id):
                 continue
             entity_id = event.get("entityId") or event.get("entity_id")
             if entity_id and str(entity_id) not in entity_ids:
@@ -479,17 +494,18 @@ class RedisStateClient:
         if entity_ids:
             return entity_ids
 
-        return self._scan_entity_hashes(redis_client, slice_id)
+        return self._scan_entity_hashes(redis_client, normalized_slice_id)
 
     def _scan_entity_hashes(self, redis_client: Any, slice_id: str, limit: int = 25) -> List[str]:
         entity_ids: List[str] = []
+        normalized_slice_id = _normalize_token(slice_id)
         try:
             iterator = redis_client.scan_iter(match="entity:*", count=100)
             for key in iterator:
                 entity_id = str(key).replace("entity:", "", 1)
                 state = _decode_hash(redis_client.hgetall(key))
                 state_slice_id = state.get("sliceId") or state.get("slice_id") or state.get("sliceId".lower())
-                if str(state_slice_id or "") == slice_id and entity_id not in entity_ids:
+                if _slice_id_matches(state_slice_id, normalized_slice_id) and entity_id not in entity_ids:
                     entity_ids.append(entity_id)
                 if len(entity_ids) >= limit:
                     break
@@ -620,9 +636,13 @@ def normalize_filters(
 
     filters: Dict[str, Any] = {}
     if raw_slice_id:
-        filters["slice_id"] = str(raw_slice_id).strip()
+        normalized_slice_id = _normalize_slice_token(raw_slice_id)
+        if normalized_slice_id:
+            filters["slice_id"] = normalized_slice_id
     if raw_entity_id:
-        filters["entity_id"] = str(raw_entity_id).strip()
+        normalized_entity_id = str(raw_entity_id).strip().strip("`'\"")
+        if normalized_entity_id:
+            filters["entity_id"] = normalized_entity_id
 
     if raw_domain:
         normalized_domain = str(raw_domain).strip().lower()
@@ -820,17 +840,18 @@ def _split_entities(value: Any) -> List[str]:
 
 
 def _fault_matches(record: Dict[str, Any], slice_id: str = "", entity_ids: Optional[Sequence[str]] = None) -> bool:
-    normalized_slice_id = str(slice_id or "").strip()
-    normalized_entity_ids = set(_normalize_entity_ids(entity_ids))
+    normalized_slice_id = _normalize_token(slice_id)
+    normalized_entity_ids = {_normalize_token(item) for item in _normalize_entity_ids(entity_ids)}
+    normalized_entity_ids.discard("")
 
     if not normalized_slice_id and not normalized_entity_ids:
         return True
 
-    affected_entities = _split_entities(record.get("affected_entities"))
+    affected_entities = [_normalize_token(item) for item in _split_entities(record.get("affected_entities"))]
     affected_text = ",".join(affected_entities)
     if normalized_slice_id and (
         normalized_slice_id in affected_entities
-        or f"slice:{normalized_slice_id}" in affected_entities
+        or _normalize_token(f"slice:{normalized_slice_id}") in affected_entities
         or normalized_slice_id in affected_text
     ):
         return True
@@ -949,16 +970,69 @@ def _extract_stream_event(fields: Dict[str, Any]) -> Any:
 
 
 def _event_matches(event: Dict[str, Any], slice_id: str, entity_ids: Sequence[str]) -> bool:
-    normalized_slice_id = str(slice_id or "").strip()
-    normalized_entity_ids = set(_normalize_entity_ids(entity_ids))
+    normalized_slice_id = _normalize_token(slice_id)
+    normalized_entity_ids = {_normalize_token(item) for item in _normalize_entity_ids(entity_ids)}
+    normalized_entity_ids.discard("")
     if not normalized_slice_id and not normalized_entity_ids:
         return True
     event_slice_id = event.get("sliceId") or event.get("slice_id")
-    event_entity_id = event.get("entityId") or event.get("entity_id")
+    event_entity_id = _normalize_token(event.get("entityId") or event.get("entity_id"))
     return (
-        bool(normalized_slice_id and str(event_slice_id or "") == normalized_slice_id)
-        or bool(event_entity_id and str(event_entity_id) in normalized_entity_ids)
+        bool(normalized_slice_id and _slice_id_matches(event_slice_id, normalized_slice_id))
+        or bool(event_entity_id and event_entity_id in normalized_entity_ids)
     )
+
+
+def _normalize_token(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _slice_id_variants(value: Any) -> List[str]:
+    token = _normalize_slice_token(value)
+    if not token:
+        return []
+
+    variants: List[str] = []
+
+    def _add(candidate: str) -> None:
+        clean = _normalize_token(candidate)
+        if clean and clean not in variants:
+            variants.append(clean)
+
+    _add(token)
+
+    if token.startswith("slice:"):
+        token = token.split("slice:", 1)[1]
+        _add(token)
+
+    if token.startswith("slice-"):
+        _add(token[len("slice-"):])
+    else:
+        _add(f"slice-{token}")
+
+    return variants
+
+
+def _slice_id_matches(candidate: Any, requested: Any) -> bool:
+    requested_variants = set(_slice_id_variants(requested))
+    if not requested_variants:
+        return True
+
+    candidate_text = _normalize_slice_token(candidate)
+    if not candidate_text:
+        return False
+
+    candidate_variants = set(_slice_id_variants(candidate_text))
+    if requested_variants.intersection(candidate_variants):
+        return True
+
+    return any(variant in candidate_text for variant in requested_variants)
+
+
+def _normalize_slice_token(value: Any) -> str:
+    token = _normalize_token(value).strip("`'\"")
+    token = re.sub(r"[?!.,;:]+$", "", token).strip()
+    return token
 
 
 def _compact_event(event: Dict[str, Any]) -> Dict[str, Any]:

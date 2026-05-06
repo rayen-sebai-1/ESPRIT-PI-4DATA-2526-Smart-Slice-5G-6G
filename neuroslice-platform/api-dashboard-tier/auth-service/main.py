@@ -10,6 +10,7 @@ from security import clear_refresh_cookie, get_bearer_token, get_refresh_cookie_
 from service import AuthService, build_client_context, get_auth_service, get_current_user, require_roles
 
 app = FastAPI(title="NeuroSlice Auth Service", version="2.0.0")
+ADMIN_CONSOLE_ROLES = ("ADMIN", "NETWORK_MANAGER")
 
 
 @app.get("/health")
@@ -93,7 +94,7 @@ def me(current_user: Annotated[AuthenticatedPrincipal, Depends(get_current_user)
 @app.get("/users", response_model=list[UserOut], tags=["users"])
 def users(
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*ADMIN_CONSOLE_ROLES))],
 ) -> list[UserOut]:
     return auth_service.list_users()
 
@@ -103,7 +104,7 @@ def admin_create_user(
     payload: AdminCreateUserPayload,
     request: Request,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*ADMIN_CONSOLE_ROLES))],
 ) -> UserOut:
     return auth_service.create_user(current_user, payload, client=build_client_context(request))
 
@@ -114,7 +115,7 @@ def admin_update_user(
     payload: AdminUpdateUserPayload,
     request: Request,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*ADMIN_CONSOLE_ROLES))],
 ) -> UserOut:
     return auth_service.update_user(current_user, user_id, payload, client=build_client_context(request))
 
@@ -124,7 +125,7 @@ def admin_delete_user(
     user_id: int,
     request: Request,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*ADMIN_CONSOLE_ROLES))],
 ) -> Response:
     auth_service.soft_delete_user(current_user, user_id, client=build_client_context(request))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

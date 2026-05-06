@@ -13,10 +13,12 @@ export default function DriftMonitorPage() {
 
   const canViewDrift =
     user?.role === "ADMIN"
-    || user?.role === "NETWORK_OPERATOR"
     || user?.role === "NETWORK_MANAGER"
     || user?.role === "DATA_MLOPS_ENGINEER";
-  const canTriggerDrift = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
+  const canTriggerDrift =
+    user?.role === "ADMIN"
+    || user?.role === "NETWORK_MANAGER"
+    || user?.role === "DATA_MLOPS_ENGINEER";
 
   const { data: driftStatus } = useQuery({
     queryKey: ["controls", "drift", "status"],

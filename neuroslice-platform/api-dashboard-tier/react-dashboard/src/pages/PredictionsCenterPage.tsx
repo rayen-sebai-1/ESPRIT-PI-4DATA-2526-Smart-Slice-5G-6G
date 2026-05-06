@@ -38,7 +38,7 @@ export function PredictionsCenterPage() {
 
   const { user } = useAuth();
   // Predictions are read-only for non-admin roles in the target RBAC model.
-  const canRunPredictions = user?.role === "ADMIN";
+  const canRunPredictions = user?.role === "ADMIN" || user?.role === "NETWORK_MANAGER";
 
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);

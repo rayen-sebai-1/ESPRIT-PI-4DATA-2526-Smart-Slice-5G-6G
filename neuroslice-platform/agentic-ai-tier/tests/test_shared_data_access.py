@@ -8,7 +8,14 @@ import unittest
 AGENTIC_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AGENTIC_ROOT))
 
-from shared.data_access import InfluxTelemetryClient, RedisStateClient, decode_redis_value
+from shared.data_access import (
+    InfluxTelemetryClient,
+    RedisStateClient,
+    _event_matches,
+    _slice_id_matches,
+    decode_redis_value,
+    normalize_filters,
+)
 from shared.telemetry_summary import summarize_telemetry_records
 
 
@@ -86,6 +93,30 @@ class SharedDataAccessSmokeTests(unittest.TestCase):
         self.assertEqual(summary["status"], "no_data")
         self.assertEqual(summary["summary"]["total_points_seen"], 0)
         self.assertEqual(summary["groups"], [])
+
+    def test_slice_id_matching_accepts_prefixed_and_unprefixed(self) -> None:
+        self.assertTrue(_slice_id_matches("slice-urllc-01-02", "urllc-01-02"))
+        self.assertTrue(_slice_id_matches("urllc-01-02", "slice-urllc-01-02"))
+        self.assertTrue(_slice_id_matches("slice:urllc-01-02", "urllc-01-02"))
+        self.assertTrue(_slice_id_matches("slice-urllc-01-02", "slice-urllc-01-02?"))
+        self.assertFalse(_slice_id_matches("slice-urllc-01-01", "urllc-01-02"))
+
+    def test_event_match_uses_slice_variants(self) -> None:
+        event = {"sliceId": "slice-urllc-01-02", "entityId": "cell-01-02"}
+        self.assertTrue(_event_matches(event, "urllc-01-02", []))
+
+    def test_flux_slice_filter_includes_variant_forms(self) -> None:
+        client = InfluxTelemetryClient()
+        flux = client._build_telemetry_flux(
+            filters={"slice_id": "urllc-01-02"},
+            time_range={"start": "-30m", "stop": "now()"},
+        )
+        self.assertIn('strings.toLower(v: r.slice_id) == "urllc-01-02"', flux)
+        self.assertIn('strings.toLower(v: r.slice_id) == "slice-urllc-01-02"', flux)
+
+    def test_normalize_filters_strips_slice_punctuation(self) -> None:
+        filters, _ = normalize_filters(slice_id="slice-urllc-01-02?")
+        self.assertEqual(filters.get("slice_id"), "slice-urllc-01-02")
 
 
 if __name__ == "__main__":

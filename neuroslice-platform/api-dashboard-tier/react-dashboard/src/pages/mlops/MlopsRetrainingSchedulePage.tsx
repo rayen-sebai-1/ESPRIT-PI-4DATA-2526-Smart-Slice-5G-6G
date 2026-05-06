@@ -120,7 +120,13 @@ export function MlopsRetrainingSchedulePage() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
-  const canWrite = !readOnly && (user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER");
+  const canWrite =
+    !readOnly
+    && (
+      user?.role === "ADMIN"
+      || user?.role === "NETWORK_MANAGER"
+      || user?.role === "DATA_MLOPS_ENGINEER"
+    );
   const query = useQuery({
     queryKey: ["mlops", "retraining-schedule"],
     queryFn: getMlopsRetrainingSchedules,
@@ -232,7 +238,7 @@ export function MlopsRetrainingSchedulePage() {
               Configure backend-managed scheduled retraining request creation.
             </p>
             {!canWrite && (
-              <p className="text-xs text-amber-300">Read-only mode. Only Admin and MLOps Engineer can manage schedules.</p>
+              <p className="text-xs text-amber-300">Read-only mode. Only Manager (Admin) and MLOps Engineer can manage schedules.</p>
             )}
           </div>
           <Button
