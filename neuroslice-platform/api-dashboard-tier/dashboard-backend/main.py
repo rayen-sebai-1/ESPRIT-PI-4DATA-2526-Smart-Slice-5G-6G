@@ -92,11 +92,14 @@ def get_mlops_orchestration_service(db: Annotated[Session, Depends(get_db)]) -> 
 app = FastAPI(title="NeuroSlice Dashboard Backend", version="2.0.0")
 logger = logging.getLogger("dashboard-backend")
 
-dashboard_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER")
+dashboard_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
+session_reader_roles = ("ADMIN", "NETWORK_OPERATOR")
 prediction_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
-writer_roles = ("ADMIN", "NETWORK_OPERATOR")
+prediction_writer_roles = ("ADMIN",)
 mlops_reader_roles = ("ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER")
 mlops_writer_roles = ("ADMIN", "DATA_MLOPS_ENGINEER")
+drift_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
+drift_writer_roles = ("ADMIN", "DATA_MLOPS_ENGINEER")
 runtime_reader_roles = ("ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER", "NETWORK_OPERATOR")
 runtime_controlled_services = (
     "congestion-detector",
@@ -1084,7 +1087,7 @@ def get_slice_distribution(
 @app.get("/sessions", response_model=SessionListResponse, tags=["sessions"])
 def get_sessions(
     dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*dashboard_reader_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*session_reader_roles))],
     region: str | None = Query(default=None),
     risk: str | None = Query(default=None),
     slice: str | None = Query(default=None),
@@ -1104,7 +1107,7 @@ def get_sessions(
 def get_session_by_id(
     session_id: int,
     dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*dashboard_reader_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*session_reader_roles))],
 ) -> SessionSummary:
     session = dashboard_service.provider.get_session(session_id)
     if session is None:
@@ -1154,7 +1157,7 @@ def get_prediction_by_session(
 def rerun_prediction(
     session_id: int,
     dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*writer_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*prediction_writer_roles))],
 ) -> PredictionResponse:
     prediction = dashboard_service.provider.run_prediction(session_id)
     if prediction is None:
@@ -1166,7 +1169,7 @@ def rerun_prediction(
 def rerun_batch(
     payload: RunBatchRequest,
     dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*writer_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*prediction_writer_roles))],
 ) -> list[PredictionResponse]:
     return dashboard_service.provider.run_batch(payload)
 
@@ -2176,14 +2179,14 @@ def patch_runtime_service(
 
 @app.get("/controls/drift/status", tags=["controls"])
 def drift_status_proxy(
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*drift_reader_roles))],
 ) -> Any:
     return _proxy_get(f"{_get_drift_monitor_url()}/drift/status")
 
 
 @app.get("/controls/drift/events", tags=["controls"])
 def drift_events_proxy(
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*drift_reader_roles))],
     limit: int = Query(default=20, ge=1, le=100),
 ) -> Any:
     return _proxy_get(f"{_get_drift_monitor_url()}/drift/events?limit={limit}")
@@ -2191,7 +2194,7 @@ def drift_events_proxy(
 
 @app.post("/controls/drift/trigger", tags=["controls"])
 def drift_manual_trigger(
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*drift_writer_roles))],
 ) -> Any:
     return _proxy_post(f"{_get_drift_monitor_url()}/drift/trigger")
 

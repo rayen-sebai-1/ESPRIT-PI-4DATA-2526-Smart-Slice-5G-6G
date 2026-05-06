@@ -29,13 +29,13 @@ export const navItems: NavItem[] = [
     label: "National Dashboard",
     to: "/dashboard/national",
     icon: BarChart3,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
     label: "Entity Dashboard",
     to: "/dashboard/region",
     icon: RadioTower,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {
     label: "Sessions Monitor",
@@ -65,6 +65,12 @@ export const navItems: NavItem[] = [
     label: "Monitoring Tools",
     to: "/monitoring-tools",
     icon: LayoutDashboard,
+    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+  },
+  {
+    label: "Drift Monitor",
+    to: "/control/actions/drift-monitor",
+    icon: ShieldAlert,
     roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
   },
   {

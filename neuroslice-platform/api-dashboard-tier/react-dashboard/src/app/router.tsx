@@ -65,6 +65,40 @@ const ActionHistoryPage = lazy(() => import("@/pages/control/actions/ActionHisto
 const PendingApprovalPage = lazy(() => import("@/pages/control/actions/PendingApproval"));
 const DriftMonitorPage = lazy(() => import("@/pages/control/actions/DriftMonitor"));
 
+const dashboard_reader_roles = [
+  "ADMIN",
+  "NETWORK_OPERATOR",
+  "NETWORK_MANAGER",
+  "DATA_MLOPS_ENGINEER",
+] as const;
+const sessions_live_reader_roles = ["ADMIN", "NETWORK_OPERATOR"] as const;
+const prediction_reader_roles = [
+  "ADMIN",
+  "NETWORK_OPERATOR",
+  "NETWORK_MANAGER",
+  "DATA_MLOPS_ENGINEER",
+] as const;
+const monitoring_tools_reader_roles = [
+  "ADMIN",
+  "NETWORK_OPERATOR",
+  "NETWORK_MANAGER",
+  "DATA_MLOPS_ENGINEER",
+] as const;
+const drift_monitor_reader_roles = [
+  "ADMIN",
+  "NETWORK_OPERATOR",
+  "NETWORK_MANAGER",
+  "DATA_MLOPS_ENGINEER",
+] as const;
+const control_actions_roles = ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"] as const;
+const mlops_reader_roles = ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"] as const;
+const agentic_reader_roles = [
+  "ADMIN",
+  "NETWORK_OPERATOR",
+  "NETWORK_MANAGER",
+  "DATA_MLOPS_ENGINEER",
+] as const;
+
 function RouteLoadingFallback() {
   return (
     <div className="rounded-xl border border-white/5 bg-card px-4 py-5 text-sm text-slate-400">
@@ -89,32 +123,43 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: "/", element: <Navigate to="/dashboard/national" replace /> },
-          { path: "/dashboard/national", element: <NationalDashboardPage /> },
-          { path: "/dashboard/region", element: <RegionalDashboardPage /> },
-          { path: "/dashboard/region/:regionId", element: <RegionalDashboardPage /> },
           {
-            element: <ProtectedRoute allowedRoles={["ADMIN", "NETWORK_OPERATOR"]} />,
+            element: <ProtectedRoute allowedRoles={[...dashboard_reader_roles]} />,
+            children: [
+              { path: "/dashboard/national", element: <NationalDashboardPage /> },
+              { path: "/dashboard/region", element: <RegionalDashboardPage /> },
+              { path: "/dashboard/region/:regionId", element: <RegionalDashboardPage /> },
+            ],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={[...sessions_live_reader_roles]} />,
             children: [
               { path: "/sessions", element: <SessionsMonitorPage /> },
               { path: "/live-state", element: <LiveStatePage /> },
             ],
           },
           {
-            element: (
-              <ProtectedRoute
-                allowedRoles={["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"]}
-              />
-            ),
+            element: <ProtectedRoute allowedRoles={[...prediction_reader_roles]} />,
             children: [{ path: "/predictions", element: <PredictionsCenterPage /> }],
           },
-          { path: "/monitoring-tools", element: <MonitoringToolsPage /> },
-          { path: "/about", element: <AboutOrionPage /> },
-          { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
-          { path: "/agentic/copilot", element: <CopilotAgentPage /> },
           {
-            element: (
-              <ProtectedRoute allowedRoles={["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"]} />
-            ),
+            element: <ProtectedRoute allowedRoles={[...monitoring_tools_reader_roles]} />,
+            children: [{ path: "/monitoring-tools", element: <MonitoringToolsPage /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={[...drift_monitor_reader_roles]} />,
+            children: [{ path: "/control/actions/drift-monitor", element: withSuspense(<DriftMonitorPage />) }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={[...agentic_reader_roles]} />,
+            children: [
+              { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
+              { path: "/agentic/copilot", element: <CopilotAgentPage /> },
+              { path: "/about", element: <AboutOrionPage /> },
+            ],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={[...control_actions_roles]} />,
             children: [
               {
                 path: "/control/actions",
@@ -133,20 +178,12 @@ export const router = createBrowserRouter([
                     path: "pending-approval",
                     element: withSuspense(<PendingApprovalPage />),
                   },
-                  {
-                    path: "drift-monitor",
-                    element: withSuspense(<DriftMonitorPage />),
-                  },
                 ],
               },
             ],
           },
           {
-            element: (
-              <ProtectedRoute
-                allowedRoles={["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"]}
-              />
-            ),
+            element: <ProtectedRoute allowedRoles={[...mlops_reader_roles]} />,
             children: [
               {
                 path: "/mlops",
