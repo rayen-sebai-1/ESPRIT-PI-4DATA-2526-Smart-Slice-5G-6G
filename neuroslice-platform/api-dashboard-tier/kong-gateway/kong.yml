@@ -306,6 +306,9 @@ services:
 # ── Agentic AI — JWT required ─────────────────────────────────────────────────
   - name: dashboard-service-agentic
     url: http://dashboard-backend:8002/agentic
+    connect_timeout: 60000
+    write_timeout: 180000
+    read_timeout: 180000
     plugins:
       - name: jwt
         config:

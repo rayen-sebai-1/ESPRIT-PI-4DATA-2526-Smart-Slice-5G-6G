@@ -81,14 +81,18 @@ def test_overview_network_operator_forbidden(client):
 def test_promote_requires_writer_role(client):
     test_client, holder = client
 
-    holder["principal"] = _principal("NETWORK_MANAGER")
+    holder["principal"] = _principal("NETWORK_OPERATOR")
     forbidden = test_client.post("/mlops/promote", json={"model_name": "sla_5g"})
     assert forbidden.status_code == 403
 
+    holder["principal"] = _principal("NETWORK_MANAGER")
+    manager_response = test_client.post("/mlops/promote", json={"model_name": "sla_5g"})
+    assert manager_response.status_code == 200
+
     holder["principal"] = _principal("DATA_MLOPS_ENGINEER")
-    response = test_client.post("/mlops/promote", json={"model_name": "sla_5g"})
-    assert response.status_code == 200
-    body = response.json()
+    engineer_response = test_client.post("/mlops/promote", json={"model_name": "sla_5g"})
+    assert engineer_response.status_code == 200
+    body = engineer_response.json()
     assert body["accepted"] is False
     assert "MLOPS_API_BASE_URL" in body["detail"]
 
@@ -96,13 +100,13 @@ def test_promote_requires_writer_role(client):
 def test_rollback_requires_writer_role(client):
     test_client, holder = client
 
-    holder["principal"] = _principal("NETWORK_MANAGER")
+    holder["principal"] = _principal("NETWORK_OPERATOR")
     forbidden = test_client.post("/mlops/rollback", json={"model_name": "sla_5g"})
     assert forbidden.status_code == 403
 
-    holder["principal"] = _principal("ADMIN")
-    response = test_client.post("/mlops/rollback", json={"model_name": "sla_5g"})
-    assert response.status_code == 200
+    holder["principal"] = _principal("NETWORK_MANAGER")
+    manager_response = test_client.post("/mlops/rollback", json={"model_name": "sla_5g"})
+    assert manager_response.status_code == 200
 
 
 def test_models_listing(client):
