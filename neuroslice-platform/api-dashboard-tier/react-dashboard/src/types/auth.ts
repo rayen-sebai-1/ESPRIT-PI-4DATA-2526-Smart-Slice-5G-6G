@@ -1,6 +1,7 @@
 export type UserRole =
   | "ADMIN"
   | "NETWORK_OPERATOR"
+  // Legacy role kept for backward compatibility; mapped to Manager/Admin privileges.
   | "NETWORK_MANAGER"
   | "DATA_MLOPS_ENGINEER";
 

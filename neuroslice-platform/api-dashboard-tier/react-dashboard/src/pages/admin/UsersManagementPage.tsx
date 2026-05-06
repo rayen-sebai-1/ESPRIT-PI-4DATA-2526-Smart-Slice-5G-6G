@@ -37,6 +37,12 @@ const initialForm: AdminCreateUserPayload = {
   role: "NETWORK_OPERATOR",
 };
 
+type ActorRole = "ADMIN" | "NETWORK_OPERATOR" | "DATA_MLOPS_ENGINEER";
+
+function isManagerAdminRole(role: UserRole): role is "ADMIN" | "NETWORK_MANAGER" {
+  return role === "ADMIN" || role === "NETWORK_MANAGER";
+}
+
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     return String(error.response?.data?.detail ?? error.message ?? fallback);
@@ -49,13 +55,11 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 
 function RoleBadge({ role }: { role: UserRole }) {
   const tone =
-    role === "ADMIN"
+    isManagerAdminRole(role)
       ? "border-red-500/30 bg-red-500/10 text-red-200"
-      : role === "NETWORK_MANAGER"
-        ? "border-amber-400/30 bg-amber-400/10 text-amber-100"
-        : role === "DATA_MLOPS_ENGINEER"
-          ? "border-violet-400/30 bg-violet-400/10 text-violet-100"
-          : "border-sky-400/30 bg-sky-400/10 text-sky-100";
+      : role === "DATA_MLOPS_ENGINEER"
+        ? "border-violet-400/30 bg-violet-400/10 text-violet-100"
+        : "border-sky-400/30 bg-sky-400/10 text-sky-100";
   return (
     <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${tone}`}>
       {roleLabels[role]}
@@ -130,13 +134,18 @@ export function UsersManagementPage() {
   const users = usersQuery.data ?? [];
 
   const totalsByRole = useMemo(() => {
-    const counts: Record<UserRole, number> = {
+    const counts: Record<ActorRole, number> = {
       ADMIN: 0,
       NETWORK_OPERATOR: 0,
-      NETWORK_MANAGER: 0,
       DATA_MLOPS_ENGINEER: 0,
     };
-    for (const user of users) counts[user.role] += 1;
+    for (const user of users) {
+      if (isManagerAdminRole(user.role)) {
+        counts.ADMIN += 1;
+      } else {
+        counts[user.role] += 1;
+      }
+    }
     return counts;
   }, [users]);
 
@@ -158,7 +167,7 @@ export function UsersManagementPage() {
     setEditingUser(user);
     setEditForm({
       full_name: user.full_name,
-      role: user.role === "ADMIN" ? undefined : (user.role as AssignableRole),
+      role: isManagerAdminRole(user.role) ? undefined : (user.role as AssignableRole),
     });
     setEditError(null);
   }
@@ -181,7 +190,7 @@ export function UsersManagementPage() {
   }
 
   function handleToggleActive(user: User) {
-    if (user.role === "ADMIN") return;
+    if (isManagerAdminRole(user.role)) return;
     updateMutation.mutate({ id: user.id, payload: { is_active: !user.is_active } });
   }
 
@@ -199,7 +208,7 @@ export function UsersManagementPage() {
   }
 
   function handleDelete(user: User) {
-    if (user.role === "ADMIN") return;
+    if (isManagerAdminRole(user.role)) return;
     if (currentUser?.id === user.id) return;
     const confirmed = window.confirm(
       `Remove the account for ${user.full_name} (${user.email})? The user will be disabled and kept in audit logs.`,
@@ -213,7 +222,7 @@ export function UsersManagementPage() {
       <PageHeader
         eyebrow="Admin console"
         title="User management"
-        description="Provision platform access: NOC, Network Manager, and Data / MLOps Engineer. Administrators cannot be modified or deleted from this interface."
+        description="Provision platform access for NOC Operators and MLOps Engineers. Manager (Admin) accounts are protected in this interface."
         actions={
           <Button
             type="button"
@@ -237,19 +246,17 @@ export function UsersManagementPage() {
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {(Object.keys(totalsByRole) as UserRole[]).map((role) => (
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {(Object.keys(totalsByRole) as ActorRole[]).map((role) => (
           <Card key={role} className="p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-mutedText">{roleLabels[role]}</p>
             <p className="mt-3 text-3xl font-semibold text-white">{totalsByRole[role]}</p>
             <p className="mt-2 text-xs text-mutedText">
               {role === "ADMIN"
-                ? "Platform administrators"
+                ? "Managers with full administrator visibility"
                 : role === "NETWORK_OPERATOR"
                   ? "NOC in operational supervision"
-                  : role === "NETWORK_MANAGER"
-                    ? "Managers with strategic visibility"
-                    : "Data / MLOps focused on models and pipelines"}
+                  : "MLOps focused on models and pipelines"}
             </p>
           </Card>
         ))}
@@ -376,7 +383,7 @@ export function UsersManagementPage() {
               <tbody>
                 {users.map((user) => {
                   const isSelf = currentUser?.id === user.id;
-                  const isAdminRow = user.role === "ADMIN";
+                  const isAdminRow = isManagerAdminRole(user.role);
                   return (
                     <tr
                       key={user.id}
@@ -413,7 +420,7 @@ export function UsersManagementPage() {
                             size="sm"
                             onClick={() => openEdit(user)}
                             disabled={isAdminRow}
-                            title={isAdminRow ? "Admin profile is protected" : "Edit"}
+                            title={isAdminRow ? "Manager/Admin profile is protected" : "Edit"}
                           >
                             <Pencil size={14} />
                             Edit
@@ -439,7 +446,7 @@ export function UsersManagementPage() {
                             disabled={isAdminRow || isSelf}
                             title={
                               isAdminRow
-                                ? "An administrator cannot be disabled"
+                                ? "A Manager/Admin account cannot be disabled"
                                 : user.is_active
                                   ? "Disable account"
                                   : "Re-enable account"
@@ -456,7 +463,7 @@ export function UsersManagementPage() {
                             disabled={isAdminRow || isSelf}
                             title={
                               isAdminRow
-                                ? "An administrator cannot be deleted"
+                                ? "A Manager/Admin account cannot be deleted"
                                 : isSelf
                                   ? "You cannot delete your own account"
                                   : "Delete"

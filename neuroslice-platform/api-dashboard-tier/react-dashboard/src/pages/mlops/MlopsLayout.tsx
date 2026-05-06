@@ -1,7 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 import { PageHeader } from "@/components/layout/page-header";
-import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/cn";
 
 const tabs = [
@@ -19,19 +18,14 @@ const tabs = [
 ];
 
 export function MlopsLayout() {
-  const { user } = useAuth();
-  const readOnly = user?.role === "NETWORK_MANAGER";
+  const readOnly = false;
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="MLOps Control Center"
         title="MLOps Control Center"
-        description={
-          readOnly
-            ? "Read-only view of the MLOps lifecycle: promoted models, runs, artifacts and monitoring."
-            : "Supervision and control of the MLOps lifecycle: promoted models, runs, artifacts, promotions and monitoring."
-        }
+        description="Supervision and control of the MLOps lifecycle: promoted models, runs, artifacts, promotions and monitoring."
       />
 
       <nav className="flex flex-wrap gap-2 border-b border-white/5 pb-2">

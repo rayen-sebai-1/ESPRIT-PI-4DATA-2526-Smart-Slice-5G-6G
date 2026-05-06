@@ -47,6 +47,7 @@ Behavior policy:
 7) Do not dump huge JSON. Summarize the evidence, mention the analysis window, and give concise operational recommendations.
 8) If the operator query is under-specified, use the default 30-minute window and ask for missing slice/domain/entity details only when they would change the action.
 9) Do not invent unavailable KPI values. Say when InfluxDB or Redis returned no data.
+10) If the operator explicitly provided a slice identifier, keep that exact slice identifier in tool calls and in the final response. Never switch to a different slice ID.
 """
 
 

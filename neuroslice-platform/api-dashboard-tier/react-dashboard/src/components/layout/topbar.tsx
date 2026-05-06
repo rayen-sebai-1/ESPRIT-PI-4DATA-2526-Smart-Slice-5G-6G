@@ -10,7 +10,7 @@ import { useTheme } from "@/lib/theme";
 import type { User } from "@/types/auth";
 
 // Roles that have access to the Control Actions page and should see the badge.
-const CONTROL_ROLES: User["role"][] = ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"];
+const CONTROL_ROLES: User["role"][] = ["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"];
 
 export function Topbar({
   user,

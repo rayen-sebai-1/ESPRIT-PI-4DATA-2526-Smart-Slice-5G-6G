@@ -253,8 +253,14 @@ export function MlopsOrchestrationPage() {
     },
   });
 
-  const canExecute = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
-  const canWriteRuntime = user?.role === "ADMIN" || user?.role === "DATA_MLOPS_ENGINEER";
+  const canExecute =
+    user?.role === "ADMIN"
+    || user?.role === "NETWORK_MANAGER"
+    || user?.role === "DATA_MLOPS_ENGINEER";
+  const canWriteRuntime =
+    user?.role === "ADMIN"
+    || user?.role === "NETWORK_MANAGER"
+    || user?.role === "DATA_MLOPS_ENGINEER";
 
   const lastDriftRun = runs.find((r) => r.trigger_source === "drift");
   const runtimeServices = runtimeServicesData?.items ?? [];

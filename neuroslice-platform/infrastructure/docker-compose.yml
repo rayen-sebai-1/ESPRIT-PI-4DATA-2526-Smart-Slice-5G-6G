@@ -53,6 +53,7 @@ services:
       resources:
         limits:
           memory: 600m
+          cpus: "0.60"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -67,9 +68,11 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    restart: unless-stopped
     depends_on:
       - zookeeper
     ports:
@@ -82,6 +85,8 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+      # Keep ZK session short so stale broker-id locks clear quickly after restarts.
+      KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS: 6000
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
@@ -93,6 +98,7 @@ services:
       resources:
         limits:
           memory: 1g
+          cpus: "1.00"
 
   influxdb:
     image: influxdb:2.7
@@ -112,6 +118,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   postgres:
     image: postgres:16
@@ -146,6 +153,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   mlops-postgres:
     image: postgres:16-alpine
@@ -171,6 +179,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   minio:
     image: minio/minio:RELEASE.2024-06-29T01-20-47Z
@@ -193,6 +202,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
@@ -214,6 +224,7 @@ services:
       resources:
         limits:
           memory: 128m
+          cpus: "0.25"
 
   mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.13.0
@@ -262,6 +273,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -281,6 +293,7 @@ services:
       resources:
         limits:
           memory: 1536m
+          cpus: "1.25"
 
   logstash-aiops-ingest:
     build:
@@ -317,6 +330,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
@@ -339,6 +353,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
@@ -356,6 +371,7 @@ services:
       resources:
         limits:
           memory: 1536m
+          cpus: "1.25"
     mem_limit: 1536m
 
   # One-shot: applies ILM policy + index template to Elasticsearch.
@@ -376,6 +392,7 @@ services:
       resources:
         limits:
           memory: 128m
+          cpus: "0.25"
 
   # One-shot: creates Kibana data view, visualizations, and dashboard.
   # Retries until Kibana is ready, then exits 0.
@@ -398,6 +415,7 @@ services:
       resources:
         limits:
           memory: 128m
+          cpus: "0.25"
 
   mlops-api:
     build:
@@ -435,6 +453,7 @@ services:
       resources:
         limits:
           memory: 1536m
+          cpus: "1.25"
 
   mlops-worker:
     build:
@@ -495,6 +514,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   mlops-drift-monitor:
     build:
@@ -534,6 +554,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   adapter-ves:
     build:
@@ -554,6 +575,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   adapter-netconf:
     build:
@@ -574,6 +596,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   normalizer:
     build:
@@ -593,6 +616,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   congestion-detector:
     build:
@@ -649,6 +673,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   slice-classifier:
     build:
@@ -706,6 +731,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   sla-assurance:
     build:
@@ -763,6 +789,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   online-evaluator:
     build:
@@ -798,6 +825,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   alert-management:
     build:
@@ -817,6 +845,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   policy-control:
     build:
@@ -838,6 +867,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   fault-engine:
     build:
@@ -858,6 +888,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   simulator-core:
     build:
@@ -881,6 +912,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   simulator-edge:
     build:
@@ -904,6 +936,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   simulator-ran:
     build:
@@ -927,6 +960,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   root-cause:
     build:
@@ -958,6 +992,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   copilot-agent:
     build:
@@ -988,6 +1023,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   api-bff-service:
     build:
@@ -1017,6 +1053,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   telemetry-exporter:
     build:
@@ -1039,6 +1076,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   auth-service:
     build:
@@ -1084,6 +1122,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
   dashboard-backend:
     build:
@@ -1121,7 +1160,7 @@ services:
       # Control tier proxy
       POLICY_CONTROL_URL: http://policy-control:7011
       DRIFT_MONITOR_URL: http://mlops-drift-monitor:8030
-      # MLOps pipeline execution — enabled for Scenario B full integration
+      # MLOps pipeline execution â€” enabled for Scenario B full integration
       MLOPS_PIPELINE_ENABLED: ${MLOPS_PIPELINE_ENABLED:-true}
       MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
       # Agentic AI proxy (routes from dashboard-backend to internal agent services)
@@ -1154,6 +1193,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   kong-gateway:
     build:
@@ -1188,6 +1228,7 @@ services:
       resources:
         limits:
           memory: 1024m
+          cpus: "1.00"
     mem_limit: 1024m
 
   react-dashboard:
@@ -1206,9 +1247,10 @@ services:
       resources:
         limits:
           memory: 128m
+          cpus: "0.25"
 
   # ---------------------------------------------------------------------------
-  # Drift Monitor — Alibi Detect MMD drift detection for Scenario B
+  # Drift Monitor â€” Alibi Detect MMD drift detection for Scenario B
   #
   # Uses the `drift` profile because Alibi Detect + PyTorch adds a large
   # dependency that would bloat the default image.
@@ -1286,6 +1328,7 @@ services:
       resources:
         limits:
           memory: 800m
+          cpus: "0.75"
 
   prometheus:
     image: prom/prometheus:v2.51.2
@@ -1316,6 +1359,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   grafana:
     image: grafana/grafana:10.4.2
@@ -1339,6 +1383,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: "0.30"
 
 volumes:
   redis_data:

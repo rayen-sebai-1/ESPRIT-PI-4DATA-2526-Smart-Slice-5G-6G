@@ -28,6 +28,7 @@ services:
       resources:
         limits:
           memory: 1536m
+          cpus: "1.25"
 
   mlops-postgres:
     image: postgres:16-alpine
@@ -48,6 +49,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   minio:
     image: minio/minio:RELEASE.2024-06-29T01-20-47Z
@@ -64,6 +66,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
@@ -83,6 +86,7 @@ services:
       resources:
         limits:
           memory: 128m
+          cpus: "0.25"
 
   mlflow-server:
     image: ghcr.io/mlflow/mlflow:v2.13.0
@@ -112,6 +116,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -127,6 +132,7 @@ services:
       resources:
         limits:
           memory: 1536m
+          cpus: "1.25"
 
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
@@ -144,6 +150,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
@@ -158,6 +165,7 @@ services:
       resources:
         limits:
           memory: 512m
+          cpus: "0.50"
 
 volumes:
   postgres_data:

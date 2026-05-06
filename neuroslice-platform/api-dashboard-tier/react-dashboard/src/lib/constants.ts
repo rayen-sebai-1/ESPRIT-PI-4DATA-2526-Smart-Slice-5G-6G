@@ -24,84 +24,89 @@ export interface NavItem {
   roles: UserRole[];
 }
 
+const adminActorRoles: UserRole[] = ["ADMIN", "NETWORK_MANAGER"];
+const nocActorRoles: UserRole[] = ["NETWORK_OPERATOR"];
+const mlopsActorRoles: UserRole[] = ["DATA_MLOPS_ENGINEER"];
+const allActorRoles: UserRole[] = [...adminActorRoles, ...nocActorRoles, ...mlopsActorRoles];
+
 export const navItems: NavItem[] = [
   {
     label: "National Dashboard",
     to: "/dashboard/national",
     icon: BarChart3,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...adminActorRoles, ...nocActorRoles],
   },
   {
     label: "Entity Dashboard",
     to: "/dashboard/region",
     icon: RadioTower,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...adminActorRoles, ...nocActorRoles],
   },
   {
     label: "Sessions Monitor",
     to: "/sessions",
     icon: Activity,
-    roles: ["ADMIN", "NETWORK_OPERATOR"],
+    roles: [...adminActorRoles, ...nocActorRoles],
   },
   {
     label: "Live State",
     to: "/live-state",
     icon: Radar,
-    roles: ["ADMIN", "NETWORK_OPERATOR"],
+    roles: [...adminActorRoles, ...nocActorRoles],
   },
   {
     label: "Predictions & Models",
     to: "/predictions",
     icon: TrendingUp,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...adminActorRoles, ...nocActorRoles],
   },
   {
     label: "MLOps Control Center",
     to: "/mlops",
     icon: Cpu,
-    roles: ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"],
+    roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
     label: "Monitoring Tools",
     to: "/monitoring-tools",
     icon: LayoutDashboard,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
     label: "Drift Monitor",
     to: "/control/actions/drift-monitor",
     icon: ShieldAlert,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
     label: "Control Actions",
     to: "/control/actions",
     icon: ShieldAlert,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"],
+    roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
     label: "Root Cause Agent",
     to: "/agentic/root-cause",
     icon: ScanSearch,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...adminActorRoles, ...nocActorRoles],
   },
   {
     label: "Copilot Agent",
     to: "/agentic/copilot",
     icon: Bot,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
-  },
-  {
-    label: "About ORION",
-    to: "/about",
-    icon: Info,
-    roles: ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
+    roles: [...allActorRoles],
   },
   {
     label: "User Management",
     to: "/admin/users",
     icon: Users,
-    roles: ["ADMIN"],
+    roles: [...adminActorRoles],
+  },
+  {
+    label: "About ORION",
+    to: "/about",
+    icon: Info,
+    roles: [...allActorRoles],
   },
 ];
 
@@ -111,10 +116,10 @@ export const authlessNav = {
 };
 
 export const roleLabels: Record<UserRole, string> = {
-  ADMIN: "Administrator",
+  ADMIN: "Manager (Admin)",
   NETWORK_OPERATOR: "Network Operator (NOC)",
-  NETWORK_MANAGER: "Network Manager",
-  DATA_MLOPS_ENGINEER: "Data / MLOps Engineer",
+  NETWORK_MANAGER: "Manager (Admin)",
+  DATA_MLOPS_ENGINEER: "MLOps Engineer",
 };
 
 export const assignableRoleOptions: { value: AssignableRole; label: string }[] = [

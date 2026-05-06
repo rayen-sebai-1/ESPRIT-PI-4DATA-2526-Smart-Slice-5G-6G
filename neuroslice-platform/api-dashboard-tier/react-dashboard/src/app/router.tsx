@@ -65,39 +65,20 @@ const ActionHistoryPage = lazy(() => import("@/pages/control/actions/ActionHisto
 const PendingApprovalPage = lazy(() => import("@/pages/control/actions/PendingApproval"));
 const DriftMonitorPage = lazy(() => import("@/pages/control/actions/DriftMonitor"));
 
-const dashboard_reader_roles = [
-  "ADMIN",
-  "NETWORK_OPERATOR",
-  "NETWORK_MANAGER",
-  "DATA_MLOPS_ENGINEER",
-] as const;
-const sessions_live_reader_roles = ["ADMIN", "NETWORK_OPERATOR"] as const;
-const prediction_reader_roles = [
-  "ADMIN",
-  "NETWORK_OPERATOR",
-  "NETWORK_MANAGER",
-  "DATA_MLOPS_ENGINEER",
-] as const;
-const monitoring_tools_reader_roles = [
-  "ADMIN",
-  "NETWORK_OPERATOR",
-  "NETWORK_MANAGER",
-  "DATA_MLOPS_ENGINEER",
-] as const;
-const drift_monitor_reader_roles = [
-  "ADMIN",
-  "NETWORK_OPERATOR",
-  "NETWORK_MANAGER",
-  "DATA_MLOPS_ENGINEER",
-] as const;
-const control_actions_roles = ["ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER"] as const;
-const mlops_reader_roles = ["ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER"] as const;
-const agentic_reader_roles = [
-  "ADMIN",
-  "NETWORK_OPERATOR",
-  "NETWORK_MANAGER",
-  "DATA_MLOPS_ENGINEER",
-] as const;
+const admin_actor_roles = ["ADMIN", "NETWORK_MANAGER"] as const;
+const noc_actor_roles = ["NETWORK_OPERATOR"] as const;
+const mlops_actor_roles = ["DATA_MLOPS_ENGINEER"] as const;
+const all_actor_roles = [...admin_actor_roles, ...noc_actor_roles, ...mlops_actor_roles] as const;
+
+const dashboard_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
+const sessions_live_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
+const prediction_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
+const monitoring_tools_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
+const drift_monitor_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
+const control_actions_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
+const mlops_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
+const root_cause_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
+const copilot_reader_roles = [...all_actor_roles] as const;
 
 function RouteLoadingFallback() {
   return (
@@ -151,9 +132,12 @@ export const router = createBrowserRouter([
             children: [{ path: "/control/actions/drift-monitor", element: withSuspense(<DriftMonitorPage />) }],
           },
           {
-            element: <ProtectedRoute allowedRoles={[...agentic_reader_roles]} />,
+            element: <ProtectedRoute allowedRoles={[...root_cause_reader_roles]} />,
+            children: [{ path: "/agentic/root-cause", element: <RootCauseAgentPage /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={[...copilot_reader_roles]} />,
             children: [
-              { path: "/agentic/root-cause", element: <RootCauseAgentPage /> },
               { path: "/agentic/copilot", element: <CopilotAgentPage /> },
               { path: "/about", element: <AboutOrionPage /> },
             ],
@@ -205,7 +189,7 @@ export const router = createBrowserRouter([
             ],
           },
           {
-            element: <ProtectedRoute allowedRoles={["ADMIN"]} />,
+            element: <ProtectedRoute allowedRoles={[...admin_actor_roles]} />,
             children: [{ path: "/admin/users", element: <UsersManagementPage /> }],
           },
         ],

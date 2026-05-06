@@ -128,7 +128,7 @@ export function LoginPage() {
                 </div>
                 <p className="text-sm font-semibold text-ink">Role-based access</p>
                 <p className="mt-2 text-sm leading-6 text-mutedText">
-                  NOC, Manager, Data/MLOps and Admin each see their scope.
+                  Manager (Admin), NOC Operator, and MLOps Engineer each see their own scope.
                 </p>
               </div>
             </div>
@@ -188,7 +188,7 @@ export function LoginPage() {
           </form>
 
           <div className="mt-6 rounded-2xl border border-border bg-cardAlt px-4 py-4 text-sm leading-6 text-mutedText">
-            No account yet? Contact your platform administrator to provision access with the appropriate role (NOC, Manager, Data/MLOps).
+            No account yet? Contact your platform administrator to provision access with the appropriate role (NOC Operator or MLOps Engineer).
           </div>
         </Card>
       </div>
