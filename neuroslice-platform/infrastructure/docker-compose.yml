@@ -1165,7 +1165,9 @@ services:
       MLOPS_PIPELINE_TIMEOUT_SECONDS: ${MLOPS_PIPELINE_TIMEOUT_SECONDS:-7200}
       # Agentic AI proxy (routes from dashboard-backend to internal agent services)
       ROOT_CAUSE_AGENT_URL: http://root-cause:7005
+      RCA_AGENT_TIMEOUT_SECONDS: ${RCA_AGENT_TIMEOUT_SECONDS:-150}
       COPILOT_AGENT_URL: http://copilot-agent:7006
+      COPILOT_AGENT_TIMEOUT_SECONDS: ${COPILOT_AGENT_TIMEOUT_SECONDS:-120}
     volumes:
       - ../mlops-tier/batch-orchestrator/models:/mlops/models:ro
     expose:

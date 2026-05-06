@@ -63,7 +63,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Extract and preprocess raw data into model-ready datasets.",
         risk_level="LOW",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "validate_data": MlopsActionDefinition(
         action_key="validate_data",
@@ -71,7 +71,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Run data quality checks on preprocessed datasets.",
         risk_level="LOW",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "train": MlopsActionDefinition(
         action_key="train",
@@ -79,7 +79,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Train models based on prepared data.",
         risk_level="MEDIUM",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "evaluate": MlopsActionDefinition(
         action_key="evaluate",
@@ -87,7 +87,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Evaluate models against holdout sets and baseline.",
         risk_level="LOW",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "log_mlflow": MlopsActionDefinition(
         action_key="log_mlflow",
@@ -95,7 +95,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Log models, parameters, and metrics to MLflow registry.",
         risk_level="LOW",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "export_onnx": MlopsActionDefinition(
         action_key="export_onnx",
@@ -103,7 +103,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Export trained models to ONNX format for serving.",
         risk_level="MEDIUM",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "convert_fp16": MlopsActionDefinition(
         action_key="convert_fp16",
@@ -111,7 +111,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Quantize ONNX models to FP16 for optimized inference.",
         risk_level="MEDIUM",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "validate_model": MlopsActionDefinition(
         action_key="validate_model",
@@ -119,7 +119,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Validate exported artifacts via quality gates.",
         risk_level="LOW",
         requires_confirmation=False,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "promote_model": MlopsActionDefinition(
         action_key="promote_model",
@@ -127,7 +127,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Promote a validated model to production.",
         risk_level="HIGH",
         requires_confirmation=True,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "rollback_model": MlopsActionDefinition(
         action_key="rollback_model",
@@ -135,7 +135,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Rollback a production model to a previous version.",
         risk_level="HIGH",
         requires_confirmation=True,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
     "full_pipeline": MlopsActionDefinition(
         action_key="full_pipeline",
@@ -143,7 +143,7 @@ _ALLOWED_ACTIONS: dict[str, MlopsActionDefinition] = {
         description="Run the complete safe pipeline sequence (prepare to validate_model).",
         risk_level="HIGH",
         requires_confirmation=True,
-        allowed_roles=["ADMIN", "DATA_MLOPS_ENGINEER"],
+        allowed_roles=["ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER"],
     ),
 }
 

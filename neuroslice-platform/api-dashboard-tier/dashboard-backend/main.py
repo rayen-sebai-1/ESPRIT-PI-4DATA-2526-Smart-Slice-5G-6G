@@ -83,6 +83,17 @@ def _get_copilot_url() -> str:
     return os.getenv("COPILOT_AGENT_URL", "http://copilot-agent:7006").rstrip("/")
 
 
+def _timeout_seconds_from_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return max(5.0, value)
+
+
 def get_mlops_ops_service(db: Annotated[Session, Depends(get_db)]) -> MlopsOpsService:
     return MlopsOpsService(db)
 
@@ -91,15 +102,18 @@ def get_mlops_orchestration_service(db: Annotated[Session, Depends(get_db)]) -> 
 
 app = FastAPI(title="NeuroSlice Dashboard Backend", version="2.0.0")
 logger = logging.getLogger("dashboard-backend")
+RCA_AGENT_PROXY_TIMEOUT_SECONDS = _timeout_seconds_from_env("RCA_AGENT_TIMEOUT_SECONDS", 150.0)
+COPILOT_AGENT_PROXY_TIMEOUT_SECONDS = _timeout_seconds_from_env("COPILOT_AGENT_TIMEOUT_SECONDS", 120.0)
 
+admin_equivalent_roles = ("ADMIN", "NETWORK_MANAGER")
 dashboard_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
-session_reader_roles = ("ADMIN", "NETWORK_OPERATOR")
+session_reader_roles = ("ADMIN", "NETWORK_MANAGER", "NETWORK_OPERATOR")
 prediction_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
-prediction_writer_roles = ("ADMIN",)
+prediction_writer_roles = ("ADMIN", "NETWORK_MANAGER")
 mlops_reader_roles = ("ADMIN", "DATA_MLOPS_ENGINEER", "NETWORK_MANAGER")
-mlops_writer_roles = ("ADMIN", "DATA_MLOPS_ENGINEER")
+mlops_writer_roles = ("ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
 drift_reader_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
-drift_writer_roles = ("ADMIN", "DATA_MLOPS_ENGINEER")
+drift_writer_roles = ("ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
 runtime_reader_roles = ("ADMIN", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER", "NETWORK_OPERATOR")
 runtime_controlled_services = (
     "congestion-detector",
@@ -293,7 +307,7 @@ def _read_runtime_service_state(service_name: str) -> dict[str, Any]:
 
 
 def _can_write_runtime(service_name: str, principal: AuthenticatedPrincipal) -> bool:
-    if principal.role == "ADMIN":
+    if principal.role in admin_equivalent_roles:
         return True
     if principal.role == "DATA_MLOPS_ENGINEER":
         return service_name in runtime_controlled_services
@@ -1302,7 +1316,7 @@ def get_mlops_retraining_request(
 @app.post("/mlops/requests/{request_id}/approve", response_model=MlopsRetrainingRequest, tags=["mlops"])
 def approve_mlops_retraining_request(
     request_id: str,
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN", "DATA_MLOPS_ENGINEER"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
 ) -> MlopsRetrainingRequest:
     client = _runtime_redis_client()
     request = _load_retraining_request(client, request_id)
@@ -1323,7 +1337,7 @@ def approve_mlops_retraining_request(
 @app.post("/mlops/requests/{request_id}/reject", response_model=MlopsRetrainingRequest, tags=["mlops"])
 def reject_mlops_retraining_request(
     request_id: str,
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN", "DATA_MLOPS_ENGINEER"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
 ) -> MlopsRetrainingRequest:
     client = _runtime_redis_client()
     request = _load_retraining_request(client, request_id)
@@ -1468,7 +1482,7 @@ def _attempt_execute_retraining_request(
 def execute_mlops_retraining_request(
     request_id: str,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles("ADMIN", "DATA_MLOPS_ENGINEER"))],
+    current_user: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_writer_roles))],
 ) -> MlopsRetrainingRequest:
     client = _runtime_redis_client()
     return _attempt_execute_retraining_request(
@@ -1904,12 +1918,13 @@ def get_mlops_pipeline_config(
 # the browser must flow through these routes so that JWT/session validation is
 # enforced before any agent call is forwarded.
 
-agentic_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
+root_cause_roles = ("ADMIN", "NETWORK_MANAGER", "NETWORK_OPERATOR")
+copilot_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
 
 
 @app.get("/agentic/health", response_model=AgenticHealthResponse, tags=["agentic"])
 def agentic_health(
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*copilot_roles))],
 ) -> AgenticHealthResponse:
     rca_status = "unknown"
     copilot_status = "unknown"
@@ -1942,11 +1957,11 @@ def agentic_health(
 @app.post("/agentic/root-cause/manual-scan", tags=["agentic"])
 def agentic_rca_scan(
     body: dict[str, Any],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*root_cause_roles))],
 ) -> Any:
     target_url = f"{_get_root_cause_url()}/internal/rca/manual-scan"
     try:
-        with httpx.Client(timeout=90.0) as client:
+        with httpx.Client(timeout=RCA_AGENT_PROXY_TIMEOUT_SECONDS) as client:
             response = client.post(target_url, json=body)
     except httpx.ConnectError:
         raise HTTPException(
@@ -1975,11 +1990,11 @@ def agentic_rca_scan(
 @app.post("/agentic/copilot/query/text", tags=["agentic"])
 def agentic_copilot_text(
     body: dict[str, Any],
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*copilot_roles))],
 ) -> Any:
     target_url = f"{_get_copilot_url()}/copilot/query/text"
     try:
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=COPILOT_AGENT_PROXY_TIMEOUT_SECONDS) as client:
             response = client.post(target_url, json=body)
     except httpx.ConnectError:
         raise HTTPException(
@@ -2009,7 +2024,7 @@ def agentic_copilot_text(
 async def agentic_copilot_stream(
     body: dict[str, Any],
     request: Request,
-    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*agentic_roles))],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*copilot_roles))],
 ) -> StreamingResponse:
     target_url = f"{_get_copilot_url()}/copilot/query"
 
@@ -2034,7 +2049,7 @@ async def agentic_copilot_stream(
 # JWT auth is enforced here before forwarding. The policy-control service is
 # internal-only (not exposed via Kong directly).
 
-control_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER")
+control_roles = ("ADMIN", "NETWORK_OPERATOR", "NETWORK_MANAGER", "DATA_MLOPS_ENGINEER")
 
 
 def _get_policy_control_url() -> str:

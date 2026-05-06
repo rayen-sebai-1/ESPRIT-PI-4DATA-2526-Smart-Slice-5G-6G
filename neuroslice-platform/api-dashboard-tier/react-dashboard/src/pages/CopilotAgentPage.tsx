@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, Send, Sparkles, User } from "lucide-react";
+import { Bot, RotateCcw, Send, Sparkles, User } from "lucide-react";
 import axios from "axios";
 
 import { agentApi, type CopilotQueryResponse } from "@/api/agentApi";
@@ -22,14 +22,30 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildSessionId(userId: number | undefined): string {
+function sessionStorageKey(userId: number | undefined): string {
   const seed = userId ?? "anon";
-  let cached = sessionStorage.getItem("copilotSessionId");
+  return `copilotSessionId:${seed}`;
+}
+
+function buildSessionId(userId: number | undefined, forceNew = false): string {
+  const seed = userId ?? "anon";
+  const key = sessionStorageKey(userId);
+  let cached = forceNew ? null : sessionStorage.getItem(key);
   if (!cached) {
     cached = `dashboard-${seed}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    sessionStorage.setItem("copilotSessionId", cached);
+    sessionStorage.setItem(key, cached);
   }
   return cached;
+}
+
+function welcomeMessage(): ChatMessage {
+  return {
+    id: "welcome",
+    role: "assistant",
+    content:
+      "Hello, I am the NeuroSlice Copilot. Ask me for a slice status, a KPI investigation, or a summary of recent anomalies.",
+    createdAt: Date.now(),
+  };
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -62,18 +78,15 @@ export function CopilotAgentPage() {
   usePageTitle("Copilot Agent");
 
   const { user } = useAuth();
-  const sessionId = useMemo(() => buildSessionId(user?.id), [user?.id]);
+  const userId = user?.id;
+  const [sessionId, setSessionId] = useState(() => buildSessionId(userId));
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Hello, I am the NeuroSlice Copilot. Ask me for a slice status, a KPI investigation, or a summary of recent anomalies.",
-      createdAt: Date.now(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage()]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSessionId(buildSessionId(userId));
+  }, [userId]);
 
   const mutation = useMutation<CopilotQueryResponse, unknown, string>({
     mutationFn: async (query) => agentApi.askCopilot({ session_id: sessionId, query }),
@@ -121,6 +134,14 @@ export function CopilotAgentPage() {
     mutation.mutate(trimmed);
   };
 
+  const handleResetConversation = () => {
+    if (mutation.isPending) {
+      return;
+    }
+    setSessionId(buildSessionId(userId, true));
+    setMessages([welcomeMessage()]);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -156,6 +177,10 @@ export function CopilotAgentPage() {
               disabled={mutation.isPending}
               autoComplete="off"
             />
+            <Button type="button" variant="ghost" disabled={mutation.isPending} onClick={handleResetConversation}>
+              <RotateCcw size={16} />
+              New Session
+            </Button>
             <Button type="submit" disabled={mutation.isPending || draft.trim().length === 0}>
               <Send size={16} />
               Send
