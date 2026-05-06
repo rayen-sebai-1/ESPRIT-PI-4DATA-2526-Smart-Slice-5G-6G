@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -51,6 +51,17 @@ const REGION_COVERAGE: Record<string, string[]> = {
   SE: ["Gabes", "Medenine", "Tataouine"],
   SO: ["Gafsa", "Tozeur", "Kebili"],
 };
+
+const REGION_CODE_ALIASES: Record<string, string> = {
+  CORE: "GT",
+  EDGE: "SH",
+  RAN: "CO",
+};
+
+function normalizeRegionCode(code: string) {
+  const normalized = String(code ?? "").trim().toUpperCase();
+  return REGION_CODE_ALIASES[normalized] ?? normalized;
+}
 
 type SeverityTone = {
   rank: number;
@@ -142,8 +153,13 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [activeRegionCode, setActiveRegionCode] = useState<string | null>(null);
 
-  const fallbackRegionCode = getFallbackRegionCode(regions) ?? regions[0]?.code ?? null;
-  const orderedRegions = [...regions].sort((left, right) => {
+  const normalizedRegions = useMemo(
+    () => regions.map((region) => ({ ...region, code: normalizeRegionCode(region.code) })),
+    [regions],
+  );
+
+  const fallbackRegionCode = getFallbackRegionCode(normalizedRegions) ?? normalizedRegions[0]?.code ?? null;
+  const normalizedOrderedRegions = [...normalizedRegions].sort((left, right) => {
     const leftTone = getRegionTone(left, false);
     const rightTone = getRegionTone(right, false);
     if (leftTone.rank !== rightTone.rank) {
@@ -153,27 +169,27 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
   });
 
   const activeRegion =
-    orderedRegions.find((region) => region.code === activeRegionCode) ??
-    orderedRegions.find((region) => region.code === fallbackRegionCode) ??
-    orderedRegions[0] ??
+    normalizedOrderedRegions.find((region) => region.code === activeRegionCode) ??
+    normalizedOrderedRegions.find((region) => region.code === fallbackRegionCode) ??
+    normalizedOrderedRegions[0] ??
     null;
 
   useEffect(() => {
-    if (!regions.length) {
+    if (!normalizedRegions.length) {
       setActiveRegionCode(null);
       return;
     }
 
-    if (!activeRegionCode || !regions.some((region) => region.code === activeRegionCode)) {
+    if (!activeRegionCode || !normalizedRegions.some((region) => region.code === activeRegionCode)) {
       setActiveRegionCode(fallbackRegionCode);
     }
-  }, [activeRegionCode, fallbackRegionCode, regions]);
+  }, [activeRegionCode, fallbackRegionCode, normalizedRegions]);
 
   useEffect(() => {
     const root = mapRef.current;
     if (!root) return;
 
-    const regionLookup = new Map(regions.map((region) => [region.code, region]));
+    const regionLookup = new Map(normalizedRegions.map((region) => [region.code, region]));
     const anchors = Array.from(root.querySelectorAll<SVGAElement>("a[id^='area-']"));
     const cleanups: Array<() => void> = [];
 
@@ -229,7 +245,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
     return () => {
       cleanups.forEach((cleanup) => cleanup());
     };
-  }, [activeRegionCode, navigate, regions]);
+  }, [activeRegionCode, navigate, normalizedRegions]);
 
   if (!activeRegion) {
     return (
@@ -422,7 +438,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
             </div>
 
             <div className="space-y-2">
-              {orderedRegions.map((region) => {
+              {normalizedOrderedRegions.map((region) => {
                 const tone = getRegionTone(region, region.code === activeRegion.code);
                 const coverage = REGION_COVERAGE[region.code] ?? [region.name];
 

@@ -3,9 +3,13 @@ import { liveClient } from "@/api/axios";
 export type LogCategory =
   | "FAULT_OPENED"
   | "FAULT_CLEARED"
-  | "KPI_BREACH"
+  | "KPI_HEALTH"
+  | "KPI_CONGESTION"
+  | "KPI_PACKET_LOSS"
+  | "KPI_RB_UTIL"
+  | "KPI_LATENCY"
   | "AIOPS_CONGESTION"
-  | "AIOPS_SLA_RISK"
+  | "AIOPS_SLA"
   | "AIOPS_SLICE_MISMATCH";
 
 export type LogSeverity = 0 | 1 | 2 | 3;
@@ -51,9 +55,13 @@ export interface LogsQueryParams {
 export const LOG_CATEGORIES: LogCategory[] = [
   "FAULT_OPENED",
   "FAULT_CLEARED",
-  "KPI_BREACH",
+  "KPI_HEALTH",
+  "KPI_CONGESTION",
+  "KPI_PACKET_LOSS",
+  "KPI_RB_UTIL",
+  "KPI_LATENCY",
   "AIOPS_CONGESTION",
-  "AIOPS_SLA_RISK",
+  "AIOPS_SLA",
   "AIOPS_SLICE_MISMATCH",
 ];
 

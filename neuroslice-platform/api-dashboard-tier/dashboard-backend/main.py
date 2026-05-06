@@ -1337,6 +1337,7 @@ def acknowledge_alert(
 
 
 @app.get("/metrics/sla-trend", response_model=list[TrendPoint], tags=["dashboard"])
+@app.get("/dashboard/metrics/sla-trend", response_model=list[TrendPoint], tags=["dashboard"])
 def get_sla_trend(
     _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*dashboard_reader_roles))],
     hours: int = Query(default=12, ge=1, le=168, description="Lookback window in hours (1–168)"),
@@ -1393,6 +1394,7 @@ def get_sla_trend(
 
 
 @app.get("/metrics/slice-distribution", response_model=list[SliceDistributionPoint], tags=["dashboard"])
+@app.get("/dashboard/metrics/slice-distribution", response_model=list[SliceDistributionPoint], tags=["dashboard"])
 def get_slice_distribution(
     _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*dashboard_reader_roles))],
 ) -> list[SliceDistributionPoint]:

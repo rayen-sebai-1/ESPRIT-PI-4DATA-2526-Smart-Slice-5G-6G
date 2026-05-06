@@ -21,18 +21,26 @@ interface LogRowProps {
 const categoryLabels: Record<LogCategory, string> = {
   FAULT_OPENED: "Fault opened",
   FAULT_CLEARED: "Fault cleared",
-  KPI_BREACH: "KPI breach",
+  KPI_HEALTH: "KPI health",
+  KPI_CONGESTION: "KPI congestion",
+  KPI_PACKET_LOSS: "Packet loss",
+  KPI_RB_UTIL: "RB utilization",
+  KPI_LATENCY: "Latency",
   AIOPS_CONGESTION: "AIOps congestion",
-  AIOPS_SLA_RISK: "AIOps SLA risk",
+  AIOPS_SLA: "AIOps SLA risk",
   AIOPS_SLICE_MISMATCH: "AIOps mismatch",
 };
 
 const categoryIcons: Record<LogCategory, LucideIcon> = {
   FAULT_OPENED: XCircle,
   FAULT_CLEARED: CheckCircle2,
-  KPI_BREACH: Gauge,
+  KPI_HEALTH: Gauge,
+  KPI_CONGESTION: Gauge,
+  KPI_PACKET_LOSS: Gauge,
+  KPI_RB_UTIL: Gauge,
+  KPI_LATENCY: Gauge,
   AIOPS_CONGESTION: RadioTower,
-  AIOPS_SLA_RISK: ShieldAlert,
+  AIOPS_SLA: ShieldAlert,
   AIOPS_SLICE_MISMATCH: BrainCircuit,
 };
 
