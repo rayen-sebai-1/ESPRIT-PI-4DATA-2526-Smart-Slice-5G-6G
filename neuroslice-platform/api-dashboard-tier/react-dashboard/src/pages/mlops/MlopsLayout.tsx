@@ -13,7 +13,6 @@ const tabs = [
   { to: "/mlops/drift", label: "Drift" },
   { to: "/mlops/requests", label: "Requests" },
   { to: "/mlops/retraining-schedule", label: "Retraining Schedule" },
-  { to: "/mlops/operations", label: "Operations" },
   { to: "/mlops/orchestration", label: "Orchestration" },
 ];
 

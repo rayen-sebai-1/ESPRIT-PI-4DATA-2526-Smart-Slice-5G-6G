@@ -13,7 +13,6 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { LiveStatePage } from "@/pages/LiveStatePage";
 import { RootCauseAgentPage } from "@/pages/RootCauseAgentPage";
 import { CopilotAgentPage } from "@/pages/CopilotAgentPage";
-import { MonitoringToolsPage } from "@/pages/MonitoringToolsPage";
 import { AboutOrionPage } from "@/pages/AboutOrionPage";
 
 // MLOps pages are code-split: each sub-page is only loaded when the user
@@ -74,7 +73,6 @@ const dashboard_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as con
 const sessions_live_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
 const prediction_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
 const monitoring_tools_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
-const drift_monitor_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
 const control_actions_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
 const mlops_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
 const root_cause_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
@@ -125,11 +123,7 @@ export const router = createBrowserRouter([
           },
           {
             element: <ProtectedRoute allowedRoles={[...monitoring_tools_reader_roles]} />,
-            children: [{ path: "/monitoring-tools", element: <MonitoringToolsPage /> }],
-          },
-          {
-            element: <ProtectedRoute allowedRoles={[...drift_monitor_reader_roles]} />,
-            children: [{ path: "/control/actions/drift-monitor", element: withSuspense(<DriftMonitorPage />) }],
+            children: [{ path: "/monitoring-tools", element: withSuspense(<MlopsOperationsPage />) }],
           },
           {
             element: <ProtectedRoute allowedRoles={[...root_cause_reader_roles]} />,
@@ -162,6 +156,10 @@ export const router = createBrowserRouter([
                     path: "pending-approval",
                     element: withSuspense(<PendingApprovalPage />),
                   },
+                  {
+                    path: "drift-monitor",
+                    element: withSuspense(<DriftMonitorPage />),
+                  },
                 ],
               },
             ],
@@ -182,7 +180,6 @@ export const router = createBrowserRouter([
                   { path: "drift", element: withSuspense(<MlopsDriftPage />) },
                   { path: "requests", element: withSuspense(<MlopsRequestsPage />) },
                   { path: "retraining-schedule", element: withSuspense(<MlopsRetrainingSchedulePage />) },
-                  { path: "operations", element: withSuspense(<MlopsOperationsPage />) },
                   { path: "orchestration", element: withSuspense(<MlopsOrchestrationPage />) },
                 ],
               },

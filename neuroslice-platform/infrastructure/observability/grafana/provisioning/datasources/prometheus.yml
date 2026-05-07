@@ -5,7 +5,7 @@ datasources:
     uid: P1809F7CD0C75ACF3
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://prometheus:9090/prometheus
     isDefault: false
     jsonData:
       httpMethod: POST

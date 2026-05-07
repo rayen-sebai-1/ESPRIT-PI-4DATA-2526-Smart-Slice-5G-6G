@@ -6,7 +6,14 @@ from fastapi import Depends, FastAPI, Request, Response, status
 
 from db import check_database_connection
 from schemas import AdminCreateUserPayload, AdminUpdateUserPayload, AuthenticatedPrincipal, LoginPayload, LoginResponse, UserOut
-from security import clear_refresh_cookie, get_bearer_token, get_refresh_cookie_name, set_refresh_cookie
+from security import (
+    clear_access_cookie,
+    clear_refresh_cookie,
+    get_bearer_token,
+    get_refresh_cookie_name,
+    set_access_cookie,
+    set_refresh_cookie,
+)
 from service import AuthService, build_client_context, get_auth_service, get_current_user, require_roles
 
 app = FastAPI(title="NeuroSlice Auth Service", version="2.0.0")
@@ -39,6 +46,7 @@ def login(
 ) -> LoginResponse:
     bundle = auth_service.authenticate_user(payload.email, payload.password, client=build_client_context(request))
     set_refresh_cookie(response, bundle.refresh_token, bundle.refresh_expires_at)
+    set_access_cookie(response, bundle.access_token, bundle.expires_in)
     return LoginResponse(
         access_token=bundle.access_token,
         expires_in=bundle.expires_in,
@@ -57,6 +65,7 @@ def refresh_session(
         client=build_client_context(request),
     )
     set_refresh_cookie(response, bundle.refresh_token, bundle.refresh_expires_at)
+    set_access_cookie(response, bundle.access_token, bundle.expires_in)
     return LoginResponse(
         access_token=bundle.access_token,
         expires_in=bundle.expires_in,
@@ -77,6 +86,7 @@ def logout(
     )
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     clear_refresh_cookie(response)
+    clear_access_cookie(response)
     return response
 
 

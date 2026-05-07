@@ -410,3 +410,151 @@ services:
               add:
                 headers:
                   - "X-Kong-Authenticated: true"
+
+# Internal UI routes via Kong (reuse dashboard JWT session cookie)
+  - name: react-dashboard-ui
+    url: http://react-dashboard:5173
+    routes:
+      - name: react-dashboard-ui-route
+        paths:
+          - /
+        strip_path: false
+
+  - name: mlflow-ui
+    url: http://mlflow-server:5000
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: mlflow-ui-route
+        paths:
+          - /mlflow
+        strip_path: false
+
+  - name: influxdb-ui
+    url: http://influxdb:8086
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: influxdb-ui-route
+        paths:
+          - /influxdb
+        strip_path: true
+
+  - name: influxdb-ui-root-assets
+    url: http://influxdb:8086
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: influxdb-ui-api-root-route
+        paths:
+          - /api/v2
+        strip_path: false
+      - name: influxdb-ui-hashed-root-assets-route
+        paths:
+          - "~/[0-9a-f]{8,}\\.(?:js|css|map|wasm|json|png|svg|ico|woff2?|ttf|eot)$"
+        regex_priority: 200
+        strip_path: false
+
+  - name: kibana-ui
+    url: http://kibana:5601
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: kibana-ui-route
+        paths:
+          - /kibana
+        strip_path: false
+
+  - name: minio-console-ui
+    url: http://minio:9001
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: minio-console-ui-route
+        paths:
+          - /minio
+        strip_path: true
+
+  - name: minio-console-manifest
+    url: http://minio:9001
+    routes:
+      - name: minio-console-manifest-route
+        paths:
+          - /minio/manifest.json
+        strip_path: true
+
+  - name: grafana-ui
+    url: http://grafana:3000
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: grafana-ui-route
+        paths:
+          - /grafana
+        strip_path: false
+
+  - name: prometheus-ui
+    url: http://prometheus:9090
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          header_names:
+            - authorization
+          cookie_names:
+            - neuroslice_access_token
+    routes:
+      - name: prometheus-ui-route
+        paths:
+          - /prometheus
+        strip_path: false

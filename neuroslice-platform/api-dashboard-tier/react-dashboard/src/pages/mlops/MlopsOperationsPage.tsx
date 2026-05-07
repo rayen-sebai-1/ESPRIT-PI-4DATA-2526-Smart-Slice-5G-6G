@@ -58,7 +58,8 @@ function ServiceIcon({ status }: { status: MlopsServiceHealth }) {
 
 export function MlopsOperationsPage() {
   usePageTitle("MLOps - Operations");
-  const { readOnly } = useOutletContext<MlopsContext>();
+  const outletContext = useOutletContext<MlopsContext | null>();
+  const readOnly = outletContext?.readOnly ?? false;
   const queryClient = useQueryClient();
 
   const pipelineConfigQuery = useQuery({
@@ -117,7 +118,7 @@ export function MlopsOperationsPage() {
       <Card className="p-5">
         <h3 className="text-lg font-semibold text-white">MLOps Tools</h3>
         <p className="text-sm text-mutedText">
-          Opens external UIs (direct link, does not go through the backend).
+          Opens tool UIs via Kong gateway routes.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {toolsQuery.data?.tools.map((tool) => (

@@ -4,12 +4,11 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
-// Resolve a tool URL: prefer the explicit VITE_* env var, fall back to
-// window.location.hostname with the default port so the page works in any
-// deployment without requiring a .env override.
-function toolUrl(envVar: string | undefined, defaultPort: number): string {
+// Resolve a tool URL: prefer explicit VITE_* env var, otherwise default to
+// Kong-routed same-origin subpaths.
+function toolUrl(envVar: string | undefined, defaultPath: string): string {
   if (envVar && envVar.trim() !== "") return envVar.trim();
-  return `http://${window.location.hostname}:${defaultPort}`;
+  return `${window.location.origin}${defaultPath}`;
 }
 
 interface ToolLink {
@@ -23,43 +22,43 @@ interface ToolLink {
 const TOOLS: ToolLink[] = [
   {
     name: "Grafana",
-    description: "Dashboards for InfluxDB and Prometheus metrics — network KPIs, AIOps signals, slice health.",
-    url: toolUrl(import.meta.env.VITE_GRAFANA_URL, 3000),
+    description: "Dashboards for InfluxDB and Prometheus metrics - network KPIs, AIOps signals, slice health.",
+    url: toolUrl(import.meta.env.VITE_GRAFANA_URL, "/grafana/"),
     category: "Observability",
     color: "border-orange-500/30 bg-orange-500/10 text-orange-300",
   },
   {
     name: "Kibana",
-    description: "Elasticsearch log explorer — prediction events, fault traces, and AIOps output index.",
-    url: toolUrl(import.meta.env.VITE_KIBANA_URL, 5601),
+    description: "Elasticsearch log explorer - prediction events, fault traces, and AIOps output index.",
+    url: toolUrl(import.meta.env.VITE_KIBANA_URL, "/kibana/"),
     category: "Log Management",
     color: "border-sky-500/30 bg-sky-500/10 text-sky-300",
   },
   {
     name: "MLflow",
     description: "Experiment tracking, run comparison, model registry and artifact browser.",
-    url: toolUrl(import.meta.env.VITE_MLFLOW_URL, 5000),
+    url: toolUrl(import.meta.env.VITE_MLFLOW_URL, "/mlflow/"),
     category: "MLOps",
     color: "border-blue-500/30 bg-blue-500/10 text-blue-300",
   },
   {
     name: "MinIO Console",
     description: "Object storage browser for model artifacts, ONNX exports, and training datasets.",
-    url: toolUrl(import.meta.env.VITE_MINIO_URL, 9001),
+    url: toolUrl(import.meta.env.VITE_MINIO_URL, "/minio/"),
     category: "Artifact Storage",
     color: "border-red-500/30 bg-red-500/10 text-red-300",
   },
   {
     name: "InfluxDB UI",
-    description: "Time-series data explorer — raw telemetry, KPI buckets, and Flux query editor.",
-    url: toolUrl(import.meta.env.VITE_INFLUXDB_URL, 8086),
+    description: "Time-series data explorer - raw telemetry, KPI buckets, and Flux query editor.",
+    url: toolUrl(import.meta.env.VITE_INFLUXDB_URL, "/influxdb/"),
     category: "Time-Series DB",
     color: "border-violet-500/30 bg-violet-500/10 text-violet-300",
   },
   {
     name: "Prometheus",
-    description: "Metrics scraper — service health, container stats, and alerting rule status.",
-    url: toolUrl(import.meta.env.VITE_PROMETHEUS_URL, 9090),
+    description: "Metrics scraper - service health, container stats, and alerting rule status.",
+    url: toolUrl(import.meta.env.VITE_PROMETHEUS_URL, "/prometheus/"),
     category: "Metrics",
     color: "border-amber-500/30 bg-amber-500/10 text-amber-300",
   },
@@ -79,9 +78,8 @@ export function MonitoringToolsPage() {
       />
 
       <div className="rounded-2xl border border-border bg-cardAlt/70 px-5 py-4 text-sm text-slate-300">
-        These links open the native UIs of each integrated service running in the Docker stack.
-        Ports shown are the defaults — check your <code className="font-mono text-accent">.env</code> overrides
-        if a service is not reachable.
+        These links open tool UIs through Kong gateway routes. If needed, override
+        individual URLs with <code className="font-mono text-accent">VITE_*_URL</code> variables.
       </div>
 
       {CATEGORIES.map((category) => (

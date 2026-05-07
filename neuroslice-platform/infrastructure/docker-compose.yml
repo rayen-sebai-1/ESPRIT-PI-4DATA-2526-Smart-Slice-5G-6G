@@ -102,8 +102,8 @@ services:
 
   influxdb:
     image: influxdb:2.7
-    ports:
-      - "8086:8086"
+    expose:
+      - "8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: admin
@@ -188,9 +188,10 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-    ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-http://localhost:8008/minio/}
+    expose:
+      - "9000"
+      - "9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -234,8 +235,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    ports:
-      - "${MLFLOW_TRACKING_PORT:-5000}:5000"
+    expose:
+      - "5000"
     environment:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
@@ -255,7 +256,7 @@ services:
       pip install --no-cache-dir boto3 psycopg2-binary &&
       BACKEND_URI=$${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://$${MLOPS_POSTGRES_USER:-mlflow}:$${MLOPS_POSTGRES_PASSWORD:-mlflow123}@mlops-postgres:5432/$${MLOPS_POSTGRES_DB:-mlflow}} &&
       ARTIFACT_ROOT=$${MLFLOW_ARTIFACT_ROOT:-s3://$${MLFLOW_ARTIFACT_BUCKET:-mlflow-artifacts}} &&
-      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$BACKEND_URI --default-artifact-root $$ARTIFACT_ROOT
+      mlflow server --host 0.0.0.0 --port 5000 --static-prefix /mlflow --backend-store-uri $$BACKEND_URI --default-artifact-root $$ARTIFACT_ROOT
       "
     healthcheck:
       test:
@@ -263,7 +264,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/', timeout=3).status < 500 else 1)",
+          "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/mlflow/', timeout=3).status < 500 else 1)",
         ]
       interval: 10s
       timeout: 5s
@@ -365,8 +366,11 @@ services:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
       XPACK_SECURITY_ENABLED: "false"
       NODE_OPTIONS: "--max-old-space-size=1024"
-    ports:
-      - "${KIBANA_PORT:-5601}:5601"
+      SERVER_BASEPATH: /kibana
+      SERVER_REWRITEBASEPATH: "true"
+      SERVER_PUBLICBASEURL: ${KIBANA_PUBLIC_BASE_URL:-http://localhost:8008/kibana}
+    expose:
+      - "5601"
     deploy:
       resources:
         limits:
@@ -1101,6 +1105,10 @@ services:
       REFRESH_COOKIE_PATH: /api/auth
       REFRESH_COOKIE_SECURE: "false"
       REFRESH_COOKIE_SAMESITE: lax
+      ACCESS_COOKIE_NAME: neuroslice_access_token
+      ACCESS_COOKIE_PATH: /
+      ACCESS_COOKIE_SECURE: "false"
+      ACCESS_COOKIE_SAMESITE: lax
       INITIAL_ADMIN_FULL_NAME: Admin NeuroSlice
       INITIAL_ADMIN_EMAIL: admin@neuroslice.tn
       INITIAL_ADMIN_PASSWORD: change-me-now
@@ -1144,11 +1152,11 @@ services:
       ES_HOST: ${ES_HOST:-http://elasticsearch:9200}
       ES_INDEX_NAME: ${ES_INDEX_NAME:-smart-slice-predictions}
       # MLOps Operations Center
-      MLOPS_TOOLS_MLFLOW_URL: ${MLOPS_TOOLS_MLFLOW_URL:-http://localhost:5000}
-      MLOPS_TOOLS_MINIO_URL: ${MLOPS_TOOLS_MINIO_URL:-http://localhost:9001}
-      MLOPS_TOOLS_KIBANA_URL: ${MLOPS_TOOLS_KIBANA_URL:-http://localhost:5601}
-      MLOPS_TOOLS_INFLUXDB_URL: ${MLOPS_TOOLS_INFLUXDB_URL:-http://localhost:8086}
-      MLOPS_TOOLS_GRAFANA_URL: http://localhost:3000
+      MLOPS_TOOLS_MLFLOW_URL: ${MLOPS_TOOLS_MLFLOW_URL:-/mlflow/}
+      MLOPS_TOOLS_MINIO_URL: ${MLOPS_TOOLS_MINIO_URL:-/minio/}
+      MLOPS_TOOLS_KIBANA_URL: ${MLOPS_TOOLS_KIBANA_URL:-/kibana/}
+      MLOPS_TOOLS_INFLUXDB_URL: ${MLOPS_TOOLS_INFLUXDB_URL:-/influxdb/}
+      MLOPS_TOOLS_GRAFANA_URL: ${MLOPS_TOOLS_GRAFANA_URL:-/grafana/}
       MLOPS_TOOLS_MLOPS_API_URL: http://localhost:8010/docs
       MLOPS_ORCHESTRATION_ENABLED: ${MLOPS_ORCHESTRATION_ENABLED:-true}
       MLOPS_RUNNER_URL: http://mlops-runner:8020
@@ -1240,8 +1248,8 @@ services:
       args:
         VITE_AUTH_API_URL: /api/auth
         VITE_DASHBOARD_API_URL: /api/dashboard
-    ports:
-      - "${DASHBOARD_FRONTEND_PORT:-5173}:5173"
+    expose:
+      - "5173"
     depends_on:
       kong-gateway:
         condition: service_healthy
@@ -1334,8 +1342,8 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.51.2
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+    expose:
+      - "9090"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -1347,12 +1355,13 @@ services:
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
+      - "--web.external-url=${PROMETHEUS_EXTERNAL_URL:-http://localhost:8008/prometheus/}"
     restart: unless-stopped
     depends_on:
       - adapter-ves
       - adapter-netconf
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9090/-/ready"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9090/prometheus/-/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -1365,14 +1374,16 @@ services:
 
   grafana:
     image: grafana/grafana:10.4.2
-    ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+    expose:
+      - "3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-neuroslice}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:8008/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/neuroslice-platform-overview.json
     volumes:
       - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
