@@ -14,6 +14,8 @@ import { LiveStatePage } from "@/pages/LiveStatePage";
 import { RootCauseAgentPage } from "@/pages/RootCauseAgentPage";
 import { CopilotAgentPage } from "@/pages/CopilotAgentPage";
 import { AboutOrionPage } from "@/pages/AboutOrionPage";
+import { MonitoringToolsPage } from "@/pages/MonitoringToolsPage";
+import { TrustworthyAiPage } from "@/pages/TrustworthyAiPage";
 
 // MLOps pages are code-split: each sub-page is only loaded when the user
 // navigates to /mlops for the first time, keeping the initial bundle small.
@@ -73,6 +75,7 @@ const dashboard_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as con
 const sessions_live_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
 const prediction_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
 const monitoring_tools_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
+const trustworthy_ai_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
 const control_actions_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
 const mlops_reader_roles = [...admin_actor_roles, ...mlops_actor_roles] as const;
 const root_cause_reader_roles = [...admin_actor_roles, ...noc_actor_roles] as const;
@@ -123,7 +126,14 @@ export const router = createBrowserRouter([
           },
           {
             element: <ProtectedRoute allowedRoles={[...monitoring_tools_reader_roles]} />,
-            children: [{ path: "/monitoring-tools", element: withSuspense(<MlopsOperationsPage />) }],
+            children: [{ path: "/monitoring-tools", element: <MonitoringToolsPage /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={[...trustworthy_ai_reader_roles]} />,
+            children: [
+              { path: "/trustworthy-ai", element: <TrustworthyAiPage /> },
+              { path: "/xai", element: <Navigate to="/trustworthy-ai" replace /> },
+            ],
           },
           {
             element: <ProtectedRoute allowedRoles={[...root_cause_reader_roles]} />,
@@ -176,6 +186,7 @@ export const router = createBrowserRouter([
                   { path: "runs", element: withSuspense(<MlopsRunsPage />) },
                   { path: "artifacts", element: withSuspense(<MlopsArtifactsPage />) },
                   { path: "promotions", element: withSuspense(<MlopsPromotionsPage />) },
+                  { path: "operations", element: withSuspense(<MlopsOperationsPage />) },
                   { path: "monitoring", element: withSuspense(<MlopsMonitoringPage />) },
                   { path: "drift", element: withSuspense(<MlopsDriftPage />) },
                   { path: "requests", element: withSuspense(<MlopsRequestsPage />) },

@@ -9,6 +9,7 @@ const tabs = [
   { to: "/mlops/runs", label: "Runs" },
   { to: "/mlops/artifacts", label: "Artifacts" },
   { to: "/mlops/promotions", label: "Promotions" },
+  { to: "/mlops/operations", label: "Operations" },
   { to: "/mlops/monitoring", label: "Monitoring" },
   { to: "/mlops/drift", label: "Drift" },
   { to: "/mlops/requests", label: "Requests" },

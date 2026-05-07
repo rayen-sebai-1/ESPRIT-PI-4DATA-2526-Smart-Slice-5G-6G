@@ -67,8 +67,14 @@ export const navItems: NavItem[] = [
     roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
-    label: "Trustworthy AI",
+    label: "Monitoring Tools",
     to: "/monitoring-tools",
+    icon: Activity,
+    roles: [...adminActorRoles, ...mlopsActorRoles],
+  },
+  {
+    label: "Trustworthy AI",
+    to: "/trustworthy-ai",
     icon: Microscope,
     roles: [...adminActorRoles, ...mlopsActorRoles],
   },
