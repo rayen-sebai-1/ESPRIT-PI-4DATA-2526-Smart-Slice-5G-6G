@@ -61,8 +61,16 @@ def get_refresh_cookie_name() -> str:
     return os.getenv("REFRESH_COOKIE_NAME", "neuroslice_refresh_token")
 
 
+def get_access_cookie_name() -> str:
+    return os.getenv("ACCESS_COOKIE_NAME", "neuroslice_access_token")
+
+
 def get_refresh_cookie_path() -> str:
     return os.getenv("REFRESH_COOKIE_PATH", "/api/auth")
+
+
+def get_access_cookie_path() -> str:
+    return os.getenv("ACCESS_COOKIE_PATH", "/")
 
 
 def get_refresh_cookie_samesite() -> Literal["lax", "strict", "none"]:
@@ -72,8 +80,19 @@ def get_refresh_cookie_samesite() -> Literal["lax", "strict", "none"]:
     return value  # type: ignore[return-value]
 
 
+def get_access_cookie_samesite() -> Literal["lax", "strict", "none"]:
+    value = os.getenv("ACCESS_COOKIE_SAMESITE", os.getenv("REFRESH_COOKIE_SAMESITE", "lax")).strip().lower()
+    if value not in REFRESH_SAMESITE_VALUES:
+        raise RuntimeError("ACCESS_COOKIE_SAMESITE must be one of lax, strict, or none.")
+    return value  # type: ignore[return-value]
+
+
 def get_refresh_cookie_secure() -> bool:
     return _env_bool("REFRESH_COOKIE_SECURE", False)
+
+
+def get_access_cookie_secure() -> bool:
+    return _env_bool("ACCESS_COOKIE_SECURE", _env_bool("REFRESH_COOKIE_SECURE", False))
 
 
 @lru_cache(maxsize=1)
@@ -196,12 +215,33 @@ def set_refresh_cookie(response: Response, token: str, expires_at: datetime) -> 
     )
 
 
+def set_access_cookie(response: Response, token: str, max_age: int) -> None:
+    response.set_cookie(
+        key=get_access_cookie_name(),
+        value=token,
+        httponly=True,
+        secure=get_access_cookie_secure(),
+        samesite=get_access_cookie_samesite(),
+        path=get_access_cookie_path(),
+        max_age=max(0, int(max_age)),
+    )
+
+
 def clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(
         key=get_refresh_cookie_name(),
         path=get_refresh_cookie_path(),
         secure=get_refresh_cookie_secure(),
         samesite=get_refresh_cookie_samesite(),
+    )
+
+
+def clear_access_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=get_access_cookie_name(),
+        path=get_access_cookie_path(),
+        secure=get_access_cookie_secure(),
+        samesite=get_access_cookie_samesite(),
     )
 
 

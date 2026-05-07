@@ -73,12 +73,6 @@ export const navItems: NavItem[] = [
     roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
-    label: "Drift Monitor",
-    to: "/control/actions/drift-monitor",
-    icon: ShieldAlert,
-    roles: [...adminActorRoles, ...mlopsActorRoles],
-  },
-  {
     label: "Control Actions",
     to: "/control/actions",
     icon: ShieldAlert,
