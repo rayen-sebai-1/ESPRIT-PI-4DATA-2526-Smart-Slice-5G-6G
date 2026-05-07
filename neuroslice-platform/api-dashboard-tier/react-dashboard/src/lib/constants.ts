@@ -11,7 +11,7 @@ import {
   Users,
   ShieldAlert,
   TrendingUp,
-  LayoutDashboard,
+  Microscope,
   Info,
 } from "lucide-react";
 
@@ -67,9 +67,9 @@ export const navItems: NavItem[] = [
     roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {
-    label: "Monitoring Tools",
+    label: "Trustworthy AI",
     to: "/monitoring-tools",
-    icon: LayoutDashboard,
+    icon: Microscope,
     roles: [...adminActorRoles, ...mlopsActorRoles],
   },
   {

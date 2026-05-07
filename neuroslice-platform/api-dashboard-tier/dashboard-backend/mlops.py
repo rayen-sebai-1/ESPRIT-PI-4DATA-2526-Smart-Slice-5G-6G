@@ -442,6 +442,111 @@ class MlopsService:
         return _to_registry_entry(latest) if latest else None
 
 
+    # --- XAI / Trustworthy AI -----------------------------------------------
+
+    _XAI_FIGURES = {
+        "confusion_matrix.png",
+        "roc_curve.png",
+        "feature_importance.png",
+        "shap_global_importance.png",
+        "prediction_vs_actual.png",
+        "residuals_distribution.png",
+        "train_loss_curve.png",
+        "val_mae_curve.png",
+    }
+
+    def _mlflow_http_url(self) -> str | None:
+        uri = os.getenv("MLFLOW_TRACKING_URI", "")
+        if uri.startswith("http://") or uri.startswith("https://"):
+            return uri.rstrip("/")
+        return None
+
+    def list_xai_figures(self) -> list[dict[str, Any]]:
+        """Return per-model XAI figure metadata using the MLflow artifacts list API."""
+        mlflow_url = self._mlflow_http_url()
+        if not mlflow_url:
+            return []
+
+        registry_models = self._registry_models()
+        seen: dict[str, str] = {}  # model_name → run_id (latest only)
+        for entry in sorted(
+            registry_models,
+            key=lambda e: str(e.get("created_at") or ""),
+            reverse=True,
+        ):
+            name = str(entry.get("model_name") or "")
+            run_id = str(entry.get("run_id") or entry.get("mlflow_run_id") or "")
+            if name and run_id and name not in seen:
+                seen[name] = run_id
+
+        result: list[dict[str, Any]] = []
+        for model_name, run_id in seen.items():
+            try:
+                with self._http_client_factory() as client:
+                    resp = client.get(
+                        f"{mlflow_url}/api/2.0/mlflow/artifacts/list",
+                        params={"run_id": run_id},
+                    )
+                if resp.status_code != 200:
+                    continue
+                files = resp.json().get("files") or []
+                xai = [
+                    f["path"]
+                    for f in files
+                    if isinstance(f, dict)
+                    and f.get("path", "").split("/")[-1] in self._XAI_FIGURES
+                ]
+                if xai:
+                    result.append(
+                        {"model_name": model_name, "run_id": run_id, "figures": xai}
+                    )
+            except Exception:  # noqa: BLE001
+                continue
+
+        return result
+
+    def get_xai_figure_bytes(
+        self, model_name: str, figure: str
+    ) -> tuple[bytes, str] | None:
+        """Proxy an XAI figure from the MLflow artifact store (backed by MinIO).
+
+        Returns (image_bytes, content_type) or None when not found.
+        """
+        if figure not in self._XAI_FIGURES:
+            return None
+
+        mlflow_url = self._mlflow_http_url()
+        if not mlflow_url:
+            return None
+
+        registry_models = self._registry_models()
+        run_id: str | None = None
+        for entry in sorted(
+            registry_models,
+            key=lambda e: str(e.get("created_at") or ""),
+            reverse=True,
+        ):
+            if str(entry.get("model_name") or "") == model_name:
+                run_id = str(entry.get("run_id") or entry.get("mlflow_run_id") or "")
+                if run_id:
+                    break
+
+        if not run_id:
+            return None
+
+        try:
+            with self._http_client_factory() as client:
+                resp = client.get(
+                    f"{mlflow_url}/get-artifact",
+                    params={"run_uuid": run_id, "path": figure},
+                )
+            if resp.status_code == 200:
+                return resp.content, "image/png"
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
 def _matches_deployment(entry: dict[str, Any], deployment_name: str) -> bool:
     deployed_name = entry.get("deployment_name")
     if isinstance(deployed_name, str) and deployed_name == deployment_name:

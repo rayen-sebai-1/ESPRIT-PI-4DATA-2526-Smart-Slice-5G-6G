@@ -38,6 +38,7 @@ from src.models.lifecycle import (
 
 warnings.filterwarnings("ignore")
 
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -222,6 +223,30 @@ def train(
         fig_imp.tight_layout()
         mlflow.log_figure(fig_imp, "feature_importance.png")
         plt.close(fig_imp)
+
+        # SHAP global feature importance
+        try:
+            import shap
+
+            print("[INFO] Computing SHAP values (SLA 5G)...")
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X_test)
+            fig_shap, ax_shap = plt.subplots(figsize=(8, 5))
+            mean_shap = np.abs(shap_values).mean(axis=0)
+            shap_sorted_idx = np.argsort(mean_shap)
+            ax_shap.barh(
+                [feature_names[i] for i in shap_sorted_idx],
+                mean_shap[shap_sorted_idx],
+                color="#3498db",
+            )
+            ax_shap.set_xlabel("Mean |SHAP value|")
+            ax_shap.set_title("SHAP Global Feature Importance — SLA 5G")
+            fig_shap.tight_layout()
+            mlflow.log_figure(fig_shap, "shap_global_importance.png")
+            plt.close(fig_shap)
+            print(f"[INFO] SHAP computed for {len(X_test)} test samples.")
+        except Exception as shap_exc:  # noqa: BLE001
+            print(f"[WARN] SHAP computation skipped: {shap_exc}")
 
         # ---------------------------------------------------------------
         # 7. Log scaler as artifact

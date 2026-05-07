@@ -36,6 +36,7 @@ from src.models.lifecycle import (
 
 warnings.filterwarnings("ignore")
 
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -210,6 +211,7 @@ def train(
         ax_cm.set_title("Confusion Matrix — Slice-Type LightGBM")
         fig_cm.tight_layout()
         mlflow.log_figure(fig_cm, "confusion_matrix.png")
+
         plt.close(fig_cm)
 
         # Feature importance
@@ -225,6 +227,7 @@ def train(
         ax_imp.set_title("Feature Importance — Slice-Type LightGBM")
         fig_imp.tight_layout()
         mlflow.log_figure(fig_imp, "feature_importance.png")
+
         plt.close(fig_imp)
 
         # SHAP global importance (mean |SHAP|, averaged over classes)
@@ -250,6 +253,7 @@ def train(
             ax_shap.invert_yaxis()
             fig_shap.tight_layout()
             mlflow.log_figure(fig_shap, "shap_global_importance.png")
+
             plt.close(fig_shap)
             print("[INFO] SHAP global importance chart logged.")
         except Exception as shap_exc:  # noqa: BLE001

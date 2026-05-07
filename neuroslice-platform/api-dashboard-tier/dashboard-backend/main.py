@@ -1571,6 +1571,36 @@ def list_mlops_artifacts(
     return mlops.list_artifacts()
 
 
+@app.get("/mlops/xai/figures", tags=["mlops", "xai"])
+def list_xai_figures(
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> list[dict]:
+    """Return the XAI figures available in MLflow (stored in MinIO) per model."""
+    return mlops.list_xai_figures()
+
+
+@app.get("/mlops/xai/figures/{model_name}/{figure}", tags=["mlops", "xai"])
+def get_xai_figure(
+    model_name: str,
+    figure: str,
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> Response:
+    """Proxy an XAI figure image from the MLflow artifact store (MinIO backend)."""
+    if "/" in model_name or ".." in model_name:
+        raise HTTPException(status_code=400, detail="Invalid model name")
+    result = mlops.get_xai_figure_bytes(model_name, figure)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Figure not found")
+    content, content_type = result
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Cache-Control": "max-age=300"},
+    )
+
+
 @app.get("/mlops/promotions", response_model=list[MlopsPromotionEvent], tags=["mlops"])
 def list_mlops_promotions(
     mlops: Annotated[MlopsService, Depends(get_mlops_service)],

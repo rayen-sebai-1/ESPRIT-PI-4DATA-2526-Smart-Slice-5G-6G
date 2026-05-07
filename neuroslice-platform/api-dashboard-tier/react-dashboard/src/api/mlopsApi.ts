@@ -1,4 +1,31 @@
 import { dashboardClient } from "@/api/axios";
+
+// ---------------------------------------------------------------------------
+// XAI / Trustworthy AI
+// ---------------------------------------------------------------------------
+
+export interface XaiModelFigures {
+  model_name: string;
+  run_id: string;
+  figures: string[];
+}
+
+export async function getXaiFigures(): Promise<XaiModelFigures[]> {
+  const { data } = await dashboardClient.get<XaiModelFigures[]>("/mlops/xai/figures");
+  return data;
+}
+
+/** Fetch an XAI figure as an object URL (blob, authenticated via JWT). */
+export async function getXaiFigureObjectUrl(
+  modelName: string,
+  figure: string,
+): Promise<string> {
+  const resp = await dashboardClient.get(
+    `/mlops/xai/figures/${encodeURIComponent(modelName)}/${encodeURIComponent(figure)}`,
+    { responseType: "blob" },
+  );
+  return URL.createObjectURL(resp.data as Blob);
+}
 import type {
   MlopsActionResponse,
   MlopsArtifactStatus,
