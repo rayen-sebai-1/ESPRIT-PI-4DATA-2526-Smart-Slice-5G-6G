@@ -1,6 +1,9 @@
 """FastAPI application for the Smart Slice 5G/6G MLOps pipeline."""
 
 import os
+import threading
+import time
+from typing import Any
 
 import joblib
 
@@ -8,6 +11,8 @@ import mlflow
 import mlflow.pytorch
 import mlflow.xgboost
 from fastapi import FastAPI, HTTPException
+
+from src.monitoring.log_sender import log_prediction
 
 from src.api.predict import (
     predict_congestion_5g,
@@ -35,6 +40,35 @@ from src.api.schemas import (
     SliceType6GOutput,
 )
 from src.models.lifecycle import configure_mlflow_tracking
+
+# ---------------------------------------------------------------------------
+# ELK fire-and-forget helper
+# ---------------------------------------------------------------------------
+
+
+def _fire_log(
+    model_name: str,
+    input_data: dict,
+    prediction: Any,
+    confidence: float,
+    t_start: float,
+) -> None:
+    """Log a prediction event to ELK in a background daemon thread.
+
+    Non-blocking: errors are printed but never raised so inference latency
+    is never affected by logging failures.
+    """
+    latency_ms = (time.monotonic() - t_start) * 1000.0
+
+    def _run() -> None:
+        try:
+            log_prediction(model_name, input_data, prediction, confidence, latency_ms)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] ELK log failed for {model_name}: {exc}")
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
 
 # ---------------------------------------------------------------------------
 # Application
@@ -215,7 +249,16 @@ async def predict_congestion_6g_endpoint(
     model = _models.get("congestion_6g")
     if model is None:
         raise HTTPException(status_code=503, detail="Congestion 6G model not loaded.")
-    return predict_congestion_6g(model, payload)
+    t0 = time.monotonic()
+    result = predict_congestion_6g(model, payload)
+    _fire_log(
+        "congestion_6g",
+        payload.model_dump(),
+        str(result.congestion_6g_alert),
+        result.forecast_cpu_next_5min,
+        t0,
+    )
+    return result
 
 
 @app.post(
@@ -232,7 +275,16 @@ async def predict_congestion_5g_endpoint(
             status_code=503, detail="Congestion 5G model or preprocessor not loaded."
         )
     try:
-        return predict_congestion_5g(model, preprocessor, payload)
+        t0 = time.monotonic()
+        result = predict_congestion_5g(model, preprocessor, payload)
+        _fire_log(
+            "congestion_5g",
+            payload.model_dump(),
+            str(result.congestion_alert),
+            result.congestion_probability,
+            t0,
+        )
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -240,7 +292,16 @@ async def predict_congestion_5g_endpoint(
 @app.post("/predict/slice", response_model=SliceOutput, tags=["Prediction"])
 async def predict_slice_endpoint(payload: SliceInput) -> SliceOutput:
     """Recommend the most appropriate network slice."""
-    return predict_slice(_models.get("slice"), payload)
+    t0 = time.monotonic()
+    result = predict_slice(_models.get("slice"), payload)
+    _fire_log(
+        "slice",
+        payload.model_dump(),
+        result.recommended_slice,
+        result.confidence,
+        t0,
+    )
+    return result
 
 
 @app.post("/predict/sla_5g", response_model=SLA5GOutput, tags=["Prediction"])
@@ -252,7 +313,16 @@ async def predict_sla_5g_endpoint(payload: SLA5GInput) -> SLA5GOutput:
         raise HTTPException(
             status_code=503, detail="SLA 5G model or scaler not loaded."
         )
-    return predict_sla_5g(model, scaler, payload)
+    t0 = time.monotonic()
+    result = predict_sla_5g(model, scaler, payload)
+    _fire_log(
+        "sla_5g",
+        payload.model_dump(),
+        result.risk_level,
+        result.sla_probability,
+        t0,
+    )
+    return result
 
 
 @app.post(
@@ -268,7 +338,16 @@ async def predict_slice_type_5g_endpoint(
         raise HTTPException(
             status_code=503, detail="Slice-Type-5G model or label encoder not loaded."
         )
-    return predict_slice_type_5g(model, label_encoder, payload)
+    t0 = time.monotonic()
+    result = predict_slice_type_5g(model, label_encoder, payload)
+    _fire_log(
+        "slice_type_5g",
+        payload.model_dump(),
+        result.predicted_slice,
+        result.confidence,
+        t0,
+    )
+    return result
 
 
 @app.post(
@@ -284,7 +363,16 @@ async def predict_slice_type_6g_endpoint(
         raise HTTPException(
             status_code=503, detail="Slice-Type-6G model or label encoder not loaded."
         )
-    return predict_slice_type_6g(model, label_encoder, payload)
+    t0 = time.monotonic()
+    result = predict_slice_type_6g(model, label_encoder, payload)
+    _fire_log(
+        "slice_type_6g",
+        payload.model_dump(),
+        result.predicted_slice,
+        result.confidence,
+        t0,
+    )
+    return result
 
 
 @app.post("/predict/sla_6g", response_model=SLA6GOutput, tags=["Prediction"])
@@ -300,4 +388,13 @@ async def predict_sla_6g_endpoint(payload: SLA6GInput) -> SLA6GOutput:
         raise HTTPException(
             status_code=503, detail="SLA-6G model or scaler not loaded."
         )
-    return predict_sla_6g(model, scaler, payload)
+    t0 = time.monotonic()
+    result = predict_sla_6g(model, scaler, payload)
+    _fire_log(
+        "sla_6g",
+        payload.model_dump(),
+        result.risk_level,
+        result.sla_probability,
+        t0,
+    )
+    return result

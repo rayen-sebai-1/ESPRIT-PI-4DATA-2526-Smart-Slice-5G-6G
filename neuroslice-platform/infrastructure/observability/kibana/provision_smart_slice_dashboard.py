@@ -155,12 +155,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--prediction-field",
-        default="ml.prediction.keyword",
+        default="ml.prediction",
         help="Field used for prediction distribution visualizations.",
     )
     parser.add_argument(
         "--service-field",
-        default="service.name.keyword",
+        default="service.name",
         help="Field used for service breakdown visualizations.",
     )
     parser.add_argument(

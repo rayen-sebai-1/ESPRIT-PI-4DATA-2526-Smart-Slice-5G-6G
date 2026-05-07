@@ -330,7 +330,7 @@ class MlopsService:
             "sort": [{"@timestamp": {"order": "desc"}}],
         }
         if model:
-            query["query"] = {"term": {"model.keyword": model}}
+            query["query"] = {"term": {"ml.model.keyword": model}}
 
         try:
             with self._http_client_factory() as client:
@@ -358,13 +358,15 @@ class MlopsService:
             source = hit.get("_source") if isinstance(hit, dict) else {}
             if not isinstance(source, dict):
                 continue
+            ml_block = source.get("ml") or {}
+            svc_block = source.get("service") or {}
             items.append(
                 MlopsPredictionMonitoringPoint(
                     timestamp=str(source.get("@timestamp") or source.get("timestamp") or ""),
-                    model=source.get("model"),
-                    region=source.get("region"),
-                    risk_level=source.get("risk_level"),
-                    sla_score=_to_float(source.get("sla_score")),
+                    model=ml_block.get("model"),
+                    region=svc_block.get("name"),
+                    risk_level=ml_block.get("prediction"),
+                    sla_score=_to_float(ml_block.get("confidence")),
                 )
             )
 

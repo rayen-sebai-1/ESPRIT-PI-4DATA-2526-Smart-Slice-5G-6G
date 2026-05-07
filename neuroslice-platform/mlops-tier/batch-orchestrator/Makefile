@@ -182,11 +182,7 @@ prepare-data:
 	$(PYTHON) $(DATA_SRC_DIR)/preprocess_slice_type_5g.py
 	$(PYTHON) $(DATA_SRC_DIR)/preprocess_slice_type_6g.py
 
-# validate-data is already defined above, but we make sure it does what we want
-# Oh wait, validate-data already exists and depends on 'data'.
-# We will leave validate-data as is, since it runs validate.py.
-# But wait, we should redefine validate-data or leave it?
-# The request says "prepare_data -> validate_data -> train..."
+
 
 train:
 	$(PYTHON) -m src.models.train_sla_5g
