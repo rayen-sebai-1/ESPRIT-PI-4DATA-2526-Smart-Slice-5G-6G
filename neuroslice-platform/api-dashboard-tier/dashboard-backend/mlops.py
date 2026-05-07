@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
+import urllib.parse
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +28,9 @@ from schemas import (
 
 DEFAULT_MODELS_DIR = "/mlops/models"
 DEFAULT_METRIC_KEYS = ("val_accuracy", "val_precision", "val_recall", "val_f1", "val_roc_auc")
+
+_XAI_DOWNLOAD_TIMEOUT = 30.0  # seconds — MinIO round-trip can be slow
+_MINIO_REGION = "us-east-1"   # MinIO default pseudo-region
 
 
 class MlopsService:
@@ -454,12 +461,154 @@ class MlopsService:
         "train_loss_curve.png",
         "val_mae_curve.png",
     }
+    _FAIRNESS_FILE = "fairness_metrics.json"
 
     def _mlflow_http_url(self) -> str | None:
         uri = os.getenv("MLFLOW_TRACKING_URI", "")
         if uri.startswith("http://") or uri.startswith("https://"):
             return uri.rstrip("/")
         return None
+
+    def _xai_http_client(self) -> httpx.Client:
+        """Return an httpx client tuned for XAI artifact downloads (slow MinIO round-trips)."""
+        return httpx.Client(timeout=_XAI_DOWNLOAD_TIMEOUT, follow_redirects=True)
+
+    def _get_latest_run_id(self, model_name: str) -> str | None:
+        """Return the most-recent run_id for *model_name* from the registry."""
+        for entry in sorted(
+            self._registry_models(),
+            key=lambda e: str(e.get("created_at") or ""),
+            reverse=True,
+        ):
+            if str(entry.get("model_name") or "") == model_name:
+                run_id = str(entry.get("run_id") or entry.get("mlflow_run_id") or "")
+                if run_id:
+                    return run_id
+        return None
+
+    def _get_artifact_experiment_id(self, model_name: str) -> str | None:
+        """Parse the experiment numeric ID from the artifact_uri stored in the registry.
+
+        artifact_uri format: ``s3://mlflow-artifacts/{exp_id}/{run_id}/artifacts/...``
+        """
+        for entry in sorted(
+            self._registry_models(),
+            key=lambda e: str(e.get("created_at") or ""),
+            reverse=True,
+        ):
+            if str(entry.get("model_name") or "") == model_name:
+                uri = str(entry.get("artifact_uri") or entry.get("mlflow_artifact_uri") or "")
+                # s3://mlflow-artifacts/1/abcdef.../artifacts/...
+                parts = uri.replace("s3://", "").split("/")
+                if len(parts) >= 2:
+                    return parts[1]  # experiment_id
+        return None
+
+    # ------------------------------------------------------------------
+    # MinIO SigV4 direct download (fallback when MLflow proxy is slow)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sigv4_auth_headers(
+        method: str,
+        endpoint: str,
+        bucket: str,
+        key: str,
+        access_key: str,
+        secret_key: str,
+    ) -> dict[str, str]:
+        """Return the minimal AWS SigV4 Authorization headers for a GET request.
+
+        Uses only the Python standard library (hashlib + hmac).
+        Works against MinIO because it implements the S3 SigV4 spec.
+        """
+
+        def _sign(signing_key: bytes, msg: str) -> bytes:
+            return hmac.new(signing_key, msg.encode("utf-8"), hashlib.sha256).digest()
+
+        parsed = urllib.parse.urlparse(endpoint)
+        host = parsed.netloc  # e.g. minio:9000
+        path = f"/{bucket}/{key}"
+        payload_hash = hashlib.sha256(b"").hexdigest()
+
+        t = datetime.now(timezone.utc)
+        amz_date = t.strftime("%Y%m%dT%H%M%SZ")
+        date_stamp = t.strftime("%Y%m%d")
+
+        canonical_headers = (
+            f"host:{host}\n"
+            f"x-amz-content-sha256:{payload_hash}\n"
+            f"x-amz-date:{amz_date}\n"
+        )
+        signed_headers = "host;x-amz-content-sha256;x-amz-date"
+
+        canonical_request = "\n".join([
+            method, path, "",
+            canonical_headers, signed_headers, payload_hash,
+        ])
+
+        credential_scope = f"{date_stamp}/{_MINIO_REGION}/s3/aws4_request"
+        string_to_sign = "\n".join([
+            "AWS4-HMAC-SHA256", amz_date, credential_scope,
+            hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+        ])
+
+        signing_key = _sign(
+            _sign(
+                _sign(
+                    _sign(f"AWS4{secret_key}".encode("utf-8"), date_stamp),
+                    _MINIO_REGION,
+                ),
+                "s3",
+            ),
+            "aws4_request",
+        )
+        signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        return {
+            "Authorization": (
+                f"AWS4-HMAC-SHA256 Credential={access_key}/{credential_scope}, "
+                f"SignedHeaders={signed_headers}, Signature={signature}"
+            ),
+            "x-amz-date": amz_date,
+            "x-amz-content-sha256": payload_hash,
+        }
+
+    def _download_from_minio(
+        self, run_id: str, experiment_id: str, artifact_path: str
+    ) -> bytes | None:
+        """Download an artifact directly from MinIO using SigV4 auth.
+
+        Requires MLFLOW_S3_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+        env vars (set in docker-compose for the dashboard-backend service).
+        """
+        endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "").rstrip("/")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+        bucket = os.getenv("MLFLOW_S3_BUCKET", "mlflow-artifacts")
+
+        if not (endpoint and access_key and secret_key):
+            return None
+
+        # Key inside the bucket: {exp_id}/{run_id}/artifacts/{path}
+        key = f"{experiment_id}/{run_id}/artifacts/{artifact_path}"
+        url = f"{endpoint}/{bucket}/{key}"
+
+        try:
+            headers = self._sigv4_auth_headers(
+                "GET", endpoint, bucket, key, access_key, secret_key
+            )
+            with self._xai_http_client() as client:
+                resp = client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.content
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    # ------------------------------------------------------------------
+    # Public XAI helpers
+    # ------------------------------------------------------------------
 
     def list_xai_figures(self) -> list[dict[str, Any]]:
         """Return per-model XAI figure metadata using the MLflow artifacts list API."""
@@ -482,7 +631,7 @@ class MlopsService:
         result: list[dict[str, Any]] = []
         for model_name, run_id in seen.items():
             try:
-                with self._http_client_factory() as client:
+                with self._xai_http_client() as client:
                     resp = client.get(
                         f"{mlflow_url}/api/2.0/mlflow/artifacts/list",
                         params={"run_id": run_id},
@@ -496,10 +645,18 @@ class MlopsService:
                     if isinstance(f, dict)
                     and f.get("path", "").split("/")[-1] in self._XAI_FIGURES
                 ]
-                if xai:
-                    result.append(
-                        {"model_name": model_name, "run_id": run_id, "figures": xai}
-                    )
+                # also surface fairness file if present
+                has_fairness = any(
+                    isinstance(f, dict) and f.get("path", "").endswith(self._FAIRNESS_FILE)
+                    for f in files
+                )
+                if xai or has_fairness:
+                    result.append({
+                        "model_name": model_name,
+                        "run_id": run_id,
+                        "figures": xai,
+                        "has_fairness": has_fairness,
+                    })
             except Exception:  # noqa: BLE001
                 continue
 
@@ -508,42 +665,82 @@ class MlopsService:
     def get_xai_figure_bytes(
         self, model_name: str, figure: str
     ) -> tuple[bytes, str] | None:
-        """Proxy an XAI figure from the MLflow artifact store (backed by MinIO).
+        """Proxy an XAI figure from the MLflow artifact store (MinIO backend).
 
-        Returns (image_bytes, content_type) or None when not found.
+        Strategy:
+        1. Call MLflow ``/get-artifact`` with ``follow_redirects=True`` and a 30-second
+           timeout.  MLflow may either stream the bytes directly or return a 307 redirect
+           to a MinIO pre-signed URL — both are handled transparently by httpx.
+        2. If that fails (network hiccup, missing ``--serve-artifacts`` flag, etc.),
+           fall back to a direct MinIO GET signed with SigV4 (requires the three
+           ``AWS_*`` / ``MLFLOW_S3_*`` env vars to be present in the container).
+
+        Returns ``(image_bytes, "image/png")`` or ``None`` when not found.
         """
         if figure not in self._XAI_FIGURES:
             return None
 
         mlflow_url = self._mlflow_http_url()
-        if not mlflow_url:
-            return None
-
-        registry_models = self._registry_models()
-        run_id: str | None = None
-        for entry in sorted(
-            registry_models,
-            key=lambda e: str(e.get("created_at") or ""),
-            reverse=True,
-        ):
-            if str(entry.get("model_name") or "") == model_name:
-                run_id = str(entry.get("run_id") or entry.get("mlflow_run_id") or "")
-                if run_id:
-                    break
-
+        run_id = self._get_latest_run_id(model_name)
         if not run_id:
             return None
 
-        try:
-            with self._http_client_factory() as client:
-                resp = client.get(
-                    f"{mlflow_url}/get-artifact",
-                    params={"run_uuid": run_id, "path": figure},
-                )
-            if resp.status_code == 200:
-                return resp.content, "image/png"
-        except Exception:  # noqa: BLE001
-            pass
+        # --- Primary: MLflow artifact proxy (follows redirects to MinIO) ------
+        if mlflow_url:
+            for path_variant in (figure, f"artifacts/{figure}"):
+                try:
+                    with self._xai_http_client() as client:
+                        resp = client.get(
+                            f"{mlflow_url}/get-artifact",
+                            params={"run_uuid": run_id, "path": path_variant},
+                        )
+                    if resp.status_code == 200 and resp.content:
+                        return resp.content, "image/png"
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # --- Fallback: direct SigV4-signed MinIO download ---------------------
+        exp_id = self._get_artifact_experiment_id(model_name) or "1"
+        raw = self._download_from_minio(run_id, exp_id, figure)
+        if raw:
+            return raw, "image/png"
+
+        return None
+
+    def get_fairness_metrics(self, model_name: str) -> dict[str, Any] | None:
+        """Return per-class fairness metrics (precision / recall / F1) for *model_name*.
+
+        The JSON is logged by the training script as ``fairness_metrics.json`` at
+        the artifact root.  We proxy it through MLflow (or fall back to direct MinIO).
+        """
+        mlflow_url = self._mlflow_http_url()
+        run_id = self._get_latest_run_id(model_name)
+        if not run_id:
+            return None
+
+        # --- Primary: MLflow proxy ---
+        if mlflow_url:
+            for path_variant in (self._FAIRNESS_FILE, f"artifacts/{self._FAIRNESS_FILE}"):
+                try:
+                    with self._xai_http_client() as client:
+                        resp = client.get(
+                            f"{mlflow_url}/get-artifact",
+                            params={"run_uuid": run_id, "path": path_variant},
+                        )
+                    if resp.status_code == 200 and resp.content:
+                        return resp.json()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # --- Fallback: direct MinIO ---
+        exp_id = self._get_artifact_experiment_id(model_name) or "1"
+        raw = self._download_from_minio(run_id, exp_id, self._FAIRNESS_FILE)
+        if raw:
+            try:
+                return json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
         return None
 
 

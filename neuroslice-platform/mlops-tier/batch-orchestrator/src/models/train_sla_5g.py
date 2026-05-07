@@ -249,7 +249,31 @@ def train(
             print(f"[WARN] SHAP computation skipped: {shap_exc}")
 
         # ---------------------------------------------------------------
-        # 7. Log scaler as artifact
+        # 7. Fairness metrics — per-class precision / recall / F1
+        # ---------------------------------------------------------------
+        from sklearn.metrics import (
+            precision_score as _ps,
+            recall_score as _rs,
+            f1_score as _fs,
+        )
+
+        _target_names_bin = ["SLA non respecté", "SLA respecté"]
+        _prec_cls = _ps(y_test, y_pred, average=None, zero_division=0)
+        _rec_cls = _rs(y_test, y_pred, average=None, zero_division=0)
+        _f1_cls = _fs(y_test, y_pred, average=None, zero_division=0)
+        fairness_payload = {
+            "model": "sla_5g",
+            "task": "binary_classification",
+            "classes": _target_names_bin,
+            "precision": [float(v) for v in _prec_cls],
+            "recall": [float(v) for v in _rec_cls],
+            "f1": [float(v) for v in _f1_cls],
+        }
+        mlflow.log_dict(fairness_payload, "fairness_metrics.json")
+        print("[INFO] Fairness metrics logged.")
+
+        # ---------------------------------------------------------------
+        # 8. Log scaler as artifact
         # ---------------------------------------------------------------
         if SCALER_PATH.exists():
             mlflow.log_artifact(SCALER_PATH.as_posix(), artifact_path="preprocessing")

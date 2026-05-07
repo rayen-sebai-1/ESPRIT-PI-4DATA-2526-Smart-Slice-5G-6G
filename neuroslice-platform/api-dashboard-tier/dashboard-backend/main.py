@@ -1601,6 +1601,31 @@ def get_xai_figure(
     )
 
 
+@app.get("/mlops/xai/fairness/{model_name}", tags=["mlops", "xai"])
+def get_fairness_metrics(
+    model_name: str,
+    mlops: Annotated[MlopsService, Depends(get_mlops_service)],
+    _: Annotated[AuthenticatedPrincipal, Depends(require_roles(*mlops_reader_roles))],
+) -> dict:
+    """Return per-class fairness metrics (precision / recall / F1) for *model_name*.
+
+    The JSON is produced by the training script and stored as ``fairness_metrics.json``
+    at the root of the MLflow run's artifact store (MinIO).
+    """
+    if "/" in model_name or ".." in model_name:
+        raise HTTPException(status_code=400, detail="Invalid model name")
+    result = mlops.get_fairness_metrics(model_name)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Fairness metrics not found. "
+                "Re-train the model to generate fairness_metrics.json."
+            ),
+        )
+    return result
+
+
 @app.get("/mlops/promotions", response_model=list[MlopsPromotionEvent], tags=["mlops"])
 def list_mlops_promotions(
     mlops: Annotated[MlopsService, Depends(get_mlops_service)],
