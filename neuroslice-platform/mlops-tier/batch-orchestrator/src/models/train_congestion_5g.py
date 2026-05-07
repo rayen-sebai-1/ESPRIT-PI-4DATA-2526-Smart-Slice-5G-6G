@@ -225,9 +225,11 @@ def train():
     X_train, y_train = data["X_train"], data["y_train"]
     X_val, y_val = data["X_val"], data["y_val"]
     X_test, y_test = data["X_test"], data["y_test"]
-    feature_names = list(data["feature_names"]) if "feature_names" in data else [
-        f"feature_{i}" for i in range(X_train.shape[2])
-    ]
+    feature_names = (
+        list(data["feature_names"])
+        if "feature_names" in data
+        else [f"feature_{i}" for i in range(X_train.shape[2])]
+    )
 
     print(
         f"[INFO] Loaded splits. Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}"

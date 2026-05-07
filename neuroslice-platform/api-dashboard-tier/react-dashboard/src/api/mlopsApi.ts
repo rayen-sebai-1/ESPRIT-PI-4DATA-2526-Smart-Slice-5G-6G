@@ -8,6 +8,7 @@ export interface XaiModelFigures {
   model_name: string;
   run_id: string;
   figures: string[];
+  has_fairness?: boolean;
 }
 
 export async function getXaiFigures(): Promise<XaiModelFigures[]> {
@@ -26,6 +27,27 @@ export async function getXaiFigureObjectUrl(
   );
   return URL.createObjectURL(resp.data as Blob);
 }
+
+// ---------------------------------------------------------------------------
+// Fairness metrics
+// ---------------------------------------------------------------------------
+
+export interface FairnessMetrics {
+  model: string;
+  task: string;
+  classes: string[];
+  precision: number[];
+  recall: number[];
+  f1: number[];
+}
+
+export async function getFairnessMetrics(modelName: string): Promise<FairnessMetrics> {
+  const { data } = await dashboardClient.get<FairnessMetrics>(
+    `/mlops/xai/fairness/${encodeURIComponent(modelName)}`,
+  );
+  return data;
+}
+
 import type {
   MlopsActionResponse,
   MlopsArtifactStatus,

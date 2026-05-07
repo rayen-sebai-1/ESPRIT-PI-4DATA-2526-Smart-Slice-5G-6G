@@ -1,4 +1,23 @@
-"""Prediction log sender with Logstash-first delivery and Elasticsearch fallback."""
+"""Prediction log sender with Logstash-first delivery and Elasticsearch fallback.
+
+Emits ECS-structured documents so they are compatible with the Logstash pipeline
+that writes to the ``logs-smart_slice.predictions-default`` data stream.
+
+ECS field layout written here:
+
+    @timestamp          ISO-8601 UTC
+    service.name        model identifier (matches Logstash tag)
+    ml.model            model identifier
+    ml.prediction       string representation of the prediction result
+    ml.confidence       float in [0, 1]
+    event.dataset       "smart_slice.predictions"
+    event.kind          "event"
+    event.module        "mlops"
+    observer.name       "mlops-api"
+    observer.type       "inference"
+    latency_ms          round-trip inference latency in milliseconds
+    payload             raw input dict (dynamic sub-object)
+"""
 
 from __future__ import annotations
 
@@ -12,7 +31,8 @@ from typing import Any, Dict
 from elasticsearch import Elasticsearch
 
 DEFAULT_ES_HOST = "http://localhost:9200"
-DEFAULT_INDEX_NAME = "smart-slice-predictions"
+# Target the actual data stream, not a wildcard pattern.
+DEFAULT_INDEX_NAME = "logs-smart_slice.predictions-default"
 DEFAULT_LOGSTASH_HTTP_URL = "http://localhost:8081/predictions"
 
 
@@ -23,14 +43,31 @@ def log_prediction(
     confidence: float,
     latency_ms: float,
 ) -> None:
-    """Send a prediction event through Logstash or directly to Elasticsearch."""
+    """Send a prediction event through Logstash or directly to Elasticsearch.
+
+    The document is ECS-structured so it lands correctly in the
+    ``logs-smart_slice.predictions-*`` data stream regardless of which
+    delivery path is used.
+    """
     document = {
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "model_name": model_name,
-        "input_data": input_data,
-        "prediction": prediction,
-        "confidence": confidence,
-        "latency_ms": latency_ms,
+        "@timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "service": {"name": model_name},
+        "ml": {
+            "model": model_name,
+            "prediction": str(prediction),
+            "confidence": float(confidence),
+        },
+        "event": {
+            "dataset": "smart_slice.predictions",
+            "kind": "event",
+            "module": "mlops",
+        },
+        "observer": {
+            "name": "mlops-api",
+            "type": "inference",
+        },
+        "latency_ms": float(latency_ms),
+        "payload": input_data,
     }
 
     if _monitoring_mode() == "logstash":
@@ -77,7 +114,8 @@ def _send_to_logstash(document: Dict[str, Any]) -> None:
 
 def _send_to_elasticsearch(document: Dict[str, Any]) -> None:
     client = Elasticsearch(_es_host())
-    client.index(index=_index_name(), body=document)
+    # ES-py 8.x uses ``document=`` instead of the deprecated ``body=``
+    client.index(index=_index_name(), document=document)
 
 
 def _monitoring_mode() -> str:

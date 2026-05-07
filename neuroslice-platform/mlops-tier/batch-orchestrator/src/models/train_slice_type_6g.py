@@ -149,7 +149,9 @@ def main():
         ax_cm.set_title("Confusion Matrix — Slice-Type XGBoost 6G")
         for i in range(cm_arr.shape[0]):
             for j in range(cm_arr.shape[1]):
-                ax_cm.text(j, i, str(cm_arr[i, j]), ha="center", va="center", fontsize=9)
+                ax_cm.text(
+                    j, i, str(cm_arr[i, j]), ha="center", va="center", fontsize=9
+                )
         fig_cm.colorbar(im)
         fig_cm.tight_layout()
         mlflow.log_figure(fig_cm, "confusion_matrix.png")
@@ -200,6 +202,23 @@ def main():
             print("[INFO] SHAP logged for slice_type_6g.")
         except Exception as exc:  # noqa: BLE001
             print(f"[WARN] SHAP computation skipped: {exc}")
+
+        # Fairness metrics — per-class precision / recall / F1
+        import sklearn.metrics as _skm
+
+        _prec_cls = _skm.precision_score(y_test, y_pred, average=None, zero_division=0)
+        _rec_cls = _skm.recall_score(y_test, y_pred, average=None, zero_division=0)
+        _f1_cls = _skm.f1_score(y_test, y_pred, average=None, zero_division=0)
+        fairness_payload = {
+            "model": "slice_type_6g",
+            "task": "multiclass_classification",
+            "classes": class_names_decoded,
+            "precision": [float(v) for v in _prec_cls],
+            "recall": [float(v) for v in _rec_cls],
+            "f1": [float(v) for v in _f1_cls],
+        }
+        mlflow.log_dict(fairness_payload, "fairness_metrics.json")
+        print("[INFO] Fairness metrics logged.")
 
         if LABEL_ENCODER_PATH.exists():
             mlflow.log_artifact(
