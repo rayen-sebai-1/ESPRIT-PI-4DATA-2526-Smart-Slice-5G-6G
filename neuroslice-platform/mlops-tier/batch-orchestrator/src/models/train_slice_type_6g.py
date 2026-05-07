@@ -10,7 +10,13 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    precision_score,
+    recall_score,
+    f1_score,
+)
 import xgboost as xgb
 import mlflow
 import shap
@@ -121,7 +127,50 @@ def main():
         for k, v in metrics.items():
             print(f"  {k}: {v:.4f}")
 
-        # 6. SHAP Explanations
+        # 6. XAI Figures — Confusion Matrix
+        import joblib as _jl
+
+        class_names_decoded: list[str]
+        if LABEL_ENCODER_PATH.exists():
+            _le = _jl.load(LABEL_ENCODER_PATH)
+            class_names_decoded = [str(c) for c in _le.classes_]
+        else:
+            class_names_decoded = [str(i) for i in sorted(set(y_test.tolist()))]
+
+        fig_cm, ax_cm = plt.subplots(figsize=(7, 6))
+        cm_arr = confusion_matrix(y_test, y_pred)
+        im = ax_cm.imshow(cm_arr, cmap="Blues")
+        ax_cm.set_xticks(range(len(class_names_decoded)))
+        ax_cm.set_yticks(range(len(class_names_decoded)))
+        ax_cm.set_xticklabels(class_names_decoded, fontsize=8)
+        ax_cm.set_yticklabels(class_names_decoded, fontsize=8)
+        ax_cm.set_xlabel("Predicted Slice Type")
+        ax_cm.set_ylabel("Actual Slice Type")
+        ax_cm.set_title("Confusion Matrix — Slice-Type XGBoost 6G")
+        for i in range(cm_arr.shape[0]):
+            for j in range(cm_arr.shape[1]):
+                ax_cm.text(j, i, str(cm_arr[i, j]), ha="center", va="center", fontsize=9)
+        fig_cm.colorbar(im)
+        fig_cm.tight_layout()
+        mlflow.log_figure(fig_cm, "confusion_matrix.png")
+        plt.close(fig_cm)
+
+        # Feature Importance
+        fig_imp, ax_imp = plt.subplots(figsize=(9, 6))
+        importances = model.feature_importances_
+        sorted_idx = np.argsort(importances)
+        ax_imp.barh(
+            [str(feature_names[i]) for i in sorted_idx],
+            importances[sorted_idx],
+            color="#5c85d6",
+        )
+        ax_imp.set_xlabel("Importance")
+        ax_imp.set_title("Feature Importance — Slice-Type XGBoost 6G")
+        fig_imp.tight_layout()
+        mlflow.log_figure(fig_imp, "feature_importance.png")
+        plt.close(fig_imp)
+
+        # 7. SHAP Explanations
         print("Generating SHAP summary plot...")
         try:
             explainer = shap.TreeExplainer(model)
@@ -131,19 +180,24 @@ def main():
             X_train_sample = X_train[sample_idx]
             shap_values = explainer.shap_values(X_train_sample)
 
-            plt.figure(figsize=(10, 8))
-            shap.summary_plot(
-                shap_values, X_train_sample, feature_names=feature_names, show=False
+            shap_arr = np.array(shap_values)
+            if shap_arr.ndim == 3:
+                mean_abs_shap = np.mean(np.abs(shap_arr), axis=(0, 2))
+            else:
+                mean_abs_shap = np.mean(np.abs(shap_arr), axis=0)
+            shap_sorted = np.argsort(mean_abs_shap)
+            fig_shap, ax_shap = plt.subplots(figsize=(9, 6))
+            ax_shap.barh(
+                [str(feature_names[i]) for i in shap_sorted],
+                mean_abs_shap[shap_sorted],
+                color="steelblue",
             )
-
-            ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-            shap_plot_path = ARTIFACTS_DIR / "shap_summary_6g.png"
-            plt.tight_layout()
-            plt.savefig(shap_plot_path.as_posix(), bbox_inches="tight")
-            plt.close()
-
-            mlflow.log_artifact(shap_plot_path.as_posix())
-            print(f"Logged SHAP artifact: {shap_plot_path.as_posix()}")
+            ax_shap.set_xlabel("Mean |SHAP value|")
+            ax_shap.set_title("SHAP Global Feature Importance — Slice-Type XGBoost 6G")
+            fig_shap.tight_layout()
+            mlflow.log_figure(fig_shap, "shap_global_importance.png")
+            plt.close(fig_shap)
+            print("[INFO] SHAP logged for slice_type_6g.")
         except Exception as exc:  # noqa: BLE001
             print(f"[WARN] SHAP computation skipped: {exc}")
 

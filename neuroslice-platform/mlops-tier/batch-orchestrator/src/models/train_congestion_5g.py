@@ -8,6 +8,7 @@ import warnings
 import tempfile
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import mlflow
 import mlflow.pytorch
 import torch
@@ -18,9 +19,11 @@ import numpy as np
 from sklearn.metrics import (
     roc_auc_score,
     accuracy_score,
+    confusion_matrix,
     precision_score,
     recall_score,
     f1_score,
+    roc_curve,
 )
 
 from src.models.lifecycle import (
@@ -32,6 +35,7 @@ from src.models.lifecycle import (
 from src.mlops.lifecycle import run_model_lifecycle
 
 warnings.filterwarnings("ignore")
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -221,6 +225,9 @@ def train():
     X_train, y_train = data["X_train"], data["y_train"]
     X_val, y_val = data["X_val"], data["y_val"]
     X_test, y_test = data["X_test"], data["y_test"]
+    feature_names = list(data["feature_names"]) if "feature_names" in data else [
+        f"feature_{i}" for i in range(X_train.shape[2])
+    ]
 
     print(
         f"[INFO] Loaded splits. Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}"
@@ -345,6 +352,77 @@ def train():
 
         mlflow.log_metrics({**metrics, **legacy_metrics})
         mlflow.log_param("optimal_threshold", optimal_threshold)
+
+        # ---------------------------------------------------------------
+        # XAI figures
+        # ---------------------------------------------------------------
+        target_names = ["No Congestion", "Congestion"]
+
+        # Confusion matrix
+        fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
+        cm = confusion_matrix(all_labels, all_preds)
+        im = ax_cm.imshow(cm, cmap="Blues")
+        ax_cm.set_xticks([0, 1])
+        ax_cm.set_yticks([0, 1])
+        ax_cm.set_xticklabels(target_names, fontsize=9)
+        ax_cm.set_yticklabels(target_names, fontsize=9)
+        ax_cm.set_xlabel("Predicted")
+        ax_cm.set_ylabel("Actual")
+        ax_cm.set_title("Confusion Matrix — Congestion LSTM 5G")
+        for i in range(2):
+            for j in range(2):
+                ax_cm.text(j, i, str(cm[i, j]), ha="center", va="center", fontsize=14)
+        fig_cm.colorbar(im)
+        fig_cm.tight_layout()
+        mlflow.log_figure(fig_cm, "confusion_matrix.png")
+
+        plt.close(fig_cm)
+
+        # ROC curve
+        if len(np.unique(all_labels)) > 1:
+            fig_roc, ax_roc = plt.subplots(figsize=(6, 5))
+            fpr, tpr, _ = roc_curve(all_labels, all_probs)
+            ax_roc.plot(fpr, tpr, label=f"ROC AUC = {metrics['val_roc_auc']:.4f}")
+            ax_roc.plot([0, 1], [0, 1], "--", color="gray")
+            ax_roc.set_xlabel("False Positive Rate")
+            ax_roc.set_ylabel("True Positive Rate")
+            ax_roc.set_title("ROC Curve — Congestion LSTM 5G")
+            ax_roc.legend()
+            fig_roc.tight_layout()
+            mlflow.log_figure(fig_roc, "roc_curve.png")
+
+            plt.close(fig_roc)
+
+        # SHAP via GradientExplainer (try/except — requires shap>=0.45)
+        try:
+            import shap
+
+            model_cpu = model.to("cpu").eval()
+            n_bg = min(50, len(X_test))
+            background = torch.FloatTensor(X_test[:n_bg])
+            test_sample = torch.FloatTensor(X_test[: min(100, len(X_test))])
+            explainer = shap.GradientExplainer(model_cpu, background)
+            shap_values = explainer.shap_values(test_sample)
+            shap_arr = np.array(shap_values)
+            # Average over batch and timestep dims → per-feature importance
+            if shap_arr.ndim == 3:
+                mean_abs = np.abs(shap_arr).mean(axis=(0, 1))
+            else:
+                mean_abs = np.abs(shap_arr).mean(axis=0)
+            n_feats = min(len(feature_names), len(mean_abs))
+            fig_shap, ax_shap = plt.subplots(figsize=(8, 4))
+            ax_shap.barh(feature_names[:n_feats], mean_abs[:n_feats], color="steelblue")
+            ax_shap.set_xlabel("Mean |SHAP value|")
+            ax_shap.set_title("SHAP Feature Attribution — Congestion LSTM 5G")
+            fig_shap.tight_layout()
+            mlflow.log_figure(fig_shap, "shap_global_importance.png")
+
+            plt.close(fig_shap)
+            model.to(DEVICE)
+            print("[INFO] SHAP gradient explainer done for congestion_5g.")
+        except Exception as shap_exc:  # noqa: BLE001
+            print(f"[WARN] SHAP skipped for congestion_5g: {shap_exc}")
+            model.to(DEVICE)
 
         # Save model
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
