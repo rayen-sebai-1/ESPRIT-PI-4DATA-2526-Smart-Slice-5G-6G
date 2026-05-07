@@ -29,6 +29,7 @@ from src.models.lifecycle import (
 
 warnings.filterwarnings("ignore")
 
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -230,6 +231,7 @@ def train(
         ax_loss.set_title("Training Loss Curve")
         ax_loss.legend()
         mlflow.log_figure(fig_loss, "train_loss_curve.png")
+
         plt.close(fig_loss)
 
         fig_mae, ax_mae = plt.subplots()
@@ -239,7 +241,45 @@ def train(
         ax_mae.set_title("Validation MAE Curve")
         ax_mae.legend()
         mlflow.log_figure(fig_mae, "val_mae_curve.png")
+
         plt.close(fig_mae)
+
+        # Prediction vs Actual (regression XAI)
+        model.eval()
+        all_preds_reg, all_targets_reg = [], []
+        with torch.no_grad():
+            for X_batch, y_batch in val_loader:
+                preds = model(X_batch.to(DEVICE)).cpu().squeeze().numpy()
+                all_preds_reg.extend(preds.tolist() if preds.ndim > 0 else [float(preds)])
+                all_targets_reg.extend(y_batch.numpy().tolist())
+        y_true_arr = np.array(all_targets_reg)
+        y_pred_arr = np.array(all_preds_reg)
+
+        fig_pva, ax_pva = plt.subplots(figsize=(7, 5))
+        sample_n = min(300, len(y_true_arr))
+        ax_pva.scatter(y_true_arr[:sample_n], y_pred_arr[:sample_n], alpha=0.5, s=15, color="#5c85d6")
+        lims = [min(y_true_arr.min(), y_pred_arr.min()), max(y_true_arr.max(), y_pred_arr.max())]
+        ax_pva.plot(lims, lims, "--", color="gray", linewidth=1)
+        ax_pva.set_xlabel("Actual CPU Utilisation")
+        ax_pva.set_ylabel("Predicted CPU Utilisation")
+        ax_pva.set_title("Prediction vs Actual — Congestion LSTM 6G")
+        fig_pva.tight_layout()
+        mlflow.log_figure(fig_pva, "prediction_vs_actual.png")
+
+        plt.close(fig_pva)
+
+        # Residuals distribution
+        residuals = y_true_arr - y_pred_arr
+        fig_res, ax_res = plt.subplots(figsize=(7, 4))
+        ax_res.hist(residuals, bins=40, color="#e67e22", edgecolor="white", linewidth=0.5)
+        ax_res.axvline(0, color="gray", linestyle="--", linewidth=1)
+        ax_res.set_xlabel("Residual (Actual − Predicted)")
+        ax_res.set_ylabel("Count")
+        ax_res.set_title("Residuals Distribution — Congestion LSTM 6G")
+        fig_res.tight_layout()
+        mlflow.log_figure(fig_res, "residuals_distribution.png")
+
+        plt.close(fig_res)
 
         # -------------------------------------------------------------------
         # 6. Register model

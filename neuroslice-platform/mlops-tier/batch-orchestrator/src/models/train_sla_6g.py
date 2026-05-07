@@ -43,6 +43,7 @@ from src.models.lifecycle import (
 
 warnings.filterwarnings("ignore")
 
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -198,6 +199,7 @@ def train(
         fig_cm.colorbar(im)
         fig_cm.tight_layout()
         mlflow.log_figure(fig_cm, "confusion_matrix.png")
+
         plt.close(fig_cm)
 
         # ROC curve
@@ -211,6 +213,7 @@ def train(
         ax_roc.legend()
         fig_roc.tight_layout()
         mlflow.log_figure(fig_roc, "roc_curve.png")
+
         plt.close(fig_roc)
 
         # Feature importance
@@ -223,6 +226,7 @@ def train(
         ax_imp.set_title("Feature Importance — SLA XGBoost 6G")
         fig_imp.tight_layout()
         mlflow.log_figure(fig_imp, "feature_importance.png")
+
         plt.close(fig_imp)
 
         # ---------------------------------------------------------------
@@ -248,6 +252,7 @@ def train(
             ax_shap.set_title("SHAP Global Feature Importance — SLA 6G")
             fig_shap.tight_layout()
             mlflow.log_figure(fig_shap, "shap_global_importance.png")
+
             plt.close(fig_shap)
 
             print(f"[INFO] SHAP computed for {len(X_test)} test samples.")
