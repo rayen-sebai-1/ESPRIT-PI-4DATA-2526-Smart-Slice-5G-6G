@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useTheme } from "@/lib/theme";
 import { appSections, roleDefaultRoute } from "@/lib/constants";
+import teamPhoto from "@/images/azerty67_png.png";
 
 type LocationState = {
   from?: {
@@ -82,8 +83,8 @@ export function LoginPage() {
             {/* Logo + name */}
             <div>
               <div className="mb-8 flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-accentSoft ring-1 ring-accent/30">
-                  <OrionLogo size={34} />
+                <div className="flex h-14 w-14 overflow-hidden rounded-3xl ring-1 ring-accent/30 shadow-md">
+                  <OrionLogo size={56} />
                 </div>
                 <div>
                   <p className="text-2xl font-semibold tracking-[0.22em] text-ink">ORION</p>
@@ -103,33 +104,51 @@ export function LoginPage() {
             </div>
 
             {/* Feature cards */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-[20px] border border-border bg-cardAlt p-5">
-                <div className="mb-4 inline-flex rounded-2xl bg-accentSoft p-3 text-accent">
-                  <ShieldCheck size={18} />
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-[20px] border border-border bg-cardAlt p-5">
+                  <div className="mb-4 inline-flex rounded-2xl bg-accentSoft p-3 text-accent">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <p className="text-sm font-semibold text-ink">Provisioned access</p>
+                  <p className="mt-2 text-sm leading-6 text-mutedText">
+                    Accounts are created exclusively by the platform administrator.
+                  </p>
                 </div>
-                <p className="text-sm font-semibold text-ink">Provisioned access</p>
-                <p className="mt-2 text-sm leading-6 text-mutedText">
-                  Accounts are created exclusively by the platform administrator.
-                </p>
+                <div className="rounded-[20px] border border-border bg-cardAlt p-5">
+                  <div className="mb-4 inline-flex rounded-2xl bg-accentBlueSoft p-3 text-accentBlue">
+                    <Sparkles size={18} />
+                  </div>
+                  <p className="text-sm font-semibold text-ink">AI Predictions</p>
+                  <p className="mt-2 text-sm leading-6 text-mutedText">
+                    SLA, congestion, and anomaly scores powered by ML backend.
+                  </p>
+                </div>
+                <div className="rounded-[20px] border border-border bg-cardAlt p-5">
+                  <div className="mb-4 inline-flex rounded-2xl bg-accentSoft p-3 text-accent">
+                    <LockKeyhole size={18} />
+                  </div>
+                  <p className="text-sm font-semibold text-ink">Role-based access</p>
+                  <p className="mt-2 text-sm leading-6 text-mutedText">
+                    Manager (Admin), NOC Operator, and MLOps Engineer each see their own scope.
+                  </p>
+                </div>
               </div>
-              <div className="rounded-[20px] border border-border bg-cardAlt p-5">
-                <div className="mb-4 inline-flex rounded-2xl bg-accentBlueSoft p-3 text-accentBlue">
-                  <Sparkles size={18} />
+
+              {/* Team credit */}
+              <div className="flex items-center gap-4 rounded-[20px] border border-border bg-cardAlt/60 p-4">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl ring-1 ring-border shadow-sm">
+                  <img
+                    src={teamPhoto}
+                    alt="Smart Slice 5G/6G team"
+                    className="h-full w-full object-cover"
+                  />
                 </div>
-                <p className="text-sm font-semibold text-ink">AI Predictions</p>
-                <p className="mt-2 text-sm leading-6 text-mutedText">
-                  SLA, congestion, and anomaly scores powered by ML backend.
-                </p>
-              </div>
-              <div className="rounded-[20px] border border-border bg-cardAlt p-5">
-                <div className="mb-4 inline-flex rounded-2xl bg-accentSoft p-3 text-accent">
-                  <LockKeyhole size={18} />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-mutedText">Built by</p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink">Smart Slice 5G/6G</p>
+                  <p className="text-xs leading-5 text-mutedText">ESPRIT · 4DATA · 2025–2026</p>
                 </div>
-                <p className="text-sm font-semibold text-ink">Role-based access</p>
-                <p className="mt-2 text-sm leading-6 text-mutedText">
-                  Manager (Admin), NOC Operator, and MLOps Engineer each see their own scope.
-                </p>
               </div>
             </div>
           </div>

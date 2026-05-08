@@ -12,6 +12,8 @@ import {
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import teamPhoto from "@/images/azerty67_png.png";
+import logoNormal from "@/images/logoNormal.png";
 
 interface SdgCard {
   code: "SDG 3" | "SDG 9" | "SDG 11" | "SDG 12";
@@ -201,6 +203,60 @@ export function AboutOrionPage() {
             </Card>
           ))}
         </div>
+      </section>
+
+      {/* Team section */}
+      <section>
+        <Card className="overflow-hidden">
+          <div className="grid md:grid-cols-[auto_1fr] gap-0">
+            {/* Team photo */}
+            <div className="relative flex items-center justify-center bg-cardAlt p-8 md:p-10">
+              <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-accentBlue/10" />
+              <div className="relative h-40 w-40 overflow-hidden rounded-3xl ring-2 ring-accent/30 shadow-xl">
+                <img
+                  src={teamPhoto}
+                  alt="Smart Slice 5G/6G team"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            </div>
+
+            {/* Team info */}
+            <div className="flex flex-col justify-center gap-6 p-8 md:p-10">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 overflow-hidden rounded-2xl ring-1 ring-accent/30 shadow-sm shrink-0">
+                  <img
+                    src={logoNormal}
+                    alt="ORION logo"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-mutedText">The team</p>
+                  <h2 className="mt-0.5 text-xl font-semibold text-ink">Smart Slice 5G/6G</h2>
+                </div>
+              </div>
+
+              <p className="text-sm leading-7 text-mutedText max-w-xl">
+                ORION is the capstone project of the Smart Slice 5G/6G team at ESPRIT — a multidisciplinary group of 4DATA students building the next generation of AI-driven telecom supervision platforms.
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { label: "Institution", value: "ESPRIT" },
+                  { label: "Track", value: "4DATA" },
+                  { label: "Academic year", value: "2025 – 2026" },
+                  { label: "Domain", value: "5G / 6G Telecom AI" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="rounded-xl border border-border bg-cardAlt px-4 py-2.5">
+                    <p className="text-xs uppercase tracking-[0.18em] text-mutedText">{label}</p>
+                    <p className="mt-0.5 text-sm font-medium text-ink">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
       </section>
     </div>
   );
