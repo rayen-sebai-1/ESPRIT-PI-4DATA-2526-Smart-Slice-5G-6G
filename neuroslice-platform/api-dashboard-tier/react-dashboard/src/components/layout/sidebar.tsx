@@ -39,16 +39,9 @@ export function Sidebar({ role, open, onToggle }: SidebarProps) {
         )}
       >
         {/* Brand */}
-        <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl ring-1 ring-accent/30 shadow-sm">
-            <OrionLogo size={44} />
-          </div>
-          <div>
-            <p className="text-lg font-semibold tracking-widest text-ink" style={{ letterSpacing: "0.18em" }}>
-              ORION
-            </p>
-            <p className="text-xs uppercase tracking-[0.26em] text-mutedText">NOC supervision</p>
-          </div>
+        <div className="mb-8">
+          <OrionLogo className="w-36" />
+          <p className="mt-2 text-xs uppercase tracking-[0.26em] text-mutedText">NOC supervision</p>
         </div>
 
         {/* Description */}

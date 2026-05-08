@@ -82,16 +82,11 @@ export function LoginPage() {
           <div className="relative flex h-full flex-col justify-between gap-10">
             {/* Logo + name */}
             <div>
-              <div className="mb-8 flex items-center gap-4">
-                <div className="flex h-14 w-14 overflow-hidden rounded-3xl ring-1 ring-accent/30 shadow-md">
-                  <OrionLogo size={56} />
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold tracking-[0.22em] text-ink">ORION</p>
-                  <p className="text-xs uppercase tracking-[0.3em] text-mutedText">
-                    Telecom AI supervision
-                  </p>
-                </div>
+              <div className="mb-8">
+                <OrionLogo className="w-56" />
+                <p className="mt-2 text-xs uppercase tracking-[0.3em] text-mutedText">
+                  Telecom AI supervision
+                </p>
               </div>
 
               <h1 className="max-w-xl text-4xl font-semibold leading-tight tracking-tight text-ink md:text-5xl">
@@ -136,19 +131,17 @@ export function LoginPage() {
               </div>
 
               {/* Team credit */}
-              <div className="flex items-center gap-4 rounded-[20px] border border-border bg-cardAlt/60 p-4">
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl ring-1 ring-border shadow-sm">
-                  <img
-                    src={teamPhoto}
-                    alt="Smart Slice 5G/6G team"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+              <div className="flex items-center justify-between gap-6 rounded-[20px] border border-border bg-cardAlt/60 px-5 py-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-mutedText">Built by</p>
-                  <p className="mt-0.5 text-sm font-semibold text-ink">Smart Slice 5G/6G</p>
-                  <p className="text-xs leading-5 text-mutedText">ESPRIT · 4DATA · 2025–2026</p>
+                  <p className="mt-0.5 text-xs leading-5 text-mutedText">ESPRIT · 4DATA · 2025–2026</p>
                 </div>
+                {/* No border — azerty67 has a transparent background */}
+                <img
+                  src={teamPhoto}
+                  alt="azerty67 · Smart Slice 5G/6G"
+                  className="h-10 w-auto flex-shrink-0"
+                />
               </div>
             </div>
           </div>

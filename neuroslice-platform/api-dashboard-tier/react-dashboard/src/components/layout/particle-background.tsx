@@ -16,12 +16,15 @@ export function ParticleBackground({ theme = "dark" }: ParticleBackgroundProps) 
     let animationFrameId: number;
     let particlesArray: Particle[] = [];
 
+    // Light mode gets higher opacity + warmer slate to stand out on the cream gradient.
+    // Dark mode uses cool blue-gray against pure black.
     const config = {
-      particleCount: 45,
-      connectionDistance: 110,
-      particleSpeed: 0.15,
-      // Dark mode: subtle light blue-gray. Light mode: subtle dark slate.
+      particleCount: 60,
+      connectionDistance: 130,
+      particleSpeed: 0.2,
       particleColor: theme === "dark" ? "148, 163, 184" : "71, 85, 105",
+      nodeOpacity: theme === "dark" ? 0.5 : 0.65,
+      lineOpacity: theme === "dark" ? 0.22 : 0.32,
     };
 
     const resizeCanvas = () => {
@@ -54,7 +57,7 @@ export function ParticleBackground({ theme = "dark" }: ParticleBackgroundProps) 
       draw() {
         ctx!.beginPath();
         ctx!.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx!.fillStyle = `rgba(${config.particleColor}, 0.3)`;
+        ctx!.fillStyle = `rgba(${config.particleColor}, ${config.nodeOpacity})`;
         ctx!.fill();
       }
     }
@@ -81,7 +84,7 @@ export function ParticleBackground({ theme = "dark" }: ParticleBackgroundProps) 
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < config.connectionDistance) {
-            const opacity = (1 - distance / config.connectionDistance) * 0.15;
+            const opacity = (1 - distance / config.connectionDistance) * config.lineOpacity;
             ctx.beginPath();
             ctx.strokeStyle = `rgba(${config.particleColor}, ${opacity})`;
             ctx.lineWidth = 1;

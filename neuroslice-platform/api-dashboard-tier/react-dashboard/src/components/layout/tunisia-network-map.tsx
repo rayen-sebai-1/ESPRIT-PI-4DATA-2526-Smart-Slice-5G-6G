@@ -322,7 +322,7 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
         </div>
       </div>
 
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="rounded-[30px] border border-border bg-cardAlt/70 p-4 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <div className="rounded-full border border-border bg-background/70 px-4 py-2 text-xs uppercase tracking-[0.2em] text-mutedText">
@@ -333,12 +333,12 @@ export function TunisiaNetworkMap({ regions }: { regions: RegionComparison[] }) 
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[28px] border border-border bg-[#081220] p-4 sm:p-6">
+          <div className="relative overflow-hidden rounded-[28px] border border-border bg-[#081220] p-6 sm:p-8">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.16),transparent_28%),radial-gradient(circle_at_88%_10%,rgba(20,184,166,0.13),transparent_24%),linear-gradient(180deg,rgba(10,18,32,0.9),rgba(8,17,30,0.96))]" />
             <div className="absolute inset-0 panel-grid opacity-25" />
             <div className="absolute inset-x-6 bottom-6 h-24 rounded-full bg-cyan-500/10 blur-3xl" />
 
-            <div className="relative z-10 mx-auto max-w-[360px] sm:max-w-[420px] xl:max-w-[470px]">
+            <div className="relative z-10 w-full">
               <div
                 ref={mapRef}
                 className="ns-tunisia-map"
