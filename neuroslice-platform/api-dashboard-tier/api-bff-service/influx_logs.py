@@ -87,8 +87,11 @@ KPI_RULES = [
 ]
 
 CACHE_TTL_SECONDS = 2.0
+CACHE_MAX_ENTRIES = int(os.getenv("INFLUX_LOGS_CACHE_MAX_ENTRIES", "256"))
+MAX_QUERY_ROWS = int(os.getenv("INFLUX_LOGS_MAX_QUERY_ROWS", "5000"))
 _cache_lock = threading.Lock()
 _cache: Dict[str, Tuple[float, Any]] = {}
+_cache_inflight: Dict[str, threading.Event] = {}
 
 
 class InfluxLogsClient:
@@ -531,6 +534,9 @@ def _faults_flux(bucket: str, start: str, cursor: Optional[str]) -> str:
         f'  |> filter(fn: (r) => r._measurement == "faults")\n'
         f'  |> filter(fn: (r) => r._field == "active" or r._field == "severity")\n'
         f"{cursor_filter}"
+        f'  |> group(columns: [])\n'
+        f'  |> sort(columns: ["_time"], desc: true)\n'
+        f"  |> limit(n: {MAX_QUERY_ROWS})\n"
         f'  |> pivot(rowKey: ["_time", "fault_id"], columnKey: ["_field"], valueColumn: "_value")\n'
     )
 
@@ -543,6 +549,9 @@ def _measurement_flux(bucket: str, measurement: str, start: str, fields: Sequenc
         f'  |> filter(fn: (r) => r._measurement == "{_flux_escape(measurement)}")\n'
         f"  |> filter(fn: (r) => {field_filter})\n"
         f"{_cursor_filter(cursor)}"
+        f'  |> group(columns: [])\n'
+        f'  |> sort(columns: ["_time"], desc: true)\n'
+        f"  |> limit(n: {MAX_QUERY_ROWS})\n"
     )
 
 
@@ -554,6 +563,9 @@ def _pivot_flux(bucket: str, measurement: str, start: str, fields: Sequence[str]
         f'  |> filter(fn: (r) => r._measurement == "{_flux_escape(measurement)}")\n'
         f"  |> filter(fn: (r) => {field_filter})\n"
         f"{_cursor_filter(cursor)}"
+        f'  |> group(columns: [])\n'
+        f'  |> sort(columns: ["_time"], desc: true)\n'
+        f"  |> limit(n: {MAX_QUERY_ROWS})\n"
         f'  |> pivot(rowKey: ["_time", "entity_id"], columnKey: ["_field"], valueColumn: "_value")\n'
     )
 
@@ -599,16 +611,55 @@ def _parse_iso(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _prune_cache_locked(now: float) -> None:
+    expired_keys = [k for k, (ts, _) in _cache.items() if now - ts >= CACHE_TTL_SECONDS]
+    for key in expired_keys:
+        _cache.pop(key, None)
+
+    overflow = len(_cache) - CACHE_MAX_ENTRIES
+    if overflow > 0:
+        oldest = sorted(_cache.items(), key=lambda item: item[1][0])[:overflow]
+        for key, _ in oldest:
+            _cache.pop(key, None)
+
+
 def _cached(key: str, build: Callable[[], Any]) -> Any:
-    now = time.monotonic()
-    with _cache_lock:
-        entry = _cache.get(key)
-        if entry and now - entry[0] < CACHE_TTL_SECONDS:
-            return entry[1]
-    value = build()
-    with _cache_lock:
-        _cache[key] = (now, value)
-    return value
+    while True:
+        with _cache_lock:
+            now = time.monotonic()
+            entry = _cache.get(key)
+            if entry and now - entry[0] < CACHE_TTL_SECONDS:
+                return entry[1]
+
+            inflight = _cache_inflight.get(key)
+            if inflight is None:
+                inflight = threading.Event()
+                _cache_inflight[key] = inflight
+                is_builder = True
+            else:
+                is_builder = False
+
+        if not is_builder:
+            inflight.wait(timeout=10.0)
+            continue
+
+        try:
+            value = build()
+        except Exception:
+            with _cache_lock:
+                done = _cache_inflight.pop(key, None)
+                if done is not None:
+                    done.set()
+            raise
+
+        with _cache_lock:
+            now = time.monotonic()
+            _cache[key] = (now, value)
+            _prune_cache_locked(now)
+            done = _cache_inflight.pop(key, None)
+            if done is not None:
+                done.set()
+        return value
 
 
 def _threshold_triggered(value: float, rule: Dict[str, Any]) -> bool:

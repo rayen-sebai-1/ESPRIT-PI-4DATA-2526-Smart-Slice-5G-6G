@@ -1034,6 +1034,7 @@ services:
       context: ..
       dockerfile: api-dashboard-tier/api-bff-service/Dockerfile
     <<: *python-service
+    restart: unless-stopped
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
@@ -1056,8 +1057,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256m
+          memory: 512m
           cpus: "0.30"
+    mem_limit: 512m
 
   telemetry-exporter:
     build:
