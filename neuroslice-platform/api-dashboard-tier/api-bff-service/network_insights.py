@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW = "-15m"
 ALLOWED_WINDOWS = {"-5m", "-15m", "-1h", "-6h", "-24h"}
+MAX_FAULT_ROWS = int(os.getenv("NETWORK_INSIGHTS_MAX_FAULT_ROWS", "5000"))
+MAX_QUERY_ROWS = int(os.getenv("NETWORK_INSIGHTS_MAX_QUERY_ROWS", "5000"))
 
 # Functional-domain regions surfaced by the dashboard.
 REGIONS: List[Dict[str, Any]] = [
@@ -154,19 +156,60 @@ class InfluxClient:
 
 _cache_lock = threading.Lock()
 _cache: Dict[str, Tuple[float, Any]] = {}
+_cache_inflight: Dict[str, threading.Event] = {}
 CACHE_TTL_SECONDS = 2.0
+CACHE_MAX_ENTRIES = int(os.getenv("NETWORK_INSIGHTS_CACHE_MAX_ENTRIES", "256"))
+
+
+def _prune_cache_locked(now: float) -> None:
+    expired_keys = [k for k, (ts, _) in _cache.items() if now - ts >= CACHE_TTL_SECONDS]
+    for key in expired_keys:
+        _cache.pop(key, None)
+
+    overflow = len(_cache) - CACHE_MAX_ENTRIES
+    if overflow > 0:
+        oldest = sorted(_cache.items(), key=lambda item: item[1][0])[:overflow]
+        for key, _ in oldest:
+            _cache.pop(key, None)
 
 
 def _cached(key: str, build) -> Any:
-    now = time.monotonic()
-    with _cache_lock:
-        entry = _cache.get(key)
-        if entry and now - entry[0] < CACHE_TTL_SECONDS:
-            return entry[1]
-    value = build()
-    with _cache_lock:
-        _cache[key] = (now, value)
-    return value
+    while True:
+        with _cache_lock:
+            now = time.monotonic()
+            entry = _cache.get(key)
+            if entry and now - entry[0] < CACHE_TTL_SECONDS:
+                return entry[1]
+
+            inflight = _cache_inflight.get(key)
+            if inflight is None:
+                inflight = threading.Event()
+                _cache_inflight[key] = inflight
+                is_builder = True
+            else:
+                is_builder = False
+
+        if not is_builder:
+            inflight.wait(timeout=10.0)
+            continue
+
+        try:
+            value = build()
+        except Exception:
+            with _cache_lock:
+                done = _cache_inflight.pop(key, None)
+                if done is not None:
+                    done.set()
+            raise
+
+        with _cache_lock:
+            now = time.monotonic()
+            _cache[key] = (now, value)
+            _prune_cache_locked(now)
+            done = _cache_inflight.pop(key, None)
+            if done is not None:
+                done.set()
+        return value
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -422,6 +465,9 @@ def _build_faults_flux(bucket: str, window: str) -> str:
         f"  |> range(start: {window})\n"
         f'  |> filter(fn: (r) => r._measurement == "faults")\n'
         f'  |> filter(fn: (r) => r._field == "active" or r._field == "active_count" or r._field == "severity")\n'
+        f'  |> group(columns: [])\n'
+        f'  |> sort(columns: ["_time"], desc: true)\n'
+        f"  |> limit(n: {MAX_FAULT_ROWS})\n"
     )
 
 
@@ -523,6 +569,9 @@ def _build_aiops_flux(bucket: str, measurement: str, window: str) -> str:
         f'from(bucket: "{_flux_escape(bucket)}")\n'
         f"  |> range(start: {window})\n"
         f'  |> filter(fn: (r) => r._measurement == "{_flux_escape(measurement)}")\n'
+        f'  |> group(columns: [])\n'
+        f'  |> sort(columns: ["_time"], desc: true)\n'
+        f"  |> limit(n: {MAX_QUERY_ROWS})\n"
         f'  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")\n'
     )
 
@@ -595,6 +644,9 @@ def _build_breach_flux(bucket: str, window: str, domain: Optional[str]) -> str:
         f'  |> filter(fn: (r) => r._measurement == "telemetry")\n'
         f"  |> filter(fn: (r) => {field_filter})\n"
         f"{domain_filter}"
+        f'  |> group(columns: [])\n'
+        f'  |> sort(columns: ["_time"], desc: true)\n'
+        f"  |> limit(n: {MAX_QUERY_ROWS})\n"
         f'  |> group(columns: ["entity_id","entity_type","domain","slice_id","slice_type","_field"])\n'
         f"  |> last()\n"
     )
@@ -646,15 +698,33 @@ def fetch_kpi_breach_events(window: str, domain: Optional[str]) -> List[Dict[str
 # Public composition: overview + logs
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _faults_summary_for(window: str, domain: Optional[str]) -> Dict[str, Any]:
-    fault_events = fetch_faults_events(window)
+def _faults_summary_from_events(
+    fault_events: List[Dict[str, Any]], domain: Optional[str]
+) -> Dict[str, Any]:
+    selected = fault_events
     if domain:
-        fault_events = [e for e in fault_events if e.get("domain") == domain]
-    active_open = [e for e in fault_events if e["category"] == "FAULT_OPENED"]
+        selected = [event for event in fault_events if event.get("domain") == domain]
+    active_open = [event for event in selected if event["category"] == "FAULT_OPENED"]
     return {
         "active_count": len(active_open),
-        "events_count": len(fault_events),
+        "events_count": len(selected),
     }
+
+
+def _faults_summary_for(window: str, domain: Optional[str]) -> Dict[str, Any]:
+    fault_events = fetch_faults_events(window)
+    return _faults_summary_from_events(fault_events, domain)
+
+
+def _open_faults_count_by_domain(fault_events: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {region["id"]: 0 for region in REGIONS}
+    for event in fault_events:
+        if event.get("category") != "FAULT_OPENED":
+            continue
+        domain = event.get("domain")
+        if domain in counts:
+            counts[domain] += 1
+    return counts
 
 
 def _aiops_summary_for(window: str, domain: Optional[str]) -> Dict[str, int]:
@@ -674,7 +744,9 @@ def national_overview(window: str = DEFAULT_WINDOW) -> Dict[str, Any]:
 
     def build():
         agg = fetch_telemetry_aggregate(window, domain=None)
-        faults = _faults_summary_for(window, domain=None)
+        fault_events = fetch_faults_events(window)
+        faults = _faults_summary_from_events(fault_events, domain=None)
+        faults_per_domain = _open_faults_count_by_domain(fault_events)
         aiops = _aiops_summary_for(window, domain=None)
         trend = fetch_trend(window, domain=None)
         return {
@@ -687,7 +759,14 @@ def national_overview(window: str = DEFAULT_WINDOW) -> Dict[str, Any]:
             "fault_events_count": faults["events_count"],
             "aiops_counts": aiops,
             "regions": [
-                {**region, **_region_summary_from_breakdown(region["id"], agg["domain_breakdown"], faults_in_region=faults_for_domain(window, region["id"]))}
+                {
+                    **region,
+                    **_region_summary_from_breakdown(
+                        region["id"],
+                        agg["domain_breakdown"],
+                        faults_in_region=faults_per_domain.get(region["id"], 0),
+                    ),
+                }
                 for region in REGIONS
             ],
             "slice_distribution": agg["slice_distribution"],
@@ -720,15 +799,6 @@ def _region_summary_from_breakdown(domain: str, breakdown: List[Dict[str, Any]],
         "sessions_total": match["sessions_total"],
         "active_faults_count": faults_in_region,
     }
-
-
-def faults_for_domain(window: str, domain: str) -> int:
-    cache_key = f"faults_per_domain::{window}::{domain}"
-
-    def build():
-        events = fetch_faults_events(window)
-        return sum(1 for e in events if e.get("domain") == domain and e["category"] == "FAULT_OPENED")
-    return _cached(cache_key, build)
 
 
 def region_overview(domain: str, window: str = DEFAULT_WINDOW) -> Dict[str, Any]:
