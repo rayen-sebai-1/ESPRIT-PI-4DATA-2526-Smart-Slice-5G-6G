@@ -53,7 +53,7 @@ export function Sidebar({ role, open, onToggle }: SidebarProps) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 space-y-1">
+        <nav className="sidebar-nav min-h-0 flex-1 space-y-1 overflow-y-auto pb-4">
           {items.map((item) => (
             <NavLink
               key={item.to}
